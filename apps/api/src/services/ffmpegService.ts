@@ -255,53 +255,6 @@ export function buildExportCommand(
       const scaleFilter = `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=increase,crop=${scaledW}:${scaledH}`;
       const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS`;
 
-      // Beat Zoom: render a second pre-zoomed filter chain and overlay it only during beat
-      // windows. This avoids any per-frame variable output sizes (scale:eval=frame causes
-      // upstream filter reinitialisation in ffmpeg 5.x; zoompan's `t` variable is missing
-      // in ffmpeg 8.x). Both chains output a FIXED size — no dynamic sizing at all.
-      const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
-      const masterAudioClip = masterAudioTrack?.clips[0];
-      const masterBeats = masterAudioClip ? beatsMap.get(masterAudioClip.assetId) : undefined;
-
-      let zoomedClipPad = '';
-      let beatEnableExpr = '';
-
-      if (beatZoomEffect?.enabled && masterBeats && masterAudioClip) {
-        const timelineBeats = masterBeats.beats.map(
-          (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
-        );
-        const beatsInClip = timelineBeats.filter(
-          (b) => b >= clip.timelineStart && b <= clip.timelineEnd
-        );
-        if (beatsInClip.length > 0) {
-          const pulseDur = beatZoomEffect.durationMs / 1000;
-          const zoomFactor = 1 + beatZoomEffect.intensity;
-
-          // overlay enable uses timeline `t` (same as the normal overlay enable below)
-          beatEnableExpr = beatsInClip
-            .map((b) => {
-              const beatEnd = Math.min(b + pulseDur, clip.timelineEnd);
-              return `between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})`;
-            })
-            .join('+');
-
-          // Scale to zoomFactor × target, then crop the centre back to target size.
-          // Output is always scaledW × scaledH — no per-frame dimension changes.
-          // Use increase so scale output >= zoomedW×zoomedH, then crop trims any overshoot.
-          // crop without explicit x/y defaults to center-crop.
-          const zoomedW = Math.round(scaledW * zoomFactor);
-          const zoomedH = Math.round(scaledH * zoomFactor);
-          const zoomedScaleFilter =
-            `scale=${zoomedW}:${zoomedH}:force_original_aspect_ratio=increase,` +
-            `crop=${scaledW}:${scaledH}`;
-
-          zoomedClipPad = `clip${filterIdx}z`;
-          filterParts.push(
-            `[${inputIdx}:v]${trimFilter},${zoomedScaleFilter},format=yuv420p[${zoomedClipPad}]`
-          );
-        }
-      }
-
       // Normal clip
       const clipPad = `clip${filterIdx}`;
       filterParts.push(
@@ -315,13 +268,62 @@ export function buildExportCommand(
       );
       prevPad = overlayPad;
 
-      // Overlay pre-zoomed clip on top, only during beat windows
-      if (zoomedClipPad && beatEnableExpr) {
-        const zoomedOverlayPad = `ov${filterIdx}z`;
-        filterParts.push(
-          `[${prevPad}][${zoomedClipPad}]overlay=${posX}:${posY}:enable='${beatEnableExpr}'[${zoomedOverlayPad}]`
+      // Beat Zoom: one precisely-timed zoomed segment per beat window.
+      // Each segment uses its own trim+setpts so its PTS aligns exactly with the timeline
+      // beat time (setpts=PTS-STARTPTS+B/TB). This avoids the PTS-mismatch bug present in
+      // the previous single-chain approach where the zoomed clip's PTS started at 0 while
+      // the timeline advanced from timelineStart — causing ffmpeg to fast-forward through
+      // all zoomed frames on the first beat and then repeat the last frame (eof_action=repeat)
+      // for the rest of the output, leaving the video permanently zoomed.
+      // eof_action=pass ensures the main stream passes cleanly once the segment ends.
+      const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
+      const masterAudioClip = masterAudioTrack?.clips[0];
+      const masterBeats = masterAudioClip ? beatsMap.get(masterAudioClip.assetId) : undefined;
+
+      if (beatZoomEffect?.enabled && masterBeats && masterAudioClip) {
+        const timelineBeats = masterBeats.beats.map(
+          (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
         );
-        prevPad = zoomedOverlayPad;
+        const beatsInClip = timelineBeats.filter(
+          (b) => b >= clip.timelineStart && b < clip.timelineEnd
+        );
+        if (beatsInClip.length > 0) {
+          const pulseDur = beatZoomEffect.durationMs / 1000;
+          const zoomFactor = 1 + beatZoomEffect.intensity;
+          const zoomedW = Math.round(scaledW * zoomFactor);
+          const zoomedH = Math.round(scaledH * zoomFactor);
+          const zoomedScaleFilter =
+            `scale=${zoomedW}:${zoomedH}:force_original_aspect_ratio=increase,` +
+            `crop=${scaledW}:${scaledH}`;
+
+          for (let ki = 0; ki < beatsInClip.length; ki++) {
+            const b = beatsInClip[ki];
+            const beatEnd = Math.min(b + pulseDur, clip.timelineEnd);
+            const beatDur = beatEnd - b;
+            if (beatDur < 1 / 60) continue; // skip sub-frame segments
+
+            // Trim source to only the frames needed for this beat window
+            const beatSrcStart = clip.sourceStart + (b - clip.timelineStart);
+            const beatSrcEnd = beatSrcStart + beatDur;
+
+            // setpts offsets PTS to the absolute timeline beat time so the overlay
+            // filter's PTS-based sync matches the main stream exactly at t=b.
+            const beatTrimFilter =
+              `trim=start=${beatSrcStart.toFixed(4)}:end=${beatSrcEnd.toFixed(4)},` +
+              `setpts=PTS-STARTPTS+${b.toFixed(4)}/TB`;
+
+            const beatPad = `beat${filterIdx}_${ki}`;
+            filterParts.push(
+              `[${inputIdx}:v]${beatTrimFilter},${zoomedScaleFilter},format=yuv420p[${beatPad}]`
+            );
+
+            const beatOverlayPad = `ov${filterIdx}b${ki}`;
+            filterParts.push(
+              `[${prevPad}][${beatPad}]overlay=${posX}:${posY}:eof_action=pass:enable='between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})'[${beatOverlayPad}]`
+            );
+            prevPad = beatOverlayPad;
+          }
+        }
       }
 
       filterIdx++;

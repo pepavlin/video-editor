@@ -385,9 +385,10 @@ describe('buildExportCommand', () => {
 
     const fcIdx = args.indexOf('-filter_complex');
     const fc = args[fcIdx + 1];
-    // Beat zoom uses dual filter chains: a pre-zoomed clip overlaid only during beat windows.
-    // The zoomed chain uses a fixed crop-back approach (no per-frame dimension changes).
-    expect(fc).toContain('clip0z]'); // zoomed clip output pad
+    // Beat zoom uses per-beat-segment filter chains: one zoomed clip per beat window,
+    // each with its own trim+setpts (PTS aligned to timeline beat time) and eof_action=pass.
+    expect(fc).toContain('beat0_0]'); // first beat segment output pad
     expect(fc).toContain("enable='between(t"); // beat-window overlay enable expression
+    expect(fc).toContain('eof_action=pass'); // ensures main stream passes through after beat ends
   });
 });

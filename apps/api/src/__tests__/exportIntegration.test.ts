@@ -96,7 +96,7 @@ describe('export integration (real ffmpeg)', () => {
     expect(fs.statSync(outputPath).size).toBeGreaterThan(1000);
   });
 
-  it.skipIf(!ffmpegAvailable())('beat zoom export: zoompan with t-variable expression (fixed output size)', () => {
+  it.skipIf(!ffmpegAvailable())('beat zoom export: per-beat-segment approach (fixed PTS, eof_action=pass)', () => {
     const testVideoPath = path.join(tmpDir, 'test_video_bz.mp4');
     execFileSync(FF, [
       '-y',
@@ -119,36 +119,48 @@ describe('export integration (real ffmpeg)', () => {
     const outputPath = path.join(tmpDir, 'output_beatzoom.mp4');
     const zoomFactor = 1.08;
     const pulseDur = 0.2;
-    // Two beats at 1.0s and 2.0s
-    const enableExpr = `between(t,1.0000,${(1.0 + pulseDur).toFixed(4)})+between(t,2.0000,${(2.0 + pulseDur).toFixed(4)})`;
-    // Two filter chains: normal clip + pre-zoomed clip overlaid only during beat windows.
     const zoomedW = Math.round(W * zoomFactor);
     const zoomedH = Math.round(H * zoomFactor);
-    const cropX = Math.round((zoomedW - W) / 2);
-    const cropY = Math.round((zoomedH - H) / 2);
+
+    // Two beats at 1.0s and 2.0s — per-beat-segment approach.
+    // Each beat gets its own trimmed+PTS-offset zoomed clip so PTS aligns with timeline time,
+    // preventing the eof_action=repeat "stays zoomed" bug of the old single-chain approach.
+    const beats = [1.0, 2.0];
+    const beatSegments = beats.map((b, ki) => {
+      const beatEnd = b + pulseDur;
+      // trim source to only the frames for this beat, set PTS to absolute timeline time
+      return (
+        `[1:v]trim=start=${b.toFixed(4)}:end=${beatEnd.toFixed(4)},` +
+        `setpts=PTS-STARTPTS+${b.toFixed(4)}/TB,` +
+        `scale=${zoomedW}:${zoomedH}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},format=yuv420p[beat0_${ki}]`
+      );
+    });
+    const beatOverlays = beats.map((b, ki) => {
+      const beatEnd = b + pulseDur;
+      const inPad = ki === 0 ? 'ov0' : `ov0b${ki - 1}`;
+      return `[${inPad}][beat0_${ki}]overlay=0:0:eof_action=pass:enable='between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})'[ov0b${ki}]`;
+    });
 
     const filterComplex = [
       `color=c=black:s=${W}x${H}:r=30[base]`,
-      // zoomed clip chain
       `[1:v]trim=start=0:end=3,setpts=PTS-STARTPTS,` +
-        `scale=${zoomedW}:${zoomedH}:force_original_aspect_ratio=decrease,` +
-        `pad=${zoomedW}:${zoomedH}:(ow-iw)/2:(oh-ih)/2,` +
-        `crop=${W}:${H}:${cropX}:${cropY},setsar=1,format=yuv420p[clip0z]`,
-      // normal clip chain
-      `[1:v]trim=start=0:end=3,setpts=PTS-STARTPTS,` +
-        `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[clip0]`,
+        `scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},format=yuv420p[clip0]`,
       `[base][clip0]overlay=0:0:enable='between(t,0,3)'[ov0]`,
-      `[ov0][clip0z]overlay=0:0:enable='${enableExpr}'[ov0z]`,
+      ...beatSegments,
+      ...beatOverlays,
       `[0:a]atrim=start=0:end=3,asetpts=PTS-STARTPTS,adelay=0:all=1[maudio]`,
     ].join('; ');
+
+    const finalVideoOut = `[ov0b${beats.length - 1}]`;
 
     const result = spawnSync(FF, [
       '-y',
       '-i', testAudioPath,
       '-i', testVideoPath,
       '-filter_complex', filterComplex,
-      '-map', '[ov0z]',
+      '-map', finalVideoOut,
       '-map', '[maudio]',
       '-t', '3',
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
