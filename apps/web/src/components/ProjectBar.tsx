@@ -62,9 +62,9 @@ export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onE
     <div
       className="flex items-center gap-3 px-4 py-1.5 flex-shrink-0 border-b select-none overflow-x-auto"
       style={{
-        background: 'rgba(6,11,9,0.65)',
+        background: 'rgba(8,18,32,0.82)',
         backdropFilter: 'blur(12px)',
-        borderColor: 'rgba(0,212,160,0.08)',
+        borderColor: 'rgba(0,212,160,0.18)',
         minHeight: 38,
       }}
     >
@@ -87,7 +87,7 @@ export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onE
         )}
       </div>
 
-      <div className="w-px h-4 flex-shrink-0" style={{ background: 'rgba(0,212,160,0.12)' }} />
+      <div className="w-px h-4 flex-shrink-0" style={{ background: 'rgba(0,212,160,0.22)' }} />
 
       {/* Beat status + analyze */}
       <div className="flex items-center gap-2 flex-shrink-0">

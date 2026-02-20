@@ -17,9 +17,9 @@ export default function TransportControls({ isPlaying, currentTime, duration, on
     <div
       className="flex items-center gap-4 px-5 py-3 flex-shrink-0 border-b select-none"
       style={{
-        background: 'rgba(6,11,9,0.72)',
+        background: 'rgba(8,18,32,0.88)',
         backdropFilter: 'blur(12px)',
-        borderColor: 'rgba(0,212,160,0.1)',
+        borderColor: 'rgba(0,212,160,0.18)',
       }}
     >
       {/* Play/Pause button */}

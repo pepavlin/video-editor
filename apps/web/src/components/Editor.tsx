@@ -317,9 +317,9 @@ export default function Editor() {
       <div
         className="flex items-center px-4 h-11 flex-shrink-0 gap-4 border-b"
         style={{
-          background: 'rgba(6,11,9,0.90)',
+          background: 'rgba(8,16,28,0.94)',
           backdropFilter: 'blur(20px)',
-          borderColor: 'rgba(0,212,160,0.1)',
+          borderColor: 'rgba(0,212,160,0.18)',
         }}
       >
         <span className="font-semibold text-gradient text-sm">
@@ -367,7 +367,7 @@ export default function Editor() {
         {/* Left: Media Bin */}
         <div
           className="flex-shrink-0 border-r panel flex flex-col"
-          style={{ width: leftWidth, borderColor: 'rgba(0,212,160,0.1)' }}
+          style={{ width: leftWidth, borderColor: 'rgba(0,212,160,0.18)' }}
         >
           <MediaBin assets={assets} onAssetsChange={refreshAssets} />
         </div>
@@ -375,7 +375,7 @@ export default function Editor() {
         {/* Left resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(0,212,160,0.04)' }}
+          style={{ width: 4, background: 'rgba(0,212,160,0.07)' }}
           onMouseDown={onLeftResize}
         />
 
@@ -410,14 +410,14 @@ export default function Editor() {
           {/* Timeline resize handle */}
           <div
             className="resize-handle-v flex-shrink-0 transition-colors duration-100"
-            style={{ height: 4, background: 'rgba(0,212,160,0.04)', borderTop: '1px solid rgba(0,212,160,0.1)' }}
+            style={{ height: 4, background: 'rgba(0,212,160,0.07)', borderTop: '1px solid rgba(0,212,160,0.18)' }}
             onMouseDown={onTimelineResize}
           />
 
           {/* Timeline */}
           <div
             className="flex-shrink-0 overflow-x-auto"
-            style={{ height: timelineHeight, borderTop: '1px solid rgba(0,212,160,0.1)' }}
+            style={{ height: timelineHeight, borderTop: '1px solid rgba(0,212,160,0.18)' }}
           >
             <Timeline
               project={project}
@@ -439,14 +439,14 @@ export default function Editor() {
         {/* Right resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(0,212,160,0.04)' }}
+          style={{ width: 4, background: 'rgba(0,212,160,0.07)' }}
           onMouseDown={onRightResize}
         />
 
         {/* Right: Inspector */}
         <div
           className="flex-shrink-0 border-l panel flex flex-col overflow-y-auto"
-          style={{ width: rightWidth, borderColor: 'rgba(0,212,160,0.1)' }}
+          style={{ width: rightWidth, borderColor: 'rgba(0,212,160,0.18)' }}
         >
           <Inspector
             project={project}

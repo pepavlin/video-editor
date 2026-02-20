@@ -13,3 +13,5 @@ __pycache__/
 venv/
 *.egg-info/
 .DS_Store
+
+.playwright-mcp

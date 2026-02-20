@@ -10,10 +10,10 @@ const config: Config = {
     extend: {
       colors: {
         surface: {
-          DEFAULT: '#080d0b',
-          raised: '#0d1511',
-          hover: '#131d17',
-          border: '#1a2820',
+          DEFAULT: '#0b1623',
+          raised: '#112336',
+          hover: '#183045',
+          border: '#1e3555',
         },
         accent: {
           DEFAULT: '#00d4a0',
@@ -26,7 +26,7 @@ const config: Config = {
       boxShadow: {
         'glow-teal': '0 0 20px rgba(0, 212, 160, 0.4)',
         'glow-sm': '0 0 10px rgba(0, 212, 160, 0.25)',
-        'panel': '0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 0 0.5px rgba(255,255,255,0.04)',
+        'panel': '0 8px 32px rgba(0, 0, 0, 0.55), inset 0 0 0 0.5px rgba(255,255,255,0.05)',
       },
     },
   },

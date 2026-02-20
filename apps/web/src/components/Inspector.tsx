@@ -35,7 +35,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         className="flex items-center justify-between w-full px-3 py-2 text-left hover:bg-surface-hover"
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{title}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(0,212,160,0.75)' }}>{title}</span>
         <span className="text-gray-600">{open ? '▾' : '▸'}</span>
       </button>
       {open && <div className="px-3 pb-3 space-y-2">{children}</div>}

@@ -110,11 +110,11 @@ export default function Timeline({
     const SL = scrollLeftRef.current;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#08100d';
+    ctx.fillStyle = '#0b1623';
     ctx.fillRect(0, 0, W, H);
 
     if (!project) {
-      ctx.fillStyle = '#2a4038';
+      ctx.fillStyle = '#4a7068';
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Create or load a project', W / 2, H / 2);
@@ -125,7 +125,7 @@ export default function Timeline({
     const tracks = project.tracks;
 
     // ─── Ruler ────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#0d1611';
+    ctx.fillStyle = '#091420';
     ctx.fillRect(HEADER_WIDTH, 0, timeWidth, RULER_HEIGHT);
 
     // Determine tick interval
@@ -147,7 +147,7 @@ export default function Timeline({
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, RULER_HEIGHT);
-      ctx.strokeStyle = 'rgba(0,212,160,0.15)';
+      ctx.strokeStyle = 'rgba(0,212,160,0.22)';
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.fillText(formatTime(s), x + 3, RULER_HEIGHT - 4);
@@ -161,7 +161,7 @@ export default function Timeline({
       ctx.beginPath();
       ctx.moveTo(x, RULER_HEIGHT - 6);
       ctx.lineTo(x, RULER_HEIGHT);
-      ctx.strokeStyle = 'rgba(0,212,160,0.07)';
+      ctx.strokeStyle = 'rgba(0,212,160,0.12)';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -172,7 +172,7 @@ export default function Timeline({
     if (masterClip) {
       const beats = beatsData.get(masterClip.assetId);
       if (beats) {
-        ctx.fillStyle = 'rgba(0, 212, 160, 0.45)';
+        ctx.fillStyle = 'rgba(0, 212, 160, 0.60)';
         for (const beat of beats.beats) {
           const x = beat * Z - SL + HEADER_WIDTH;
           if (x < HEADER_WIDTH || x > W) continue;
@@ -187,9 +187,9 @@ export default function Timeline({
       const isAudio = track.type === 'audio';
 
       // Track header
-      ctx.fillStyle = '#0c1511';
+      ctx.fillStyle = '#0c1d2e';
       ctx.fillRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = 'rgba(0,212,160,0.08)';
+      ctx.strokeStyle = 'rgba(0,212,160,0.18)';
       ctx.lineWidth = 1;
       ctx.strokeRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
 
@@ -199,17 +199,17 @@ export default function Timeline({
       ctx.fillText(track.name.toUpperCase(), HEADER_WIDTH / 2, trackY + TRACK_HEIGHT / 2 + 4);
 
       // Track body background
-      ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.025)' : 'rgba(56,189,248,0.02)';
+      ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.05)' : 'rgba(56,189,248,0.04)';
       ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, TRACK_HEIGHT);
 
       // Track separator
-      ctx.fillStyle = 'rgba(0,212,160,0.06)';
+      ctx.fillStyle = 'rgba(0,212,160,0.14)';
       ctx.fillRect(HEADER_WIDTH, trackY + TRACK_HEIGHT - 1, timeWidth, 1);
 
       // Grid lines
       for (let s = startSec; s <= endSec; s += tickInterval) {
         const x = s * Z - SL + HEADER_WIDTH;
-        ctx.strokeStyle = 'rgba(0,212,160,0.05)';
+        ctx.strokeStyle = 'rgba(0,212,160,0.09)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, trackY);
@@ -221,7 +221,7 @@ export default function Timeline({
       if (masterClip) {
         const beats = beatsData.get(masterClip.assetId);
         if (beats) {
-          ctx.fillStyle = 'rgba(0, 212, 160, 0.08)';
+          ctx.fillStyle = 'rgba(0, 212, 160, 0.15)';
           for (const beat of beats.beats) {
             const x = beat * Z - SL + HEADER_WIDTH;
             if (x < HEADER_WIDTH || x > W) continue;
@@ -601,7 +601,7 @@ export default function Timeline({
       className="relative"
       style={{
         height: `${RULER_HEIGHT + (project?.tracks.length ?? 3) * TRACK_HEIGHT + 8}px`,
-        background: '#08100d',
+        background: '#0b1623',
       }}
     >
       <canvas

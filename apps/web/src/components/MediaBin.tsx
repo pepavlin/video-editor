@@ -105,7 +105,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border gap-1">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex-1">Media</span>
+        <span className="text-xs font-semibold uppercase tracking-wider flex-1" style={{ color: 'rgba(0,212,160,0.75)' }}>Media</span>
         {mediaFiles !== null && (
           <button
             className="btn text-xs py-1 px-2 bg-surface-hover hover:bg-surface-border text-gray-300"
