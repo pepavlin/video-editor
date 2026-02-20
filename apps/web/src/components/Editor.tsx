@@ -12,6 +12,47 @@ import Timeline from './Timeline';
 import Inspector from './Inspector';
 import TransportControls from './TransportControls';
 
+// ─── Resize handle ───────────────────────────────────────────────────────────
+
+function useResizeHandle(
+  sizeRef: React.MutableRefObject<number>,
+  setSize: (s: number) => void,
+  direction: 'horizontal' | 'vertical',
+  min: number,
+  max: number,
+  storageKey: string
+) {
+  return useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startPos = direction === 'horizontal' ? e.clientX : e.clientY;
+      const startSize = sizeRef.current;
+
+      const onMove = (ev: MouseEvent) => {
+        const delta = (direction === 'horizontal' ? ev.clientX : ev.clientY) - startPos;
+        const sign = direction === 'horizontal' ? 1 : -1;
+        const next = Math.max(min, Math.min(max, startSize + sign * delta));
+        setSize(next);
+        localStorage.setItem(storageKey, String(next));
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+      document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [direction, min, max, storageKey]
+  );
+}
+
+// ─── Editor ──────────────────────────────────────────────────────────────────
+
 export default function Editor() {
   const projectHook = useProject();
   const {
@@ -39,22 +80,36 @@ export default function Editor() {
   const [newProjectName, setNewProjectName] = useState('My Short');
   const [jobNotifications, setJobNotifications] = useState<string[]>([]);
 
+  // ── Panel sizes (persisted) ────────────────────────────────────────────────
+  const storedLeft = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-left-width') || '260', 10) : 260;
+  const storedRight = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-right-width') || '300', 10) : 300;
+  const storedTimeline = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-timeline-h') || '220', 10) : 220;
+
+  const [leftWidth, setLeftWidth] = useState(storedLeft);
+  const [rightWidth, setRightWidth] = useState(storedRight);
+  const [timelineHeight, setTimelineHeight] = useState(storedTimeline);
+
+  const leftWidthRef = useRef(leftWidth);
+  leftWidthRef.current = leftWidth;
+  const rightWidthRef = useRef(rightWidth);
+  rightWidthRef.current = rightWidth;
+  const timelineHeightRef = useRef(timelineHeight);
+  timelineHeightRef.current = timelineHeight;
+
+  const onLeftResize = useResizeHandle(leftWidthRef, setLeftWidth, 'horizontal', 160, 480, 've-left-width');
+  const onRightResize = useResizeHandle(rightWidthRef, setRightWidth, 'horizontal', 200, 520, 've-right-width');
+  const onTimelineResize = useResizeHandle(timelineHeightRef, setTimelineHeight, 'vertical', 100, 500, 've-timeline-h');
+
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
 
-  // Playback
   const playback = usePlayback(project, assets, beatsData);
-
-  // History
   const history = useHistory(project, setProject);
 
-  // Load asset list
   const refreshAssets = useCallback(async () => {
     try {
       const { assets: list } = await api.listAssets();
       setAssets(list);
-
-      // Load waveforms for assets that have them
       for (const asset of list) {
         if (asset.waveformPath && !waveforms.has(asset.id)) {
           api.getWaveform(asset.id)
@@ -72,7 +127,6 @@ export default function Editor() {
     }
   }, [waveforms]);
 
-  // Load projects list
   const refreshProjects = useCallback(async () => {
     try {
       const { projects: list } = await api.listProjects();
@@ -82,7 +136,6 @@ export default function Editor() {
     }
   }, []);
 
-  // Keep stable ref to latest refreshAssets to avoid stale closure in interval
   const refreshAssetsRef = useRef(refreshAssets);
   useEffect(() => { refreshAssetsRef.current = refreshAssets; }, [refreshAssets]);
 
@@ -94,12 +147,10 @@ export default function Editor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
       if (e.code === 'Space') {
         e.preventDefault();
         playback.toggle();
@@ -107,32 +158,25 @@ export default function Editor() {
         e.preventDefault();
         if (selectedClipId) splitClip(selectedClipId, playback.currentTime);
       } else if (e.code === 'Delete' || e.code === 'Backspace') {
-        if (selectedClipId) {
-          deleteClip(selectedClipId);
-          setSelectedClipId(null);
-        }
+        if (selectedClipId) { deleteClip(selectedClipId); setSelectedClipId(null); }
       } else if (e.code === 'KeyZ' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        if (e.shiftKey) history.redo();
-        else history.undo();
+        if (e.shiftKey) history.redo(); else history.undo();
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [playback, selectedClipId, splitClip, deleteClip, history]);
 
-  // Push history snapshot on project change
   useEffect(() => {
     if (project) history.pushSnapshot(project);
   }, [project]);
 
-  // Notify progress
   const notify = (msg: string) => {
     setJobNotifications((prev) => [...prev.slice(-4), msg]);
     setTimeout(() => setJobNotifications((prev) => prev.filter((m) => m !== msg)), 5000);
   };
 
-  // Master audio asset
   const masterTrack = project?.tracks.find((t) => t.type === 'audio' && t.isMaster);
   const masterClip = masterTrack?.clips[0];
   const masterAssetId = masterClip?.assetId;
@@ -141,13 +185,11 @@ export default function Editor() {
     notify('Starting beat analysis...');
     try {
       const { jobId } = await api.analyzeBeats(assetId);
-      const job = await api.pollJob(jobId, (j) => notify(`Beats: ${j.progress}%`));
+      await api.pollJob(jobId, (j) => notify(`Beats: ${j.progress}%`));
       const beats = await api.getBeats(assetId);
       setBeatsData((prev) => new Map(prev).set(assetId, beats));
       notify('Beat analysis done!');
-    } catch (e: any) {
-      notify(`Beat analysis failed: ${e.message}`);
-    }
+    } catch (e: any) { notify(`Beat analysis failed: ${e.message}`); }
   };
 
   const handleAlignLyrics = async (text: string) => {
@@ -159,9 +201,7 @@ export default function Editor() {
       const { project: updated } = await api.loadProject(project.id);
       setProject(updated);
       notify('Lyrics aligned!');
-    } catch (e: any) {
-      notify(`Lyrics alignment failed: ${e.message}`);
-    }
+    } catch (e: any) { notify(`Lyrics alignment failed: ${e.message}`); }
   };
 
   const handleStartCutout = async (clipId: string) => {
@@ -179,9 +219,7 @@ export default function Editor() {
         updateEffect(clipId, 'cutout', { maskStatus: 'error' });
         notify(`Cutout failed: ${e.message}`);
       });
-    } catch (e: any) {
-      notify(`Cutout error: ${e.message}`);
-    }
+    } catch (e: any) { notify(`Cutout error: ${e.message}`); }
   };
 
   const handleExport = async () => {
@@ -189,38 +227,45 @@ export default function Editor() {
     notify('Starting export...');
     try {
       const { jobId } = await api.exportProject(project.id);
-      notify(`Export job started: ${jobId}`);
-      api.pollJob(jobId, (j) => notify(`Export: ${j.progress}%`), 1000).then((job) => {
+      api.pollJob(jobId, (j) => notify(`Export: ${j.progress}%`), 1000).then(() => {
         notify('Export done! Downloading...');
         window.open(api.getJobOutputUrl(jobId), '_blank');
-      }).catch((e) => {
-        notify(`Export failed: ${e.message}`);
-      });
-    } catch (e: any) {
-      notify(`Export error: ${e.message}`);
-    }
+      }).catch((e) => { notify(`Export failed: ${e.message}`); });
+    } catch (e: any) { notify(`Export error: ${e.message}`); }
   };
 
-  // Project picker modal
+  // ── Project picker ─────────────────────────────────────────────────────────
   if (showProjectPicker) {
     return (
-      <div className="h-screen flex items-center justify-center bg-surface">
-        <div className="panel rounded-xl p-8 w-96 space-y-6">
-          <h1 className="text-xl font-bold text-white">Video Editor</h1>
+      <div className="h-screen flex items-center justify-center" style={{ background: 'inherit' }}>
+        <div className="glass rounded-2xl p-8 w-[420px] space-y-7 shadow-panel">
+          {/* Logo / Title */}
+          <div>
+            <h1 className="text-2xl font-bold text-gradient">Video Editor</h1>
+            <p className="text-xs text-gray-500 mt-1">Craft your story, frame by frame</p>
+          </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">New Project</p>
+          {/* New project */}
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">New Project</p>
             <input
               type="text"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
               placeholder="Project name"
-              className="w-full"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  createProject(newProjectName).then(() => {
+                    refreshAssets();
+                    setShowProjectPicker(false);
+                  });
+                }
+              }}
             />
             <button
-              className="btn btn-primary w-full"
+              className="btn btn-primary w-full py-2.5"
               onClick={async () => {
-                const p = await createProject(newProjectName);
+                await createProject(newProjectName);
                 await refreshAssets();
                 setShowProjectPicker(false);
               }}
@@ -229,22 +274,26 @@ export default function Editor() {
             </button>
           </div>
 
+          {/* Recent */}
           {projects.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Recent</p>
-              <div className="space-y-1 max-h-48 overflow-y-auto">
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Recent</p>
+              <div className="space-y-1.5 max-h-52 overflow-y-auto">
                 {projects.map((p) => (
                   <button
                     key={p.id}
-                    className="w-full text-left btn btn-ghost rounded p-2 border border-surface-border"
+                    className="w-full text-left rounded-xl p-3 transition-all duration-150"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,58,237,0.12)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
                     onClick={async () => {
                       await projectHook.loadProject(p.id);
                       await refreshAssets();
                       setShowProjectPicker(false);
                     }}
                   >
-                    <div className="text-sm text-gray-200">{p.name}</div>
-                    <div className="text-xs text-gray-600">{new Date(p.updatedAt).toLocaleDateString()}</div>
+                    <div className="text-sm text-gray-200 font-medium">{p.name}</div>
+                    <div className="text-xs text-gray-600 mt-0.5">{new Date(p.updatedAt).toLocaleDateString()}</div>
                   </button>
                 ))}
               </div>
@@ -255,30 +304,42 @@ export default function Editor() {
     );
   }
 
+  // ── Main editor layout ─────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      {/* Top bar */}
-      <div className="flex items-center px-4 h-10 bg-surface-raised border-b border-surface-border flex-shrink-0 gap-4">
-        <span className="font-semibold text-white text-sm">
+
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <div
+        className="flex items-center px-4 h-11 flex-shrink-0 gap-4 border-b"
+        style={{
+          background: 'rgba(8,8,26,0.88)',
+          backdropFilter: 'blur(20px)',
+          borderColor: 'rgba(255,255,255,0.065)',
+        }}
+      >
+        <span className="font-semibold text-gradient text-sm">
           {project?.name ?? 'Video Editor'}
         </span>
-        {saving && <span className="text-xs text-gray-500">Saving...</span>}
+        {saving && (
+          <span className="text-xs text-gray-600 flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent/60 animate-pulse" />
+            Saving
+          </span>
+        )}
 
         <div className="flex-1" />
 
         <button
-          className="text-xs text-gray-500 hover:text-gray-300"
-          onClick={() => {
-            setShowProjectPicker(true);
-            refreshProjects();
-          }}
+          className="btn btn-ghost text-xs"
+          onClick={() => { setShowProjectPicker(true); refreshProjects(); }}
         >
           Projects
         </button>
 
-        {/* Undo/Redo */}
+        <div className="w-px h-4 bg-surface-border" />
+
         <button
-          className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-30"
+          className="btn btn-ghost text-base px-2 py-1 disabled:opacity-25"
           disabled={!history.canUndo}
           onClick={history.undo}
           title="Undo (Cmd+Z)"
@@ -286,7 +347,7 @@ export default function Editor() {
           ↺
         </button>
         <button
-          className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-30"
+          className="btn btn-ghost text-base px-2 py-1 disabled:opacity-25"
           disabled={!history.canRedo}
           onClick={history.redo}
           title="Redo (Shift+Cmd+Z)"
@@ -295,15 +356,23 @@ export default function Editor() {
         </button>
       </div>
 
-      {/* Main area */}
+      {/* ── Main area ───────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
+
         {/* Left: Media Bin */}
-        <div className="w-52 flex-shrink-0 border-r border-surface-border panel flex flex-col">
-          <MediaBin
-            assets={assets}
-            onAssetsChange={refreshAssets}
-          />
+        <div
+          className="flex-shrink-0 border-r panel flex flex-col"
+          style={{ width: leftWidth, borderColor: 'rgba(255,255,255,0.065)' }}
+        >
+          <MediaBin assets={assets} onAssetsChange={refreshAssets} />
         </div>
+
+        {/* Left resize handle */}
+        <div
+          className="resize-handle-h flex-shrink-0 transition-colors duration-100"
+          style={{ width: 4, background: 'rgba(255,255,255,0.03)' }}
+          onMouseDown={onLeftResize}
+        />
 
         {/* Center: Preview + Transport + Timeline */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -325,8 +394,18 @@ export default function Editor() {
             beatsData={beatsData}
           />
 
+          {/* Timeline resize handle */}
+          <div
+            className="resize-handle-v flex-shrink-0 transition-colors duration-100"
+            style={{ height: 4, background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.065)' }}
+            onMouseDown={onTimelineResize}
+          />
+
           {/* Timeline */}
-          <div className="flex-shrink-0 border-t border-surface-border overflow-x-auto">
+          <div
+            className="flex-shrink-0 overflow-x-auto"
+            style={{ height: timelineHeight, borderTop: '1px solid rgba(255,255,255,0.065)' }}
+          >
             <Timeline
               project={project}
               currentTime={playback.currentTime}
@@ -336,23 +415,26 @@ export default function Editor() {
               selectedClipId={selectedClipId}
               onSeek={playback.seek}
               onClipSelect={setSelectedClipId}
-              onClipUpdate={(clipId, updates) => {
-                updateClip(clipId, updates);
-              }}
-              onClipDelete={(clipId) => {
-                deleteClip(clipId);
-                setSelectedClipId(null);
-              }}
+              onClipUpdate={(clipId, updates) => updateClip(clipId, updates)}
+              onClipDelete={(clipId) => { deleteClip(clipId); setSelectedClipId(null); }}
               onSplit={(clipId, time) => splitClip(clipId, time)}
-              onDropAsset={(trackId, assetId, start, dur) => {
-                addClip(trackId, assetId, start, dur);
-              }}
+              onDropAsset={(trackId, assetId, start, dur) => addClip(trackId, assetId, start, dur)}
             />
           </div>
         </div>
 
+        {/* Right resize handle */}
+        <div
+          className="resize-handle-h flex-shrink-0 transition-colors duration-100"
+          style={{ width: 4, background: 'rgba(255,255,255,0.03)' }}
+          onMouseDown={onRightResize}
+        />
+
         {/* Right: Inspector */}
-        <div className="w-60 flex-shrink-0 border-l border-surface-border panel flex flex-col overflow-y-auto">
+        <div
+          className="flex-shrink-0 border-l panel flex flex-col overflow-y-auto"
+          style={{ width: rightWidth, borderColor: 'rgba(255,255,255,0.065)' }}
+        >
           <Inspector
             project={project}
             selectedClipId={selectedClipId}
@@ -371,11 +453,19 @@ export default function Editor() {
         </div>
       </div>
 
-      {/* Notifications */}
+      {/* ── Notifications ───────────────────────────────────────────────── */}
       {jobNotifications.length > 0 && (
-        <div className="fixed bottom-4 right-4 space-y-2 z-50">
+        <div className="fixed bottom-5 right-5 space-y-2 z-50">
           {jobNotifications.map((msg, i) => (
-            <div key={i} className="bg-surface-raised border border-surface-border rounded px-4 py-2 text-xs text-gray-200 shadow-lg">
+            <div
+              key={i}
+              className="glass rounded-xl px-4 py-3 text-xs text-gray-200 shadow-panel flex items-center gap-2"
+              style={{ minWidth: 220 }}
+            >
+              <span
+                className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #3b82f6)' }}
+              />
               {msg}
             </div>
           ))}

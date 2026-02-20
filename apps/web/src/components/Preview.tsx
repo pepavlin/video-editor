@@ -109,9 +109,19 @@ export default function Preview({
 
         if (!videoEl) continue;
 
-        // Seek video if needed (outside of playing - during play, video is behind anyway)
-        if (!propsRef.current.isPlaying) {
-          const targetTime = Math.max(0, Math.min(sourceTime, videoEl.duration || 9999));
+        // Sync video element to the correct source time
+        const targetTime = Math.max(0, Math.min(sourceTime, videoEl.duration || 9999));
+        if (propsRef.current.isPlaying) {
+          if (videoEl.paused) {
+            // Start playing from the correct position
+            videoEl.currentTime = targetTime;
+            videoEl.play().catch(() => {});
+          } else if (Math.abs(videoEl.currentTime - targetTime) > 0.5) {
+            // Re-sync if drifted more than 0.5s
+            videoEl.currentTime = targetTime;
+          }
+        } else {
+          // Seek to exact frame when paused
           if (Math.abs(videoEl.currentTime - targetTime) > 0.08) {
             videoEl.currentTime = targetTime;
           }
@@ -203,6 +213,15 @@ export default function Preview({
       drawFrame();
     }
   }, [isPlaying, drawFrame]);
+
+  // Pause all cached video elements when playback stops
+  useEffect(() => {
+    if (!isPlaying) {
+      videoElementCache.forEach((el) => {
+        if (!el.paused) el.pause();
+      });
+    }
+  }, [isPlaying]);
 
   // Draw on time change when paused
   useEffect(() => {

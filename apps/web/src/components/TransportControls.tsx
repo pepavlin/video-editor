@@ -11,51 +11,79 @@ interface Props {
 }
 
 export default function TransportControls({ isPlaying, currentTime, duration, onToggle, onSeek }: Props) {
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-surface-raised border-b border-surface-border select-none">
-      {/* Play/Pause */}
+    <div
+      className="flex items-center gap-4 px-5 py-3 flex-shrink-0 border-b select-none"
+      style={{
+        background: 'rgba(8,8,22,0.7)',
+        backdropFilter: 'blur(12px)',
+        borderColor: 'rgba(255,255,255,0.065)',
+      }}
+    >
+      {/* Play/Pause button */}
       <button
         onClick={onToggle}
-        className="w-9 h-9 rounded-full flex items-center justify-center bg-accent hover:bg-accent-hover transition-colors"
+        className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-150 active:scale-95"
+        style={{
+          background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+          boxShadow: isPlaying
+            ? '0 0 24px rgba(59,130,246,0.5), 0 0 8px rgba(124,58,237,0.4)'
+            : '0 0 14px rgba(124,58,237,0.35)',
+          border: '1px solid rgba(124,58,237,0.4)',
+        }}
         title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
       >
         {isPlaying ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="white">
-            <rect x="2" y="1" width="4" height="12" rx="1" />
-            <rect x="8" y="1" width="4" height="12" rx="1" />
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="white">
+            <rect x="1.5" y="0.5" width="4" height="12" rx="1.5" />
+            <rect x="7.5" y="0.5" width="4" height="12" rx="1.5" />
           </svg>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="white">
-            <polygon points="3,1 13,7 3,13" />
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="white">
+            <polygon points="2.5,0.5 12.5,6.5 2.5,12.5" />
           </svg>
         )}
       </button>
 
-      {/* Time display */}
-      <span className="font-mono text-sm text-gray-300 min-w-[72px]">
+      {/* Current time */}
+      <span className="font-mono text-sm text-gray-300 min-w-[72px] tabular-nums">
         {formatTime(currentTime)}
       </span>
 
       {/* Seek bar */}
-      <div className="flex-1 relative h-1.5 bg-surface-border rounded-full cursor-pointer group"
+      <div
+        className="flex-1 relative h-2 rounded-full cursor-pointer group"
+        style={{ background: 'rgba(255,255,255,0.08)' }}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
-          const ratio = (e.clientX - rect.left) / rect.width;
+          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           onSeek(ratio * duration);
         }}
       >
+        {/* Filled portion */}
         <div
-          className="absolute left-0 top-0 h-full bg-accent rounded-full"
-          style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
+          className="absolute left-0 top-0 h-full rounded-full transition-none"
+          style={{
+            width: `${progress}%`,
+            background: 'linear-gradient(90deg, #7c3aed, #3b82f6)',
+            boxShadow: '0 0 8px rgba(124,58,237,0.4)',
+          }}
         />
+        {/* Scrubber dot */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ left: duration > 0 ? `calc(${(currentTime / duration) * 100}% - 6px)` : '0' }}
+          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{
+            left: `calc(${progress}% - 8px)`,
+            background: 'white',
+            boxShadow: '0 0 8px rgba(124,58,237,0.6)',
+          }}
         />
       </div>
 
       {/* Duration */}
-      <span className="font-mono text-sm text-gray-500 min-w-[72px] text-right">
+      <span className="font-mono text-sm text-gray-600 min-w-[72px] text-right tabular-nums">
         {formatTime(duration)}
       </span>
     </div>
