@@ -223,12 +223,11 @@ export async function projectsRoutes(app: FastifyInstance) {
           beatsMap
         );
 
+        // Log the full command for debugging
+        ws.appendJobLog(job.id, `[export] cmd: ${cmd} ${args.join(' ')}`);
         ws.appendJobLog(job.id, `[export] running ffmpeg...`);
 
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
-          // Use effective duration (from clips) in case project.duration is 0
+        // Use effective duration (from clips) in case project.duration is 0
         let effectiveDuration = project.duration;
         if (effectiveDuration <= 0) {
           for (const track of project.tracks) {
@@ -239,8 +238,15 @@ export async function projectsRoutes(app: FastifyInstance) {
         }
         if (effectiveDuration <= 0) effectiveDuration = 1;
 
-        const updateProgress = (line: string) => {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+          const errorLines: string[] = [];
+
+          const updateProgress = (line: string) => {
             ws.appendJobLog(job.id, line);
+            // Collect recent stderr lines for error reporting
+            if (errorLines.length >= 10) errorLines.shift();
+            errorLines.push(line);
             const timeMatch = line.match(/time=(\d+):(\d+):(\d+\.\d+)/);
             if (timeMatch) {
               const t = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
@@ -251,7 +257,17 @@ export async function projectsRoutes(app: FastifyInstance) {
 
           child.stdout.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(updateProgress));
           child.stderr.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(updateProgress));
-          child.on('close', (code: number | null) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}`)));
+          child.on('close', (code: number | null) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              // Include last ffmpeg error lines in the rejection so UI can show them
+              const detail = errorLines.filter((l) => /error|invalid|unknown|not found/i.test(l)).pop()
+                ?? errorLines[errorLines.length - 1]
+                ?? '';
+              reject(new Error(`ffmpeg exited with code ${code}${detail ? `: ${detail.slice(0, 200)}` : ''}`));
+            }
+          });
           child.on('error', reject);
         });
 

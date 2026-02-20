@@ -294,8 +294,9 @@ describe('buildExportCommand', () => {
   });
 
   it('filter_complex has valid beat zoom enable expression with gt()', () => {
-    // Create a project with a video track containing a clip with beatZoom
-    const asset = {
+    // Create a project with a video track (beatZoom) and a master audio track.
+    // Beat zoom reads beats from the master audio asset, not the video asset.
+    const videoAsset = {
       id: 'a1',
       name: 'test.mp4',
       type: 'video' as const,
@@ -304,15 +305,25 @@ describe('buildExportCommand', () => {
       duration: 10,
       createdAt: new Date().toISOString(),
     };
+    const audioAsset = {
+      id: 'audio1',
+      name: 'music.mp3',
+      type: 'audio' as const,
+      originalPath: 'assets/audio1/original.mp3',
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    };
 
-    // Write asset to index
+    // Write both assets to index
     fs.writeFileSync(
       path.join(tmpDir, 'assets.json'),
-      JSON.stringify([asset])
+      JSON.stringify([videoAsset, audioAsset])
     );
     // Create fake proxy file path
     fs.mkdirSync(path.join(tmpDir, 'assets', 'a1'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'assets', 'a1', 'proxy.mp4'), '');
+    fs.mkdirSync(path.join(tmpDir, 'assets', 'audio1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'audio1', 'original.mp3'), '');
 
     const project = makeProject({
       tracks: [
@@ -344,10 +355,32 @@ describe('buildExportCommand', () => {
             },
           ],
         },
+        {
+          id: 'track_master',
+          type: 'audio',
+          isMaster: true,
+          name: 'Master Audio',
+          clips: [
+            {
+              id: 'mclip1',
+              assetId: 'audio1',
+              trackId: 'track_master',
+              timelineStart: 0,
+              timelineEnd: 10,
+              sourceStart: 0,
+              sourceEnd: 10,
+              useClipAudio: false,
+              clipAudioVolume: 1,
+              transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+              effects: [],
+            },
+          ],
+        },
       ],
     });
 
-    const beatsMap = new Map([['a1', { tempo: 120, beats: [1.0, 1.5, 2.0] }]]);
+    // Beats are keyed by master audio asset ID
+    const beatsMap = new Map([['audio1', { tempo: 120, beats: [1.0, 1.5, 2.0] }]]);
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, beatsMap);
 
     const fcIdx = args.indexOf('-filter_complex');

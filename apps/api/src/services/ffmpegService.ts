@@ -332,13 +332,14 @@ export function buildExportCommand(
   // Mix all audio into one named pad [aout]
   let audioOutPad: string | null = null;
   if (audioInputPads.length > 1) {
+    // Use amix without normalize/dropout options for broad ffmpeg version compatibility
     filterParts.push(
-      `${audioInputPads.join('')}amix=inputs=${audioInputPads.length}:normalize=0:dropout_transition=0[aout]`
+      `${audioInputPads.join('')}amix=inputs=${audioInputPads.length}[aout]`
     );
     audioOutPad = '[aout]';
   } else if (audioInputPads.length === 1) {
-    filterParts.push(`${audioInputPads[0]}acopy[aout]`);
-    audioOutPad = '[aout]';
+    // Single audio pad: use it directly, no need for acopy
+    audioOutPad = audioInputPads[0];
   }
 
   // ─── Subtitle burn-in ─────────────────────────────────────────────────────────
