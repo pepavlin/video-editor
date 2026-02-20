@@ -107,10 +107,21 @@ export function usePlayback(
         source.buffer = buffer;
         source.connect(ctx.destination);
 
-        const offset = Math.max(0, currentTimeRef.current - (masterClip?.timelineStart ?? 0) + (masterClip?.sourceStart ?? 0));
-        const safeOffset = Math.min(offset, buffer.duration);
+        const clipTimelineStart = masterClip?.timelineStart ?? 0;
+        const clipSourceStart = masterClip?.sourceStart ?? 0;
+        const projectTime = currentTimeRef.current;
 
-        source.start(ctx.currentTime, safeOffset);
+        if (projectTime >= clipTimelineStart) {
+          // Already at or past the clip's timeline position: start immediately at the correct source offset
+          const intoClip = projectTime - clipTimelineStart;
+          const audioOffset = Math.min(clipSourceStart + intoClip, buffer.duration);
+          source.start(ctx.currentTime, audioOffset);
+        } else {
+          // Before the clip starts: schedule audio to begin when the timeline reaches the clip
+          const delay = clipTimelineStart - projectTime;
+          source.start(ctx.currentTime + delay, clipSourceStart);
+        }
+
         sourceNodeRef.current = source;
       }
     }

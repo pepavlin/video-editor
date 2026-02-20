@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import type { Project, Track, Clip, Asset, WaveformData, BeatsData } from '@video-editor/shared';
 import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
 
@@ -81,7 +81,6 @@ export default function Timeline({
           targets.push(clip.timelineStart, clip.timelineEnd);
         }
       }
-      // Add beats if available
       const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
       const masterClip = masterTrack?.clips[0];
       if (masterClip) {
@@ -96,7 +95,7 @@ export default function Timeline({
   const pxToTime = useCallback((px: number) => (px + scrollLeftRef.current) / zoomRef.current, []);
   const timeToPx = useCallback((t: number) => t * zoomRef.current - scrollLeftRef.current, []);
 
-  // ─── Drawing ─────────────────────────────────────────────────────────────────
+  // ─── Drawing ──────────────────────────────────────────────────────────────
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -111,11 +110,11 @@ export default function Timeline({
     const SL = scrollLeftRef.current;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#161616';
+    ctx.fillStyle = '#08100d';
     ctx.fillRect(0, 0, W, H);
 
     if (!project) {
-      ctx.fillStyle = '#333';
+      ctx.fillStyle = '#2a4038';
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Create or load a project', W / 2, H / 2);
@@ -125,12 +124,9 @@ export default function Timeline({
     const timeWidth = W - HEADER_WIDTH;
     const tracks = project.tracks;
 
-    // ─── Ruler ────────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#1e1e1e';
+    // ─── Ruler ────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#0d1611';
     ctx.fillRect(HEADER_WIDTH, 0, timeWidth, RULER_HEIGHT);
-
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
 
     // Determine tick interval
     const secondsVisible = timeWidth / Z;
@@ -143,7 +139,7 @@ export default function Timeline({
     const endSec = Math.ceil((SL + timeWidth) / Z / tickInterval) * tickInterval;
 
     ctx.font = '10px sans-serif';
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = 'rgba(0,212,160,0.45)';
     ctx.textAlign = 'left';
 
     for (let s = startSec; s <= endSec; s += tickInterval) {
@@ -151,12 +147,13 @@ export default function Timeline({
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, RULER_HEIGHT);
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = 'rgba(0,212,160,0.15)';
+      ctx.lineWidth = 1;
       ctx.stroke();
       ctx.fillText(formatTime(s), x + 3, RULER_HEIGHT - 4);
     }
 
-    // Subticks
+    // Sub-ticks
     const subInterval = tickInterval / 5;
     for (let s = startSec; s <= endSec; s += subInterval) {
       const x = s * Z - SL + HEADER_WIDTH;
@@ -164,17 +161,18 @@ export default function Timeline({
       ctx.beginPath();
       ctx.moveTo(x, RULER_HEIGHT - 6);
       ctx.lineTo(x, RULER_HEIGHT);
-      ctx.strokeStyle = '#2a2a2a';
+      ctx.strokeStyle = 'rgba(0,212,160,0.07)';
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
 
-    // ─── Beat markers on ruler ─────────────────────────────────────────────────
+    // ─── Beat markers on ruler ─────────────────────────────────────────────
     const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
     if (masterClip) {
       const beats = beatsData.get(masterClip.assetId);
       if (beats) {
-        ctx.fillStyle = 'rgba(108, 99, 255, 0.5)';
+        ctx.fillStyle = 'rgba(0, 212, 160, 0.45)';
         for (const beat of beats.beats) {
           const x = beat * Z - SL + HEADER_WIDTH;
           if (x < HEADER_WIDTH || x > W) continue;
@@ -183,30 +181,35 @@ export default function Timeline({
       }
     }
 
-    // ─── Tracks ───────────────────────────────────────────────────────────────
+    // ─── Tracks ───────────────────────────────────────────────────────────
     let trackY = RULER_HEIGHT;
     for (const track of tracks) {
       const isAudio = track.type === 'audio';
 
       // Track header
-      ctx.fillStyle = '#1e1e1e';
+      ctx.fillStyle = '#0c1511';
       ctx.fillRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = '#2a2a2a';
+      ctx.strokeStyle = 'rgba(0,212,160,0.08)';
+      ctx.lineWidth = 1;
       ctx.strokeRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
 
-      ctx.fillStyle = '#888';
-      ctx.font = '11px sans-serif';
+      ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.65)' : 'rgba(56,189,248,0.65)';
+      ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(track.name, HEADER_WIDTH / 2, trackY + TRACK_HEIGHT / 2 + 4);
+      ctx.fillText(track.name.toUpperCase(), HEADER_WIDTH / 2, trackY + TRACK_HEIGHT / 2 + 4);
 
       // Track body background
-      ctx.fillStyle = trackY % (TRACK_HEIGHT * 2) === RULER_HEIGHT % (TRACK_HEIGHT * 2) ? '#1a1a1a' : '#181818';
+      ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.025)' : 'rgba(56,189,248,0.02)';
       ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, TRACK_HEIGHT);
+
+      // Track separator
+      ctx.fillStyle = 'rgba(0,212,160,0.06)';
+      ctx.fillRect(HEADER_WIDTH, trackY + TRACK_HEIGHT - 1, timeWidth, 1);
 
       // Grid lines
       for (let s = startSec; s <= endSec; s += tickInterval) {
         const x = s * Z - SL + HEADER_WIDTH;
-        ctx.strokeStyle = '#222';
+        ctx.strokeStyle = 'rgba(0,212,160,0.05)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, trackY);
@@ -218,7 +221,7 @@ export default function Timeline({
       if (masterClip) {
         const beats = beatsData.get(masterClip.assetId);
         if (beats) {
-          ctx.fillStyle = 'rgba(108, 99, 255, 0.15)';
+          ctx.fillStyle = 'rgba(0, 212, 160, 0.08)';
           for (const beat of beats.beats) {
             const x = beat * Z - SL + HEADER_WIDTH;
             if (x < HEADER_WIDTH || x > W) continue;
@@ -227,95 +230,96 @@ export default function Timeline({
         }
       }
 
-      // Waveform for master audio track
-      if (isAudio && track.isMaster && masterClip) {
-        const wf = waveforms.get(masterClip.assetId);
-        if (wf && wf.samples.length > 0) {
-          drawWaveform(ctx, wf, masterClip, Z, SL, trackY, TRACK_HEIGHT, HEADER_WIDTH, W);
-        }
-      }
-
-      // Clips
+      // ─── Clips ──────────────────────────────────────────────────────────
       for (const clip of track.clips) {
         const clipX = clip.timelineStart * Z - SL + HEADER_WIDTH;
         const clipW = (clip.timelineEnd - clip.timelineStart) * Z;
-        if (clipX + clipW < HEADER_WIDTH || clipX > W) {
-          trackY += 0;
-          continue;
-        }
+        if (clipX + clipW < HEADER_WIDTH || clipX > W) continue;
 
         const isSelected = clip.id === selectedClipId;
         const color = getClipColor(clip.assetId);
 
+        const visX = Math.max(clipX, HEADER_WIDTH);
+        const visW = Math.min(clipX + clipW, W) - visX;
+        const clipTop = trackY + 2;
+        const clipH = TRACK_HEIGHT - 4;
+
         // Clip body
-        ctx.fillStyle = isSelected
-          ? lightenColor(color, 20)
-          : color;
-        ctx.globalAlpha = 0.9;
-        ctx.fillRect(
-          Math.max(clipX, HEADER_WIDTH),
-          trackY + 2,
-          Math.min(clipW, W - Math.max(clipX, HEADER_WIDTH)),
-          TRACK_HEIGHT - 4
-        );
+        ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
+        ctx.globalAlpha = isAudio ? 0.45 : 0.88;
+        ctx.fillRect(visX, clipTop, visW, clipH);
         ctx.globalAlpha = 1;
 
-        // Clip border
-        ctx.strokeStyle = isSelected ? '#fff' : lightenColor(color, 40);
-        ctx.lineWidth = isSelected ? 2 : 1;
-        ctx.strokeRect(
-          Math.max(clipX, HEADER_WIDTH) + 0.5,
-          trackY + 2.5,
-          Math.min(clipW, W - Math.max(clipX, HEADER_WIDTH)) - 1,
-          TRACK_HEIGHT - 5
-        );
+        // Waveform drawn on top of clip body for ALL audio clips
+        if (isAudio) {
+          const wf = waveforms.get(clip.assetId);
+          if (wf && wf.samples.length > 0) {
+            drawWaveformOnClip(ctx, wf, clip, Z, SL, trackY, TRACK_HEIGHT, HEADER_WIDTH, W);
+          }
+        }
 
-        // Clip name
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        // Clip border
+        ctx.strokeStyle = isSelected
+          ? 'rgba(0,212,160,0.9)'
+          : isAudio
+          ? 'rgba(0,212,160,0.35)'
+          : lightenColor(color, 40);
+        ctx.lineWidth = isSelected ? 2 : 1;
+        ctx.strokeRect(visX + 0.5, clipTop + 0.5, visW - 1, clipH - 1);
+
+        // Clip label
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
+        ctx.clip();
+
+        ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.85)';
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'left';
         const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
         const label = asset?.name ?? clip.assetId;
-        const visX = Math.max(clipX, HEADER_WIDTH) + 4;
-        const visW = Math.min(clipX + clipW, W) - visX - 4;
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(Math.max(clipX, HEADER_WIDTH), trackY, Math.min(clipW, W - HEADER_WIDTH), TRACK_HEIGHT);
-        ctx.clip();
-        ctx.fillText(label, visX, trackY + 16);
+        ctx.fillText(label, visX + 4, trackY + 14);
 
         // Effects badges
         if (clip.effects.length > 0) {
-          ctx.fillStyle = 'rgba(255,220,0,0.8)';
-          ctx.font = '9px sans-serif';
-          ctx.fillText(clip.effects.map((e) => e.type === 'beatZoom' ? 'BZ' : 'CUT').join(' '), visX, trackY + TRACK_HEIGHT - 8);
+          ctx.fillStyle = 'rgba(240,177,0,0.85)';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.fillText(
+            clip.effects.map((e) => (e.type === 'beatZoom' ? 'BZ' : 'CUT')).join(' '),
+            visX + 4,
+            trackY + TRACK_HEIGHT - 8
+          );
         }
 
         ctx.restore();
 
         // Trim handles
         if (isSelected) {
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(Math.max(clipX, HEADER_WIDTH), trackY + 2, 4, TRACK_HEIGHT - 4);
-          ctx.fillRect(Math.min(clipX + clipW, W) - 4, trackY + 2, 4, TRACK_HEIGHT - 4);
+          ctx.fillStyle = 'rgba(0,212,160,0.9)';
+          ctx.fillRect(visX, clipTop, 4, clipH);
+          ctx.fillRect(Math.min(clipX + clipW, W) - 4, clipTop, 4, clipH);
         }
       }
 
       trackY += TRACK_HEIGHT;
     }
 
-    // ─── Playhead ─────────────────────────────────────────────────────────────
+    // ─── Playhead ──────────────────────────────────────────────────────────
     const playX = currentTime * Z - SL + HEADER_WIDTH;
     if (playX >= HEADER_WIDTH && playX <= W) {
-      ctx.strokeStyle = '#ff4444';
-      ctx.lineWidth = 1.5;
+      // Glow effect
+      ctx.shadowColor = '#ff4560';
+      ctx.shadowBlur = 6;
+      ctx.strokeStyle = '#ff4560';
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(playX, 0);
       ctx.lineTo(playX, H);
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
       // Playhead triangle
-      ctx.fillStyle = '#ff4444';
+      ctx.fillStyle = '#ff4560';
       ctx.beginPath();
       ctx.moveTo(playX - 6, 0);
       ctx.lineTo(playX + 6, 0);
@@ -342,7 +346,7 @@ export default function Timeline({
   // Redraw on any change
   useEffect(() => { draw(); });
 
-  // ─── Mouse interactions ───────────────────────────────────────────────────
+  // ─── Mouse interactions ────────────────────────────────────────────────
 
   const getClipAtPosition = useCallback(
     (x: number, y: number): { clip: Clip; track: Track } | null => {
@@ -389,7 +393,6 @@ export default function Timeline({
       const SL = scrollLeftRef.current;
 
       if (y < RULER_HEIGHT) {
-        // Click on ruler = seek
         const t = (x + SL - HEADER_WIDTH) / Z;
         onSeek(Math.max(0, t));
         setDrag({ type: 'seek' });
@@ -443,7 +446,6 @@ export default function Timeline({
         let t = (x + SL - HEADER_WIDTH) / Z - d.offsetSeconds;
         t = Math.max(0, t);
 
-        // Find clip
         let clip: Clip | undefined;
         for (const tr of project.tracks) {
           clip = tr.clips.find((c) => c.id === d.clipId);
@@ -458,10 +460,7 @@ export default function Timeline({
         t = snap(t + dur, snapTargets, snapThreshold) - dur;
         t = Math.max(0, t);
 
-        onClipUpdate(d.clipId, {
-          timelineStart: t,
-          timelineEnd: t + dur,
-        });
+        onClipUpdate(d.clipId, { timelineStart: t, timelineEnd: t + dur });
         return;
       }
 
@@ -480,10 +479,7 @@ export default function Timeline({
         t = clamp(t, 0, clip.timelineEnd - 0.1);
 
         const dt = t - clip.timelineStart;
-        onClipUpdate(d.clipId, {
-          timelineStart: t,
-          sourceStart: clip.sourceStart + dt,
-        });
+        onClipUpdate(d.clipId, { timelineStart: t, sourceStart: clip.sourceStart + dt });
         return;
       }
 
@@ -497,7 +493,6 @@ export default function Timeline({
         if (!clip) return;
 
         const asset = assets.find((a) => a.id === clip!.assetId);
-        // Max end is constrained by remaining source duration after current sourceStart
         const maxSourceRemaining = asset ? asset.duration - clip.sourceStart : 9999;
         const maxTimelineEnd = clip.timelineStart + maxSourceRemaining;
 
@@ -517,11 +512,8 @@ export default function Timeline({
     [project, assets, getSnapTargets, onClipUpdate, onSeek]
   );
 
-  const handleMouseUp = useCallback(() => {
-    setDrag({ type: 'none' });
-  }, []);
+  const handleMouseUp = useCallback(() => { setDrag({ type: 'none' }); }, []);
 
-  // Wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -532,7 +524,6 @@ export default function Timeline({
     }
   }, []);
 
-  // Drag-and-drop from media bin
   const handleDragOver = useCallback((e: React.DragEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -568,7 +559,6 @@ export default function Timeline({
     [getTrackAtY, getSnapTargets, onDropAsset]
   );
 
-  // Double click = split
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -586,7 +576,6 @@ export default function Timeline({
     [getClipAtPosition, onSplit]
   );
 
-  // Cursor style
   const [cursor, setCursor] = useState('default');
   const handleMouseMoveForCursor = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -594,45 +583,32 @@ export default function Timeline({
       const rect = canvasRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      if (y < RULER_HEIGHT) {
-        setCursor('col-resize');
-        return;
-      }
+      if (y < RULER_HEIGHT) { setCursor('col-resize'); return; }
       const hit = getClipAtPosition(x, y);
-      if (!hit) {
-        setCursor('default');
-        return;
-      }
+      if (!hit) { setCursor('default'); return; }
       const Z = zoomRef.current;
       const SL = scrollLeftRef.current;
       const clipX = hit.clip.timelineStart * Z - SL + HEADER_WIDTH;
       const clipXEnd = hit.clip.timelineEnd * Z - SL + HEADER_WIDTH;
-      if (x < clipX + 8 || x > clipXEnd - 8) {
-        setCursor('ew-resize');
-      } else {
-        setCursor('grab');
-      }
+      setCursor(x < clipX + 8 || x > clipXEnd - 8 ? 'ew-resize' : 'grab');
     },
     [getClipAtPosition]
   );
 
-  const totalDuration = project?.duration ?? 0;
-  const totalWidth = Math.max(totalDuration * zoom + 200, containerRef.current?.clientWidth ?? 800);
-
   return (
     <div
       ref={containerRef}
-      className="relative bg-surface"
-      style={{ height: `${RULER_HEIGHT + (project?.tracks.length ?? 3) * TRACK_HEIGHT + 8}px` }}
+      className="relative"
+      style={{
+        height: `${RULER_HEIGHT + (project?.tracks.length ?? 3) * TRACK_HEIGHT + 8}px`,
+        background: '#08100d',
+      }}
     >
       <canvas
         ref={canvasRef}
         style={{ cursor, display: 'block', width: '100%', height: '100%' }}
         onMouseDown={handleMouseDown}
-        onMouseMove={(e) => {
-          handleMouseMove(e);
-          handleMouseMoveForCursor(e);
-        }}
+        onMouseMove={(e) => { handleMouseMove(e); handleMouseMoveForCursor(e); }}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
@@ -644,7 +620,8 @@ export default function Timeline({
   );
 }
 
-function drawWaveform(
+// Draw waveform centered within a clip's bounds
+function drawWaveformOnClip(
   ctx: CanvasRenderingContext2D,
   wf: WaveformData,
   clip: Clip,
@@ -657,7 +634,6 @@ function drawWaveform(
 ) {
   const clipX = clip.timelineStart * zoom - scrollLeft + headerWidth;
   const clipW = (clip.timelineEnd - clip.timelineStart) * zoom;
-  const clipDur = clip.timelineEnd - clip.timelineStart;
 
   if (clipW <= 0 || wf.duration <= 0 || wf.samples.length === 0) return;
 
@@ -667,39 +643,71 @@ function drawWaveform(
   ctx.clip();
 
   const mid = trackY + trackHeight / 2;
-  const amplitude = (trackHeight - 8) / 2;
-
-  ctx.strokeStyle = 'rgba(108, 99, 255, 0.7)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-
+  const amplitude = (trackHeight - 12) / 2;
   const samplesPerPx = wf.samples.length / wf.duration;
+
   const startPx = Math.max(0, headerWidth - clipX);
   const endPx = Math.min(clipW, canvasWidth - clipX);
 
-  for (let px = startPx; px <= endPx; px++) {
+  // Helper to get y position at a given pixel
+  const getY = (px: number, sign: 1 | -1) => {
     const t = px / zoom;
     const sampleIdx = Math.floor((clip.sourceStart + t) * samplesPerPx);
     const sample = wf.samples[Math.min(sampleIdx, wf.samples.length - 1)] ?? 0;
-    const y = mid - sample * amplitude;
+    return mid + sign * sample * amplitude;
+  };
+
+  // ── Filled envelope (upper arc → lower arc reversed) ──────────────────
+  ctx.beginPath();
+  for (let px = startPx; px <= endPx; px++) {
     const x = clipX + px;
-    if (px === startPx) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    const y = getY(px, -1);
+    if (px === startPx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  for (let px = endPx; px >= startPx; px--) {
+    ctx.lineTo(clipX + px, getY(px, 1));
+  }
+  ctx.closePath();
+
+  // Gradient fill from teal to slightly brighter in the centre
+  const grad = ctx.createLinearGradient(0, trackY, 0, trackY + trackHeight);
+  grad.addColorStop(0,    'rgba(0, 212, 160, 0.18)');
+  grad.addColorStop(0.5,  'rgba(0, 212, 160, 0.52)');
+  grad.addColorStop(1,    'rgba(0, 212, 160, 0.18)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // ── Upper edge line ────────────────────────────────────────────────────
+  ctx.strokeStyle = 'rgba(0, 212, 160, 0.95)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let px = startPx; px <= endPx; px++) {
+    const x = clipX + px;
+    const y = getY(px, -1);
+    if (px === startPx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.stroke();
 
-  // Mirror
+  // ── Lower edge line ────────────────────────────────────────────────────
+  ctx.strokeStyle = 'rgba(0, 212, 160, 0.55)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
   for (let px = startPx; px <= endPx; px++) {
-    const t = px / zoom;
-    const sampleIdx = Math.floor((clip.sourceStart + t) * samplesPerPx);
-    const sample = wf.samples[Math.min(sampleIdx, wf.samples.length - 1)] ?? 0;
-    const y = mid + sample * amplitude;
     const x = clipX + px;
-    if (px === startPx) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    const y = getY(px, 1);
+    if (px === startPx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.stroke();
+
+  // ── Centre line ─────────────────────────────────────────────────────────
+  ctx.strokeStyle = 'rgba(0, 212, 160, 0.15)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(clipX + startPx, mid);
+  ctx.lineTo(clipX + endPx, mid);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
   ctx.restore();
 }

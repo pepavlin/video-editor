@@ -284,7 +284,7 @@ export default function Editor() {
                     key={p.id}
                     className="w-full text-left rounded-xl p-3 transition-all duration-150"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,58,237,0.12)'; }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,160,0.1)'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
                     onClick={async () => {
                       await projectHook.loadProject(p.id);
@@ -312,9 +312,9 @@ export default function Editor() {
       <div
         className="flex items-center px-4 h-11 flex-shrink-0 gap-4 border-b"
         style={{
-          background: 'rgba(8,8,26,0.88)',
+          background: 'rgba(6,11,9,0.90)',
           backdropFilter: 'blur(20px)',
-          borderColor: 'rgba(255,255,255,0.065)',
+          borderColor: 'rgba(0,212,160,0.1)',
         }}
       >
         <span className="font-semibold text-gradient text-sm">
@@ -362,7 +362,7 @@ export default function Editor() {
         {/* Left: Media Bin */}
         <div
           className="flex-shrink-0 border-r panel flex flex-col"
-          style={{ width: leftWidth, borderColor: 'rgba(255,255,255,0.065)' }}
+          style={{ width: leftWidth, borderColor: 'rgba(0,212,160,0.1)' }}
         >
           <MediaBin assets={assets} onAssetsChange={refreshAssets} />
         </div>
@@ -370,7 +370,7 @@ export default function Editor() {
         {/* Left resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(255,255,255,0.03)' }}
+          style={{ width: 4, background: 'rgba(0,212,160,0.04)' }}
           onMouseDown={onLeftResize}
         />
 
@@ -397,14 +397,14 @@ export default function Editor() {
           {/* Timeline resize handle */}
           <div
             className="resize-handle-v flex-shrink-0 transition-colors duration-100"
-            style={{ height: 4, background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.065)' }}
+            style={{ height: 4, background: 'rgba(0,212,160,0.04)', borderTop: '1px solid rgba(0,212,160,0.1)' }}
             onMouseDown={onTimelineResize}
           />
 
           {/* Timeline */}
           <div
             className="flex-shrink-0 overflow-x-auto"
-            style={{ height: timelineHeight, borderTop: '1px solid rgba(255,255,255,0.065)' }}
+            style={{ height: timelineHeight, borderTop: '1px solid rgba(0,212,160,0.1)' }}
           >
             <Timeline
               project={project}
@@ -426,14 +426,14 @@ export default function Editor() {
         {/* Right resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(255,255,255,0.03)' }}
+          style={{ width: 4, background: 'rgba(0,212,160,0.04)' }}
           onMouseDown={onRightResize}
         />
 
         {/* Right: Inspector */}
         <div
           className="flex-shrink-0 border-l panel flex flex-col overflow-y-auto"
-          style={{ width: rightWidth, borderColor: 'rgba(255,255,255,0.065)' }}
+          style={{ width: rightWidth, borderColor: 'rgba(0,212,160,0.1)' }}
         >
           <Inspector
             project={project}
@@ -464,7 +464,7 @@ export default function Editor() {
             >
               <span
                 className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #3b82f6)' }}
+                style={{ background: 'linear-gradient(135deg, #00d4a0, #38bdf8)' }}
               />
               {msg}
             </div>

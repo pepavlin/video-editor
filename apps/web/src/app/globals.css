@@ -12,23 +12,23 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  color: #e8e8f0;
+  color: #dde8e4;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
-  /* Liquid glass background: colored glows visible through panels */
+  /* Fresh alive background: teal + amber + coral glows through the glass */
   background:
-    radial-gradient(ellipse 80% 60% at 15% 25%, rgba(124, 58, 237, 0.13) 0%, transparent 65%),
-    radial-gradient(ellipse 60% 50% at 85% 65%, rgba(59, 130, 246, 0.11) 0%, transparent 65%),
-    radial-gradient(ellipse 50% 70% at 50% 100%, rgba(236, 72, 153, 0.08) 0%, transparent 65%),
-    radial-gradient(ellipse 40% 40% at 60% 10%, rgba(6, 182, 212, 0.07) 0%, transparent 60%),
-    #08081a;
+    radial-gradient(ellipse 70% 55% at 10% 20%, rgba(0, 212, 160, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 45% at 90% 75%, rgba(240, 177, 0, 0.09) 0%, transparent 60%),
+    radial-gradient(ellipse 45% 60% at 55% 95%, rgba(255, 69, 96, 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 35% at 70% 10%, rgba(56, 189, 248, 0.07) 0%, transparent 55%),
+    #080d0b;
 }
 
 #__next {
   height: 100%;
 }
 
-/* ─── Scrollbar ────────────────────────────────────────────────────────── */
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -39,49 +39,49 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.35);
+  background: rgba(0, 212, 160, 0.3);
   border-radius: 4px;
-  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.6);
+  background: rgba(0, 212, 160, 0.55);
 }
 
-/* ─── Glass panel ───────────────────────────────────────────────────────── */
+/* ─── Glass panel ─────────────────────────────────────────────────────────── */
 .glass {
-  background: rgba(10, 10, 28, 0.72);
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border: 1px solid rgba(255, 255, 255, 0.065);
+  background: rgba(7, 12, 10, 0.75);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid rgba(0, 212, 160, 0.1);
   box-shadow:
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.04),
-    0 8px 32px rgba(0, 0, 0, 0.5);
+    0 8px 32px rgba(0, 0, 0, 0.55);
 }
 
-/* ─── Utility: gradient accent text ──────────────────────────────────── */
+/* ─── Gradient text ─────────────────────────────────────────────────────── */
 .text-gradient {
-  background: linear-gradient(135deg, #a78bfa, #60a5fa);
+  background: linear-gradient(135deg, #00d4a0, #38bdf8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* ─── Buttons ──────────────────────────────────────────────────────────── */
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {
   @apply px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 select-none;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #7c3aed, #3b82f6);
-  border: 1px solid rgba(124, 58, 237, 0.4);
-  box-shadow: 0 0 14px rgba(124, 58, 237, 0.28);
-  color: white;
+  background: linear-gradient(135deg, #00d4a0, #38bdf8);
+  border: 1px solid rgba(0, 212, 160, 0.4);
+  box-shadow: 0 0 14px rgba(0, 212, 160, 0.28);
+  color: #040a08;
+  font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #6d28d9, #2563eb);
-  box-shadow: 0 0 22px rgba(124, 58, 237, 0.45);
+  background: linear-gradient(135deg, #00c493, #29a8e0);
+  box-shadow: 0 0 22px rgba(0, 212, 160, 0.45);
   transform: translateY(-1px);
 }
 
@@ -95,40 +95,41 @@ body {
 }
 
 .btn-ghost {
-  @apply bg-transparent text-gray-400;
+  @apply bg-transparent;
+  color: #8ab5a8;
   border: 1px solid transparent;
 }
 
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: #e2e2f0;
+  background: rgba(0, 212, 160, 0.08);
+  border-color: rgba(0, 212, 160, 0.15);
+  color: #c8ede5;
 }
 
-/* ─── Panel ─────────────────────────────────────────────────────────────── */
+/* ─── Panel ───────────────────────────────────────────────────────────────── */
 .panel {
-  background: rgba(10, 10, 26, 0.75);
+  background: rgba(7, 12, 10, 0.78);
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  border-color: rgba(255, 255, 255, 0.065);
+  border-color: rgba(0, 212, 160, 0.1);
   box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.03);
 }
 
 /* ─── Form inputs ────────────────────────────────────────────────────────── */
 input[type="range"] {
-  accent-color: #7c3aed;
+  accent-color: #00d4a0;
 }
 
 input[type="text"],
 input[type="number"],
 textarea,
 select {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 212, 160, 0.04);
+  border: 1px solid rgba(0, 212, 160, 0.15);
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 13px;
-  color: #dde0f0;
+  color: #c8ede5;
   outline: none;
   width: 100%;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -138,11 +139,11 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 textarea:focus,
 select:focus {
-  border-color: rgba(124, 58, 237, 0.6);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+  border-color: rgba(0, 212, 160, 0.5);
+  box-shadow: 0 0 0 3px rgba(0, 212, 160, 0.1);
 }
 
-/* ─── Resize handle cursor ───────────────────────────────────────────────── */
+/* ─── Resize handles ─────────────────────────────────────────────────────── */
 .resize-handle-h {
   cursor: col-resize;
   position: relative;
@@ -157,7 +158,7 @@ select:focus {
 
 .resize-handle-h:hover,
 .resize-handle-h:active {
-  background: rgba(124, 58, 237, 0.5) !important;
+  background: rgba(0, 212, 160, 0.45) !important;
 }
 
 .resize-handle-v {
@@ -174,5 +175,5 @@ select:focus {
 
 .resize-handle-v:hover,
 .resize-handle-v:active {
-  background: rgba(124, 58, 237, 0.5) !important;
+  background: rgba(0, 212, 160, 0.45) !important;
 }
