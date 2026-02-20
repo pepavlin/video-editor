@@ -89,10 +89,14 @@ export default function Preview({
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
-    // Beats come from the master audio asset, not individual video clips
+    // Beats come from the master audio asset (source timestamps), converted to absolute
+    // timeline time accounting for the master clip's timelineStart / sourceStart offset.
     const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
-    const masterBeats = masterClip ? beatsData.get(masterClip.assetId) : undefined;
+    const masterBeatData = masterClip ? beatsData.get(masterClip.assetId) : undefined;
+    const masterBeats = masterBeatData && masterClip
+      ? masterBeatData.beats.map((b) => masterClip.timelineStart + (b - masterClip.sourceStart))
+      : undefined;
 
     // Render video tracks (bottom to top)
     const videoTracks = project.tracks.filter((t) => t.type === 'video' && !t.muted);
@@ -141,7 +145,7 @@ export default function Preview({
         if (beatZoom && beatZoom.type === 'beatZoom' && beatZoom.enabled && masterBeats) {
           scale *= getBeatZoomScale(
             currentTime,
-            masterBeats.beats,
+            masterBeats,
             beatZoom.intensity,
             beatZoom.durationMs,
             beatZoom.easing

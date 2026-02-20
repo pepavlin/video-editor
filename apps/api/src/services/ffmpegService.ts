@@ -217,8 +217,11 @@ export function buildExportCommand(
   }
   if (effectiveDuration <= 0) effectiveDuration = 1; // safety fallback
 
-  // Base canvas (black background at 30fps) — explicit duration so the stream ends
-  filterParts.push(`color=c=black:s=${W}x${H}:r=30:duration=${effectiveDuration.toFixed(4)}[base]`);
+  // Base canvas (black background at 30fps).
+  // Duration is controlled by the output -t flag below; don't add it here because
+  // the `duration` option on the color source filter is unreliable inside filter_complex
+  // across ffmpeg versions.
+  filterParts.push(`color=c=black:s=${W}x${H}:r=30[base]`);
   let prevPad = 'base';
 
   // Video clips
@@ -248,20 +251,25 @@ export function buildExportCommand(
       const scaleFilter = `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=decrease,pad=${scaledW}:${scaledH}:(ow-iw)/2:(oh-ih)/2`;
       const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS`;
 
-      // Beat Zoom filter - use scale+crop to keep canvas size
-      // Beats come from the master audio asset, not from the individual video clip's asset
+      // Beat Zoom filter - use scale+crop to keep canvas size.
+      // Beats come from the master audio asset (source timestamps) converted to
+      // absolute timeline time accounting for master clip's timelineStart/sourceStart offset.
       let zoomFilter = '';
       const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
-      const masterAudioClip2 = masterAudioTrack?.clips[0];
-      const masterBeats = masterAudioClip2 ? beatsMap.get(masterAudioClip2.assetId) : undefined;
-      if (beatZoomEffect?.enabled && masterBeats) {
-        const beatsInClip = masterBeats.beats.filter(
+      const masterAudioClip = masterAudioTrack?.clips[0];
+      const masterBeats = masterAudioClip ? beatsMap.get(masterAudioClip.assetId) : undefined;
+      if (beatZoomEffect?.enabled && masterBeats && masterAudioClip) {
+        // Convert beat source-timestamps to absolute timeline timestamps
+        const timelineBeats = masterBeats.beats.map(
+          (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
+        );
+        const beatsInClip = timelineBeats.filter(
           (b) => b >= clip.timelineStart && b <= clip.timelineEnd
         );
         if (beatsInClip.length > 0) {
           const pulseDur = beatZoomEffect.durationMs / 1000;
           const zoomFactor = 1 + beatZoomEffect.intensity;
-          // Build enable expression: sum of between() - non-zero means enabled
+          // ffmpeg `t` is clip-local (after setpts=PTS-STARTPTS), so subtract clip start
           const enableExpr = beatsInClip
             .map((b) => {
               const localT = (b - clip.timelineStart).toFixed(4);

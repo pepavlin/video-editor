@@ -126,51 +126,53 @@ describe('easeInOut', () => {
 // ─── getBeatZoomScale ─────────────────────────────────────────────────────────
 
 describe('getBeatZoomScale', () => {
+  // beats[] contains absolute timeline timestamps
   const beats = [1.0, 2.0, 3.0];
-  const clipStart = 0;
   const intensity = 0.1;
   const durationMs = 200; // 0.2s
 
   it('returns 1 when not near any beat', () => {
-    expect(getBeatZoomScale(0.5, beats, clipStart, intensity, durationMs, 'easeOut')).toBe(1);
+    expect(getBeatZoomScale(0.5, beats, intensity, durationMs, 'easeOut')).toBe(1);
   });
 
   it('returns > 1 at the start of a beat window', () => {
     // At exactly the beat time, progress = 0, invProgress = 1, scale = 1 + intensity * easeOut(1) = 1.1
-    const scale = getBeatZoomScale(1.0, beats, clipStart, intensity, durationMs, 'easeOut');
+    const scale = getBeatZoomScale(1.0, beats, intensity, durationMs, 'easeOut');
     expect(scale).toBeCloseTo(1 + intensity, 2);
   });
 
   it('returns ~1 just after the end of a beat window', () => {
     // At 1.0 + 0.201 (just past window end), should return 1
-    const scale = getBeatZoomScale(1.201, beats, clipStart, intensity, durationMs, 'easeOut');
+    const scale = getBeatZoomScale(1.201, beats, intensity, durationMs, 'easeOut');
     expect(scale).toBe(1);
   });
 
   it('handles easeIn easing', () => {
-    const scale = getBeatZoomScale(1.0, beats, clipStart, intensity, durationMs, 'easeIn');
+    const scale = getBeatZoomScale(1.0, beats, intensity, durationMs, 'easeIn');
     expect(scale).toBeGreaterThan(1);
     expect(scale).toBeLessThanOrEqual(1 + intensity);
   });
 
   it('handles easeInOut easing', () => {
-    const scale = getBeatZoomScale(1.0, beats, clipStart, intensity, durationMs, 'easeInOut');
+    const scale = getBeatZoomScale(1.0, beats, intensity, durationMs, 'easeInOut');
     expect(scale).toBeGreaterThan(1);
   });
 
   it('handles linear easing (unknown easing string)', () => {
-    const scale = getBeatZoomScale(1.0, beats, clipStart, intensity, durationMs, 'linear');
+    const scale = getBeatZoomScale(1.0, beats, intensity, durationMs, 'linear');
     expect(scale).toBeCloseTo(1 + intensity, 2); // invProgress = 1 at t = beat start
   });
 
-  it('accounts for clipTimelineStart offset', () => {
-    // Clip starts at 5s, beat is at 6s (= 1s within clip)
-    const scale = getBeatZoomScale(1.0, [6.0], 5.0, intensity, durationMs, 'easeOut');
+  it('uses absolute timeline timestamps — beat at 6s triggers zoom at t=6s', () => {
+    // Beat at 6s absolute → triggers zoom when currentTime = 6s
+    const scale = getBeatZoomScale(6.0, [6.0], intensity, durationMs, 'easeOut');
     expect(scale).toBeGreaterThan(1);
+    // Does NOT trigger at t=1s (old offset-based behavior was wrong)
+    expect(getBeatZoomScale(1.0, [6.0], intensity, durationMs, 'easeOut')).toBe(1);
   });
 
   it('returns 1 for empty beats array', () => {
-    expect(getBeatZoomScale(1.0, [], clipStart, intensity, durationMs, 'easeOut')).toBe(1);
+    expect(getBeatZoomScale(1.0, [], intensity, durationMs, 'easeOut')).toBe(1);
   });
 });
 
