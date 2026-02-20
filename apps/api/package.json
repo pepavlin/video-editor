@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --node-args='--env-file=../../.env' src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
