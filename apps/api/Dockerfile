@@ -1,7 +1,9 @@
 FROM node:20-slim
 
 # Install system deps: ffmpeg, python3, pip
-RUN apt-get update && apt-get install -y \
+RUN rm -rf /var/lib/apt/lists/* \
+    && apt-get update \
+    && apt-get install -y --fix-missing \
     ffmpeg \
     python3 \
     python3-pip \
