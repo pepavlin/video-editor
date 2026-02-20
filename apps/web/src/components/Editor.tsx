@@ -52,6 +52,25 @@ function useResizeHandle(
   );
 }
 
+// ─── Log line picker ─────────────────────────────────────────────────────────
+
+function pickLogLine(lines: string[]): string | null {
+  if (!lines || lines.length === 0) return null;
+  // Walk from most recent backward to find something meaningful
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const raw = lines[i].trim();
+    if (!raw) continue;
+    // ffmpeg encoding line: extract short summary
+    const frameMatch = raw.match(/frame=\s*(\d+).*fps=\s*([\d.]+).*time=([\d:]+)/);
+    if (frameMatch) return `frame ${frameMatch[1]} · ${frameMatch[2]} fps · ${frameMatch[3]}`;
+    // Skip very long codec/header dumps
+    if (raw.length > 120) continue;
+    // Strip leading [tag] prefix
+    return raw.replace(/^\[[\w_]+\]\s*/, '').slice(0, 80);
+  }
+  return null;
+}
+
 // ─── Editor ──────────────────────────────────────────────────────────────────
 
 export default function Editor() {
@@ -80,6 +99,11 @@ export default function Editor() {
   const [projects, setProjects] = useState<any[]>([]);
   const [newProjectName, setNewProjectName] = useState('My Short');
   const [jobNotifications, setJobNotifications] = useState<string[]>([]);
+  const [beatsProgress, setBeatsProgress] = useState<number | null>(null);
+  const [beatsLogLine, setBeatsLogLine] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+  const [exportLogLine, setExportLogLine] = useState<string | null>(null);
+  const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
 
   // ── Panel sizes (persisted) ────────────────────────────────────────────────
   const storedLeft = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-left-width') || '260', 10) : 260;
@@ -186,15 +210,20 @@ export default function Editor() {
   const handleAnalyzeBeats = async (assetId?: string) => {
     const id = assetId ?? masterAssetId;
     if (!id) return;
-    notify('Starting beat analysis...');
+    setBeatsProgress(0);
+    setBeatsLogLine(null);
     try {
       const { jobId } = await api.analyzeBeats(id);
-      await api.pollJob(jobId, (j) => notify(`Beats: ${j.progress}%`));
+      await api.pollJob(jobId, (j) => {
+        setBeatsProgress(j.progress);
+        const line = pickLogLine(j.lastLogLines);
+        if (line) setBeatsLogLine(line);
+      });
       const beats = await api.getBeats(id);
       setBeatsData((prev) => new Map(prev).set(id, beats));
-      notify('Beat analysis done!');
       refreshAssets();
     } catch (e: any) { notify(`Beat analysis failed: ${e.message}`); }
+    finally { setBeatsProgress(null); setBeatsLogLine(null); }
   };
 
   const handleAlignLyrics = async (text: string) => {
@@ -229,14 +258,35 @@ export default function Editor() {
 
   const handleExport = async () => {
     if (!project) return;
-    notify('Starting export...');
+    setExportProgress(0);
+    setExportLogLine(null);
+    setCompletedExportJobId(null);
     try {
       const { jobId } = await api.exportProject(project.id);
-      api.pollJob(jobId, (j) => notify(`Export: ${j.progress}%`), 1000).then(() => {
-        notify('Export done! Downloading...');
-        window.open(api.getJobOutputUrl(jobId), '_blank');
-      }).catch((e) => { notify(`Export failed: ${e.message}`); });
-    } catch (e: any) { notify(`Export error: ${e.message}`); }
+      api.pollJob(jobId, (j) => {
+        setExportProgress(j.progress);
+        const line = pickLogLine(j.lastLogLines);
+        if (line) setExportLogLine(line);
+      }, 800).then(() => {
+        setExportProgress(null);
+        setExportLogLine(null);
+        setCompletedExportJobId(jobId);
+      }).catch((e) => {
+        setExportProgress(null);
+        setExportLogLine(null);
+        notify(`Export failed: ${e.message}`);
+      });
+    } catch (e: any) {
+      setExportProgress(null);
+      setExportLogLine(null);
+      notify(`Export error: ${e.message}`);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!completedExportJobId) return;
+    window.open(api.getJobOutputUrl(completedExportJobId), '_blank');
+    setCompletedExportJobId(null);
   };
 
   // ── Project picker ─────────────────────────────────────────────────────────
@@ -387,6 +437,12 @@ export default function Editor() {
             beatsData={beatsData}
             onAnalyzeBeats={handleAnalyzeBeats}
             onExport={handleExport}
+            beatsProgress={beatsProgress}
+            beatsLogLine={beatsLogLine}
+            exportProgress={exportProgress}
+            exportLogLine={exportLogLine}
+            completedExportJobId={completedExportJobId}
+            onDownload={handleDownload}
           />
 
           {/* Transport */}

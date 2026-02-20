@@ -135,7 +135,7 @@ export function getAudioUrl(asset: Asset): string {
 
 export async function pollJob(
   jobId: string,
-  onProgress?: (job: Job) => void,
+  onProgress?: (job: Job & { lastLogLines: string[] }) => void,
   intervalMs = 500
 ): Promise<Job> {
   return new Promise((resolve, reject) => {

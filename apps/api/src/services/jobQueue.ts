@@ -96,6 +96,19 @@ export function runCommand(
   return child;
 }
 
+// Update progress in both in-memory map and disk (for routes that manage their own processes)
+export function setJobProgress(jobId: string, progress: number) {
+  updateJob(jobId, { progress });
+}
+
+export function setJobDone(jobId: string, outputPath?: string) {
+  updateJob(jobId, { status: 'DONE', progress: 100, outputPath });
+}
+
+export function setJobError(jobId: string, error: string) {
+  updateJob(jobId, { status: 'ERROR', error });
+}
+
 // For jobs that run multiple commands in sequence
 export async function runSequential(
   jobId: string,

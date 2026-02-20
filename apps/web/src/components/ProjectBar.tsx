@@ -8,11 +8,29 @@ interface Props {
   beatsData: Map<string, BeatsData>;
   onAnalyzeBeats: () => Promise<void>;
   onExport: () => Promise<void>;
+  onDownload: () => void;
+  beatsProgress: number | null;
+  beatsLogLine: string | null;
+  exportProgress: number | null;
+  exportLogLine: string | null;
+  completedExportJobId: string | null;
 }
 
-export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onExport }: Props) {
-  const [analyzingBeats, setAnalyzingBeats] = useState(false);
-  const [exporting, setExporting] = useState(false);
+export default function ProjectBar({
+  masterAsset,
+  beatsData,
+  onAnalyzeBeats,
+  onExport,
+  onDownload,
+  beatsProgress,
+  beatsLogLine,
+  exportProgress,
+  exportLogLine,
+  completedExportJobId,
+}: Props) {
+  const isAnalyzing = beatsProgress !== null;
+  const isExporting = exportProgress !== null;
+  const exportDone = !!completedExportJobId;
 
   // Detect when master changes so we can flag beats as stale
   const prevMasterIdRef = useRef<string | undefined>(masterAsset?.id);
@@ -21,7 +39,6 @@ export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onE
   useEffect(() => {
     if (masterAsset?.id !== prevMasterIdRef.current) {
       prevMasterIdRef.current = masterAsset?.id;
-      // If new master already has beats data (previously analyzed), not stale
       if (masterAsset?.beatsPath) {
         setBeatsStale(false);
       } else {
@@ -30,7 +47,6 @@ export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onE
     }
   }, [masterAsset?.id, masterAsset?.beatsPath]);
 
-  // Reset stale flag if beats are freshly present
   useEffect(() => {
     if (masterAsset?.beatsPath) setBeatsStale(false);
   }, [masterAsset?.beatsPath]);
@@ -39,33 +55,19 @@ export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onE
   const isAnalyzed = !!masterAsset?.beatsPath;
   const needsAnalysis = !isAnalyzed || beatsStale;
 
-  const handleAnalyze = async () => {
-    setAnalyzingBeats(true);
+  const handleAnalyze = () => {
     setBeatsStale(false);
-    try {
-      await onAnalyzeBeats();
-    } finally {
-      setAnalyzingBeats(false);
-    }
-  };
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      await onExport();
-    } finally {
-      setExporting(false);
-    }
+    onAnalyzeBeats();
   };
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-1.5 flex-shrink-0 border-b select-none overflow-x-auto"
+      className="flex items-center gap-3 px-4 flex-shrink-0 border-b select-none overflow-x-auto"
       style={{
         background: 'rgba(8,18,32,0.82)',
         backdropFilter: 'blur(12px)',
         borderColor: 'rgba(0,212,160,0.18)',
-        minHeight: 38,
+        minHeight: 40,
       }}
     >
       {/* Master audio */}
@@ -89,93 +91,173 @@ export default function ProjectBar({ masterAsset, beatsData, onAnalyzeBeats, onE
 
       <div className="w-px h-4 flex-shrink-0" style={{ background: 'rgba(0,212,160,0.22)' }} />
 
-      {/* Beat status + analyze */}
+      {/* Beat status / progress / analyze button */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Status badge */}
-        <BeatStatusBadge
-          masterAsset={masterAsset}
-          isAnalyzed={isAnalyzed}
-          beatsStale={beatsStale}
-          beats={beats}
-          analyzing={analyzingBeats}
-        />
-
-        {masterAsset && (
-          <button
-            className="btn text-xs py-0.5 px-2.5 flex-shrink-0"
-            style={{
-              background: needsAnalysis
-                ? 'linear-gradient(135deg, #00d4a0, #38bdf8)'
-                : 'rgba(0,212,160,0.1)',
-              border: needsAnalysis
-                ? '1px solid rgba(0,212,160,0.4)'
-                : '1px solid rgba(0,212,160,0.15)',
-              color: needsAnalysis ? '#040a08' : 'rgba(0,212,160,0.7)',
-              fontWeight: needsAnalysis ? 600 : 400,
-              boxShadow: needsAnalysis ? '0 0 10px rgba(0,212,160,0.25)' : 'none',
-            }}
-            onClick={handleAnalyze}
-            disabled={analyzingBeats || !masterAsset}
-          >
-            {analyzingBeats ? (
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-full bg-current animate-pulse" />
-                Analyzing…
-              </span>
-            ) : (
-              needsAnalysis ? '⚡ Analyze Beats' : '↺ Re-analyze'
+        {isAnalyzing ? (
+          <JobProgressBlock
+            label="Analyzing beats"
+            progress={beatsProgress!}
+            logLine={beatsLogLine}
+            color="teal"
+          />
+        ) : (
+          <>
+            <BeatStatusBadge
+              masterAsset={masterAsset}
+              isAnalyzed={isAnalyzed}
+              beatsStale={beatsStale}
+              beats={beats}
+            />
+            {masterAsset && (
+              <button
+                className="btn text-xs py-0.5 px-2.5 flex-shrink-0"
+                style={{
+                  background: needsAnalysis
+                    ? 'linear-gradient(135deg, #00d4a0, #38bdf8)'
+                    : 'rgba(0,212,160,0.1)',
+                  border: needsAnalysis
+                    ? '1px solid rgba(0,212,160,0.4)'
+                    : '1px solid rgba(0,212,160,0.15)',
+                  color: needsAnalysis ? '#040a08' : 'rgba(0,212,160,0.7)',
+                  fontWeight: needsAnalysis ? 600 : 400,
+                  boxShadow: needsAnalysis ? '0 0 10px rgba(0,212,160,0.25)' : 'none',
+                }}
+                onClick={handleAnalyze}
+                disabled={!masterAsset}
+              >
+                {needsAnalysis ? '⚡ Analyze Beats' : '↺ Re-analyze'}
+              </button>
             )}
-          </button>
+          </>
         )}
       </div>
 
       <div className="flex-1" />
 
-      {/* Export */}
-      <button
-        className="btn text-xs py-0.5 px-3 flex-shrink-0"
-        style={{
-          background: exporting ? 'rgba(240,177,0,0.15)' : 'linear-gradient(135deg, rgba(240,177,0,0.8), rgba(255,160,30,0.8))',
-          border: '1px solid rgba(240,177,0,0.35)',
-          color: exporting ? 'rgba(240,177,0,0.6)' : '#0a0800',
-          fontWeight: 600,
-          boxShadow: exporting ? 'none' : '0 0 10px rgba(240,177,0,0.2)',
-        }}
-        onClick={handleExport}
-        disabled={exporting}
-      >
-        {exporting ? 'Exporting…' : '⬇ Export MP4'}
-      </button>
+      {/* Export area: progress → download → button */}
+      {isExporting ? (
+        <JobProgressBlock
+          label="Exporting MP4"
+          progress={exportProgress!}
+          logLine={exportLogLine}
+          color="amber"
+        />
+      ) : exportDone ? (
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-xs" style={{ color: 'rgba(0,212,160,0.6)' }}>Export done</span>
+          <button
+            className="btn text-xs py-0.5 px-3 flex-shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #00d4a0, #22c55e)',
+              border: '1px solid rgba(0,212,160,0.45)',
+              color: '#03180e',
+              fontWeight: 700,
+              boxShadow: '0 0 14px rgba(0,212,160,0.4)',
+            }}
+            onClick={onDownload}
+          >
+            ⬇ Download MP4
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn text-xs py-0.5 px-3 flex-shrink-0"
+          style={{
+            background: 'linear-gradient(135deg, rgba(240,177,0,0.85), rgba(255,160,30,0.85))',
+            border: '1px solid rgba(240,177,0,0.35)',
+            color: '#0a0800',
+            fontWeight: 600,
+            boxShadow: '0 0 10px rgba(240,177,0,0.2)',
+          }}
+          onClick={onExport}
+        >
+          ⬇ Export MP4
+        </button>
+      )}
     </div>
   );
 }
+
+// ─── Progress block with log line ─────────────────────────────────────────────
+
+function JobProgressBlock({
+  label,
+  progress,
+  logLine,
+  color,
+}: {
+  label: string;
+  progress: number;
+  logLine: string | null;
+  color: 'teal' | 'amber';
+}) {
+  const isTeal = color === 'teal';
+  const gradient = isTeal
+    ? 'linear-gradient(90deg, #00d4a0, #38bdf8)'
+    : 'linear-gradient(90deg, rgba(240,177,0,0.95), rgba(255,160,30,0.95))';
+  const glow = isTeal ? 'rgba(0,212,160,0.45)' : 'rgba(240,177,0,0.45)';
+  const primary = isTeal ? '#5ee8c8' : '#f0c040';
+  const muted = isTeal ? 'rgba(94,232,200,0.5)' : 'rgba(240,192,64,0.5)';
+
+  return (
+    <div className="flex flex-col justify-center gap-0.5" style={{ minWidth: 240 }}>
+      {/* Top row: label · bar · % */}
+      <div className="flex items-center gap-2">
+        <span
+          className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse"
+          style={{ background: primary }}
+        />
+        <span className="text-xs flex-shrink-0 font-medium" style={{ color: primary }}>
+          {label}
+        </span>
+        <div
+          className="relative h-1.5 rounded-full flex-1"
+          style={{ background: 'rgba(255,255,255,0.08)', minWidth: 80 }}
+        >
+          <div
+            className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+            style={{
+              width: `${Math.max(2, progress)}%`,
+              background: gradient,
+              boxShadow: `0 0 6px ${glow}`,
+            }}
+          />
+        </div>
+        <span
+          className="text-xs tabular-nums flex-shrink-0 font-semibold"
+          style={{ color: primary, minWidth: 30 }}
+        >
+          {progress}%
+        </span>
+      </div>
+      {/* Log line */}
+      {logLine && (
+        <p
+          className="text-xs truncate pl-4"
+          style={{ color: muted, maxWidth: 340 }}
+          title={logLine}
+        >
+          {logLine}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Beat status badge ────────────────────────────────────────────────────────
 
 function BeatStatusBadge({
   masterAsset,
   isAnalyzed,
   beatsStale,
   beats,
-  analyzing,
 }: {
   masterAsset: Asset | null;
   isAnalyzed: boolean;
   beatsStale: boolean;
   beats: BeatsData | null | undefined;
-  analyzing: boolean;
 }) {
   if (!masterAsset) return null;
-
-  if (analyzing) {
-    return (
-      <span
-        className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-        style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.2)' }}
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse inline-block" />
-        Analyzing
-      </span>
-    );
-  }
 
   if (beatsStale || !isAnalyzed) {
     return (

@@ -234,8 +234,7 @@ export async function projectsRoutes(app: FastifyInstance) {
             if (timeMatch) {
               const t = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
               const pct = Math.min(99, Math.round((t / Math.max(project.duration, 1)) * 100));
-              const j = jq.getJob(job.id);
-              if (j) ws.writeJob({ ...j, progress: pct, updatedAt: new Date().toISOString() });
+              jq.setJobProgress(job.id, pct);
             }
           };
 
@@ -245,15 +244,11 @@ export async function projectsRoutes(app: FastifyInstance) {
           child.on('error', reject);
         });
 
-        const j = jq.getJob(job.id);
-        if (j) {
-          ws.writeJob({ ...j, status: 'DONE', progress: 100, outputPath, updatedAt: new Date().toISOString() });
-        }
+        jq.setJobDone(job.id, outputPath);
         ws.appendJobLog(job.id, `[export] done: ${outputPath}`);
       } catch (e: any) {
         ws.appendJobLog(job.id, `[export] ERROR: ${e.message}`);
-        const j = jq.getJob(job.id);
-        if (j) ws.writeJob({ ...j, status: 'ERROR', error: e.message, updatedAt: new Date().toISOString() });
+        jq.setJobError(job.id, e.message);
       }
     });
 
