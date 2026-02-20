@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process';
 import { config } from '../config';
 import * as ws from '../services/workspace';
 import * as ffmpeg from '../services/ffmpegService';
@@ -45,7 +46,8 @@ function makeDefaultProject(name: string): Project {
 export async function projectsRoutes(app: FastifyInstance) {
   // POST /projects
   app.post<{ Body: { name?: string } }>('/projects', async (req, reply) => {
-    const name = req.body?.name ?? 'Untitled Project';
+    const rawName = req.body?.name ?? 'Untitled Project';
+    const name = String(rawName).slice(0, 200); // limit name length
     const project = makeDefaultProject(name);
     ws.writeProject(project);
     return reply.code(201).send({ id: project.id, project });
@@ -68,9 +70,16 @@ export async function projectsRoutes(app: FastifyInstance) {
   app.put<{ Params: { id: string }; Body: Project }>('/projects/:id', async (req, reply) => {
     const existing = ws.readProject(req.params.id);
     if (!existing) return reply.code(404).send({ error: 'Project not found' });
+
+    // Basic structural validation
+    const body = req.body;
+    if (!body || typeof body !== 'object' || !Array.isArray(body.tracks)) {
+      return reply.code(400).send({ error: 'Invalid project structure' });
+    }
+
     const updated: Project = {
-      ...req.body,
-      id: req.params.id,
+      ...body,
+      id: req.params.id, // prevent ID spoofing
       updatedAt: new Date().toISOString(),
     };
     ws.writeProject(updated);
@@ -86,29 +95,37 @@ export async function projectsRoutes(app: FastifyInstance) {
     if (!project) return reply.code(404).send({ error: 'Project not found' });
 
     const { text, audioAssetId } = req.body;
-    if (!text) return reply.code(400).send({ error: 'text is required' });
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return reply.code(400).send({ error: 'text is required' });
+    }
+    if (text.length > 100_000) {
+      return reply.code(400).send({ error: 'Lyrics text too long (max 100k chars)' });
+    }
 
-    // Find master audio
+    // Find master audio wav
     let audioWavPath: string | null = null;
     const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
-    let targetAssetId = audioAssetId ?? masterClip?.assetId;
+    const targetAssetId = audioAssetId ?? masterClip?.assetId;
 
     if (targetAssetId) {
       const asset = ws.getAsset(targetAssetId);
       if (asset?.audioPath) {
-        audioWavPath = path.join(ws.getWorkspaceDir(), asset.audioPath);
+        const wavPath = path.join(ws.getWorkspaceDir(), asset.audioPath);
+        if (fs.existsSync(wavPath)) audioWavPath = wavPath;
       }
     }
 
-    if (!audioWavPath || !fs.existsSync(audioWavPath)) {
-      return reply.code(400).send({ error: 'No audio WAV available. Import a master audio first.' });
+    if (!audioWavPath) {
+      return reply.code(400).send({ error: 'No audio WAV available. Import and wait for a master audio track.' });
     }
 
+    const projectDir = ws.getProjectDir(project.id);
+    fs.mkdirSync(projectDir, { recursive: true });
+
     const job = jq.createJob('lyrics', project.id);
-    const lyricsOutputPath = path.join(ws.getProjectDir(project.id), 'words.json');
-    const textFilePath = path.join(ws.getProjectDir(project.id), 'lyrics.txt');
-    fs.mkdirSync(ws.getProjectDir(project.id), { recursive: true });
+    const lyricsOutputPath = path.join(projectDir, 'words.json');
+    const textFilePath = path.join(projectDir, 'lyrics_input.txt');
     fs.writeFileSync(textFilePath, text);
 
     const scriptPath = path.join(config.scriptsDir, 'align_lyrics.py');
@@ -119,24 +136,26 @@ export async function projectsRoutes(app: FastifyInstance) {
       [scriptPath, audioWavPath, textFilePath, lyricsOutputPath],
       {
         onDone: () => {
-          // Update project with lyrics data
           try {
             const words = JSON.parse(fs.readFileSync(lyricsOutputPath, 'utf8'));
             const proj = ws.readProject(project.id);
             if (proj) {
-              proj.lyrics = {
-                text,
-                words,
-                enabled: true,
-                style: proj.lyrics?.style ?? {
-                  fontSize: 48,
-                  color: '#FFFFFF',
-                  highlightColor: '#FFE600',
-                  position: 'bottom',
-                  wordsPerChunk: 3,
+              ws.writeProject({
+                ...proj,
+                lyrics: {
+                  text,
+                  words,
+                  enabled: true,
+                  style: proj.lyrics?.style ?? {
+                    fontSize: 48,
+                    color: '#FFFFFF',
+                    highlightColor: '#FFE600',
+                    position: 'bottom',
+                    wordsPerChunk: 3,
+                  },
                 },
-              };
-              ws.writeProject(proj);
+                updatedAt: new Date().toISOString(),
+              });
             }
           } catch (e) {
             ws.appendJobLog(job.id, `Failed to update project with lyrics: ${e}`);
@@ -165,10 +184,9 @@ export async function projectsRoutes(app: FastifyInstance) {
 
     const job = jq.createJob('export', project.id);
 
-    // Run export in background
     setImmediate(async () => {
       try {
-        // Load beats for all assets
+        // Load beats for all assets referenced in project
         const beatsMap = new Map<string, BeatsData>();
         for (const track of project.tracks) {
           for (const clip of track.clips) {
@@ -177,73 +195,65 @@ export async function projectsRoutes(app: FastifyInstance) {
               if (asset?.beatsPath) {
                 const bp = path.join(ws.getWorkspaceDir(), asset.beatsPath);
                 if (fs.existsSync(bp)) {
-                  beatsMap.set(clip.assetId, JSON.parse(fs.readFileSync(bp, 'utf8')));
+                  try {
+                    beatsMap.set(clip.assetId, JSON.parse(fs.readFileSync(bp, 'utf8')));
+                  } catch { /* ignore corrupted beats */ }
                 }
               }
             }
           }
         }
 
-        // Generate ASS lyrics if enabled
+        // Generate ASS lyrics
         if (project.lyrics?.enabled && project.lyrics.words && project.lyrics.words.length > 0) {
           const assPath = path.join(ws.getProjectDir(project.id), 'lyrics.ass');
           ffmpeg.generateAss(project.lyrics, assPath);
           ws.appendJobLog(job.id, '[export] generated ASS subtitles');
         }
 
-        const { cmd, args } = await ffmpeg.buildExportCommand(
+        const { cmd, args } = ffmpeg.buildExportCommand(
           project,
           {
             outputPath,
             width: req.body?.width ?? project.outputResolution.w,
             height: req.body?.height ?? project.outputResolution.h,
-            crf: req.body?.crf ?? 20,
-            preset: req.body?.preset ?? 'medium',
+            crf: req.body?.crf,
+            preset: req.body?.preset,
           },
           beatsMap
         );
 
-        ws.appendJobLog(job.id, `[export] running: ${cmd} ${args.slice(0, 10).join(' ')}...`);
+        ws.appendJobLog(job.id, `[export] running ffmpeg...`);
 
         await new Promise<void>((resolve, reject) => {
-          const { spawn } = require('child_process');
           const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
           const updateProgress = (line: string) => {
             ws.appendJobLog(job.id, line);
-            // Parse ffmpeg progress
             const timeMatch = line.match(/time=(\d+):(\d+):(\d+\.\d+)/);
             if (timeMatch) {
               const t = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
-              const pct = Math.min(99, Math.round((t / (project.duration || 1)) * 100));
-              const j = jq.getJob(job.id)!;
-              ws.writeJob({ ...j, progress: pct, updatedAt: new Date().toISOString() });
+              const pct = Math.min(99, Math.round((t / Math.max(project.duration, 1)) * 100));
+              const j = jq.getJob(job.id);
+              if (j) ws.writeJob({ ...j, progress: pct, updatedAt: new Date().toISOString() });
             }
           };
 
-          child.stdout.on('data', (d: Buffer) => d.toString().split('\n').forEach(updateProgress));
-          child.stderr.on('data', (d: Buffer) => d.toString().split('\n').forEach(updateProgress));
-
-          child.on('close', (code: number) => {
-            if (code === 0) resolve();
-            else reject(new Error(`ffmpeg exited with code ${code}`));
-          });
+          child.stdout.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(updateProgress));
+          child.stderr.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(updateProgress));
+          child.on('close', (code: number | null) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}`)));
           child.on('error', reject);
         });
 
-        const j = jq.getJob(job.id)!;
-        ws.writeJob({
-          ...j,
-          status: 'DONE',
-          progress: 100,
-          outputPath: outputPath,
-          updatedAt: new Date().toISOString(),
-        });
+        const j = jq.getJob(job.id);
+        if (j) {
+          ws.writeJob({ ...j, status: 'DONE', progress: 100, outputPath, updatedAt: new Date().toISOString() });
+        }
         ws.appendJobLog(job.id, `[export] done: ${outputPath}`);
       } catch (e: any) {
         ws.appendJobLog(job.id, `[export] ERROR: ${e.message}`);
-        const j = jq.getJob(job.id)!;
-        ws.writeJob({ ...j, status: 'ERROR', error: e.message, updatedAt: new Date().toISOString() });
+        const j = jq.getJob(job.id);
+        if (j) ws.writeJob({ ...j, status: 'ERROR', error: e.message, updatedAt: new Date().toISOString() });
       }
     });
 

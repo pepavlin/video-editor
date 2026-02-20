@@ -9,6 +9,14 @@ import * as ffmpeg from '../services/ffmpegService';
 import * as jq from '../services/jobQueue';
 import type { Asset } from '@video-editor/shared';
 
+// Allowed file extensions for import
+const ALLOWED_EXTENSIONS = new Set([
+  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v',  // video
+  '.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg',  // audio
+]);
+
+const ALLOWED_MIME_PREFIXES = ['video/', 'audio/'];
+
 export async function assetsRoutes(app: FastifyInstance) {
   // POST /assets/import
   app.post('/assets/import', async (req, reply) => {
@@ -17,26 +25,44 @@ export async function assetsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'No file uploaded' });
     }
 
+    // Validate file extension
+    const ext = path.extname(data.filename).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      // Drain the stream to prevent hanging
+      data.file.resume();
+      return reply.code(400).send({
+        error: `File type not allowed: ${ext}. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}`,
+      });
+    }
+
     const assetId = `asset_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
     const assetDir = ws.getAssetDir(assetId);
     fs.mkdirSync(assetDir, { recursive: true });
 
-    const ext = path.extname(data.filename).toLowerCase();
     const originalPath = path.join(assetDir, `original${ext}`);
 
     // Save upload
-    await pipeline(data.file, fs.createWriteStream(originalPath));
+    try {
+      await pipeline(data.file, fs.createWriteStream(originalPath));
+    } catch (e: any) {
+      fs.rmSync(assetDir, { recursive: true, force: true });
+      return reply.code(500).send({ error: 'Failed to save file', details: e.message });
+    }
 
-    // Probe
+    // Probe file
     let probe: ffmpeg.ProbeResult;
     try {
       probe = ffmpeg.probeFile(originalPath);
     } catch (e: any) {
-      fs.rmSync(assetDir, { recursive: true });
-      return reply.code(400).send({ error: 'Cannot probe file', details: e.message });
+      fs.rmSync(assetDir, { recursive: true, force: true });
+      return reply.code(400).send({ error: 'Cannot probe file (is it a valid video/audio?)', details: e.message });
     }
 
-    const isAudio = !probe.hasVideo && probe.hasAudio;
+    if (!probe.hasVideo && !probe.hasAudio) {
+      fs.rmSync(assetDir, { recursive: true, force: true });
+      return reply.code(400).send({ error: 'File has no audio or video streams' });
+    }
+
     const assetType: Asset['type'] = probe.hasVideo ? 'video' : 'audio';
 
     const asset: Asset = {
@@ -52,19 +78,18 @@ export async function assetsRoutes(app: FastifyInstance) {
     };
     ws.upsertAsset(asset);
 
-    // Start import job
+    // Start import job (proxy + waveform)
     const job = jq.createJob('import', assetId);
 
-    // Run in background
     setImmediate(async () => {
       try {
         await ffmpeg.runImportPipeline(job.id, assetId, originalPath, probe);
-        const j = jq.getJob(job.id)!;
-        ws.writeJob({ ...j, status: 'DONE', progress: 100 });
+        const j = jq.getJob(job.id);
+        if (j) ws.writeJob({ ...j, status: 'DONE', progress: 100, updatedAt: new Date().toISOString() });
       } catch (e: any) {
         ws.appendJobLog(job.id, `ERROR: ${e.message}`);
-        const j = jq.getJob(job.id)!;
-        ws.writeJob({ ...j, status: 'ERROR', error: e.message });
+        const j = jq.getJob(job.id);
+        if (j) ws.writeJob({ ...j, status: 'ERROR', error: e.message, updatedAt: new Date().toISOString() });
       }
     });
 
@@ -90,8 +115,12 @@ export async function assetsRoutes(app: FastifyInstance) {
     if (!asset?.waveformPath) return reply.code(404).send({ error: 'Waveform not ready' });
     const p = path.join(ws.getWorkspaceDir(), asset.waveformPath);
     if (!fs.existsSync(p)) return reply.code(404).send({ error: 'Waveform file missing' });
-    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-    return reply.send(data);
+    try {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return reply.send(data);
+    } catch {
+      return reply.code(500).send({ error: 'Waveform data corrupted' });
+    }
   });
 
   // GET /assets/:id/beats
@@ -100,8 +129,12 @@ export async function assetsRoutes(app: FastifyInstance) {
     if (!asset?.beatsPath) return reply.code(404).send({ error: 'Beats not ready' });
     const p = path.join(ws.getWorkspaceDir(), asset.beatsPath);
     if (!fs.existsSync(p)) return reply.code(404).send({ error: 'Beats file missing' });
-    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-    return reply.send(data);
+    try {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return reply.send(data);
+    } catch {
+      return reply.code(500).send({ error: 'Beats data corrupted' });
+    }
   });
 
   // POST /assets/:id/analyze-beats
@@ -126,8 +159,11 @@ export async function assetsRoutes(app: FastifyInstance) {
       [scriptPath, audioWavPath, beatsOutputPath],
       {
         onDone: () => {
-          asset.beatsPath = `assets/${asset.id}/beats.json`;
-          ws.upsertAsset(asset);
+          // Re-read asset to avoid stale closure
+          const latestAsset = ws.getAsset(asset.id);
+          if (latestAsset) {
+            ws.upsertAsset({ ...latestAsset, beatsPath: `assets/${asset.id}/beats.json` });
+          }
         },
         outputPath: beatsOutputPath,
       }
@@ -148,7 +184,7 @@ export async function assetsRoutes(app: FastifyInstance) {
       : path.join(ws.getWorkspaceDir(), asset.originalPath);
 
     if (!fs.existsSync(proxyPath)) {
-      return reply.code(400).send({ error: 'Proxy not ready' });
+      return reply.code(400).send({ error: 'Proxy not ready - import may still be processing' });
     }
 
     const job = jq.createJob('cutout', asset.id);
@@ -161,8 +197,10 @@ export async function assetsRoutes(app: FastifyInstance) {
       [scriptPath, proxyPath, maskOutputPath],
       {
         onDone: () => {
-          asset.maskPath = `assets/${asset.id}/mask.mp4`;
-          ws.upsertAsset(asset);
+          const latestAsset = ws.getAsset(asset.id);
+          if (latestAsset) {
+            ws.upsertAsset({ ...latestAsset, maskPath: `assets/${asset.id}/mask.mp4` });
+          }
         },
         outputPath: maskOutputPath,
       }

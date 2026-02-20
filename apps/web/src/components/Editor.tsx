@@ -82,11 +82,16 @@ export default function Editor() {
     }
   }, []);
 
+  // Keep stable ref to latest refreshAssets to avoid stale closure in interval
+  const refreshAssetsRef = useRef(refreshAssets);
+  useEffect(() => { refreshAssetsRef.current = refreshAssets; }, [refreshAssets]);
+
   useEffect(() => {
-    refreshAssets();
+    refreshAssetsRef.current();
     refreshProjects();
-    const iv = setInterval(refreshAssets, 3000);
+    const iv = setInterval(() => refreshAssetsRef.current(), 3000);
     return () => clearInterval(iv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keyboard shortcuts

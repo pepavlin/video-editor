@@ -12,6 +12,8 @@ import { jobsRoutes } from './routes/jobs';
 async function main() {
   // Ensure workspace directories exist
   ws.ensureWorkspace();
+  // Mark any RUNNING jobs as ERROR (server restarted)
+  ws.cleanupStaleJobs();
 
   const app = Fastify({
     logger: {

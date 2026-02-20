@@ -14,7 +14,10 @@ export function useHistory(
 ) {
   const [historyState, setHistoryState] = useState<HistoryState>({ past: [], future: [] });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Store the last pushed snapshot to avoid duplicates
+  // Keep stable ref to latest project to avoid stale closures in undo/redo
+  const projectRef = useRef<Project | null>(project);
+  projectRef.current = project;
+  // Last snapshot ref to avoid duplicates
   const lastSnapshotRef = useRef<string>('');
 
   const pushSnapshot = useCallback((p: Project) => {
@@ -39,12 +42,14 @@ export function useHistory(
   );
 
   const undo = useCallback(() => {
-    if (!project) return;
+    const current = projectRef.current;
+    if (!current) return;
+
     setHistoryState((prev) => {
       if (prev.past.length === 0) return prev;
       const newPast = [...prev.past];
       const snapshot = newPast.pop()!;
-      const currentSnap = JSON.stringify(project);
+      const currentSnap = JSON.stringify(current);
       setProject(JSON.parse(snapshot) as Project);
       lastSnapshotRef.current = snapshot;
       return {
@@ -52,20 +57,23 @@ export function useHistory(
         future: [currentSnap, ...prev.future],
       };
     });
-  }, [project, setProject]);
+  }, [setProject]);
 
   const redo = useCallback(() => {
+    const current = projectRef.current;
+
     setHistoryState((prev) => {
       if (prev.future.length === 0) return prev;
       const [snapshot, ...newFuture] = prev.future;
       setProject(JSON.parse(snapshot) as Project);
       lastSnapshotRef.current = snapshot;
       return {
-        past: [...prev.past, JSON.stringify(project)],
+        // Use current project from ref (not stale closure)
+        past: [...prev.past, current ? JSON.stringify(current) : snapshot],
         future: newFuture,
       };
     });
-  }, [project, setProject]);
+  }, [setProject]);
 
   return {
     pushSnapshot: debouncedPush,

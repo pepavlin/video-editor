@@ -21,10 +21,21 @@ export async function jobsRoutes(app: FastifyInstance) {
     if (job.status !== 'DONE') return reply.code(400).send({ error: 'Job not done' });
     if (!job.outputPath) return reply.code(404).send({ error: 'No output file' });
 
-    // outputPath can be absolute or relative to workspace
-    const filePath = path.isAbsolute(job.outputPath)
-      ? job.outputPath
-      : path.join(ws.getWorkspaceDir(), job.outputPath);
+    // Validate output path stays within workspace (path traversal prevention)
+    let filePath: string;
+    try {
+      filePath = path.isAbsolute(job.outputPath)
+        ? job.outputPath
+        : ws.safeResolve(job.outputPath);
+    } catch {
+      return reply.code(403).send({ error: 'Invalid output path' });
+    }
+
+    // Extra guard: ensure file is within workspace even for absolute paths
+    const workspaceAbs = path.resolve(ws.getWorkspaceDir());
+    if (!path.resolve(filePath).startsWith(workspaceAbs + path.sep)) {
+      return reply.code(403).send({ error: 'Output path outside workspace' });
+    }
 
     if (!fs.existsSync(filePath)) {
       return reply.code(404).send({ error: 'Output file not found' });

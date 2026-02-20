@@ -4,7 +4,7 @@ import fs from 'fs';
 import { config } from '../config';
 import * as ws from './workspace';
 import { computeWaveform } from './waveform';
-import type { Project, Clip, Track, BeatZoomEffect, WaveformData, BeatsData, LyricsData } from '@video-editor/shared';
+import type { Project, Clip, BeatZoomEffect, WaveformData, BeatsData, LyricsData } from '@video-editor/shared';
 
 const FF = config.ffmpegBin;
 const FFP = config.ffprobeBin;
@@ -29,25 +29,26 @@ export function probeFile(filePath: string): ProbeResult {
     filePath,
   ]).toString();
 
-  const data = JSON.parse(raw);
-  const streams: any[] = data.streams ?? [];
+  const data = JSON.parse(raw) as { streams?: Record<string, unknown>[]; format?: Record<string, unknown> };
+  const streams = data.streams ?? [];
   const format = data.format ?? {};
 
-  const videoStream = streams.find((s) => s.codec_type === 'video');
-  const audioStream = streams.find((s) => s.codec_type === 'audio');
+  const videoStream = streams.find((s) => s['codec_type'] === 'video');
+  const audioStream = streams.find((s) => s['codec_type'] === 'audio');
 
-  const duration = parseFloat(format.duration ?? '0');
+  const duration = parseFloat(String(format['duration'] ?? '0'));
 
   let fps: number | undefined;
-  if (videoStream?.r_frame_rate) {
-    const [num, den] = videoStream.r_frame_rate.split('/').map(Number);
+  const rateStr = videoStream?.['r_frame_rate'];
+  if (typeof rateStr === 'string' && rateStr.includes('/')) {
+    const [num, den] = rateStr.split('/').map(Number);
     fps = den > 0 ? num / den : undefined;
   }
 
   return {
     duration,
-    width: videoStream?.width,
-    height: videoStream?.height,
+    width: typeof videoStream?.['width'] === 'number' ? videoStream['width'] as number : undefined,
+    height: typeof videoStream?.['height'] === 'number' ? videoStream['height'] as number : undefined,
     fps,
     hasAudio: !!audioStream,
     hasVideo: !!videoStream,
@@ -94,7 +95,7 @@ export async function runImportPipeline(
   const audioWavPath = path.join(assetDir, 'audio.wav');
   const waveformPath = path.join(assetDir, 'waveform.json');
 
-  ws.appendJobLog(jobId, `[import] probing done: duration=${probe.duration}s`);
+  ws.appendJobLog(jobId, `[import] probing done: duration=${probe.duration.toFixed(2)}s`);
 
   // Step 1: create proxy (if video)
   if (probe.hasVideo) {
@@ -106,9 +107,10 @@ export async function runImportPipeline(
   // Step 2: extract audio WAV
   ws.appendJobLog(jobId, '[import] extracting audio WAV...');
   try {
-    extractAudio(probe.hasVideo ? (fs.existsSync(proxyPath) ? proxyPath : originalPath) : originalPath, audioWavPath);
+    const audioSource = probe.hasVideo && fs.existsSync(proxyPath) ? proxyPath : originalPath;
+    extractAudio(audioSource, audioWavPath);
   } catch {
-    // fallback: try original
+    // Fallback to original if proxy failed
     extractAudio(originalPath, audioWavPath);
   }
   ws.appendJobLog(jobId, '[import] audio WAV done');
@@ -124,12 +126,16 @@ export async function runImportPipeline(
   fs.writeFileSync(waveformPath, JSON.stringify(wfData));
   ws.appendJobLog(jobId, `[import] waveform done (${wf.samples.length} buckets)`);
 
-  // Update asset record
-  const asset = ws.getAsset(assetId)!;
-  asset.proxyPath = probe.hasVideo ? `assets/${assetId}/proxy.mp4` : undefined;
-  asset.audioPath = `assets/${assetId}/audio.wav`;
-  asset.waveformPath = `assets/${assetId}/waveform.json`;
-  ws.upsertAsset(asset);
+  // Update asset record (re-read to avoid overwriting concurrent changes)
+  const asset = ws.getAsset(assetId);
+  if (asset) {
+    ws.upsertAsset({
+      ...asset,
+      proxyPath: probe.hasVideo ? `assets/${assetId}/proxy.mp4` : undefined,
+      audioPath: `assets/${assetId}/audio.wav`,
+      waveformPath: `assets/${assetId}/waveform.json`,
+    });
+  }
 }
 
 // ─── Export pipeline ─────────────────────────────────────────────────────────
@@ -142,26 +148,24 @@ export interface ExportOptions {
   preset?: string;
 }
 
-export async function buildExportCommand(
+export function buildExportCommand(
   project: Project,
   opts: ExportOptions,
   beatsMap: Map<string, BeatsData>
-): Promise<{ cmd: string; args: string[] }> {
+): { cmd: string; args: string[] } {
   const W = opts.width ?? 1080;
   const H = opts.height ?? 1920;
   const CRF = opts.crf ?? 20;
   const PRESET = opts.preset ?? 'medium';
 
-  // Gather all unique assets referenced in video tracks
   const videoTracks = project.tracks.filter((t) => t.type === 'video' && !t.muted);
   const masterAudioTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
 
-  // Inputs: first input is master audio (if any), then video proxies
   const inputs: string[] = [];
   const inputArgs: string[] = [];
 
-  // Collect unique asset paths for video clips
-  const assetPathMap = new Map<string, string>(); // assetId -> proxy path
+  // Collect unique asset proxy paths for video clips
+  const assetPathMap = new Map<string, string>();
   for (const track of videoTracks) {
     for (const clip of track.clips) {
       if (!assetPathMap.has(clip.assetId)) {
@@ -176,7 +180,7 @@ export async function buildExportCommand(
     }
   }
 
-  // Master audio input
+  // Master audio input (index 0 if exists)
   let masterAudioInputIdx = -1;
   if (masterAudioTrack && masterAudioTrack.clips.length > 0) {
     const masterClip = masterAudioTrack.clips[0];
@@ -195,82 +199,76 @@ export async function buildExportCommand(
     inputs.push(assetPath);
   }
 
-  // Build ffmpeg input args
   for (const inp of inputs) {
     inputArgs.push('-i', inp);
   }
 
-  // Build filter_complex
   const filterParts: string[] = [];
-  const overlayPads: string[] = [];
   let filterIdx = 0;
 
-  // Base canvas (black background)
-  filterParts.push(`color=black:s=${W}x${H}:r=30[base]`);
-
+  // Base canvas (black background at 30fps)
+  filterParts.push(`color=c=black:s=${W}x${H}:r=30[base]`);
   let prevPad = 'base';
 
+  // Video clips
   for (const track of videoTracks) {
     for (const clip of track.clips) {
       const inputIdx = assetInputIdxMap.get(clip.assetId);
       if (inputIdx === undefined) continue;
 
       const srcDuration = clip.sourceEnd - clip.sourceStart;
-      const outDuration = clip.timelineEnd - clip.timelineStart;
-      const delay = clip.timelineStart;
+      if (srcDuration <= 0) continue;
 
-      const scale = clip.transform.scale;
-      const opacity = clip.transform.opacity;
+      const outDuration = clip.timelineEnd - clip.timelineStart;
+      if (outDuration <= 0) continue;
+
+      const delay = clip.timelineStart;
+      const scale = Math.max(0.01, clip.transform.scale);
+      const opacity = Math.min(1, Math.max(0, clip.transform.opacity));
       const tx = Math.round(clip.transform.x);
       const ty = Math.round(clip.transform.y);
 
-      // Position on canvas
+      // Scale to fill canvas with aspect-aware scaling
       const scaledW = Math.round(W * scale);
       const scaledH = Math.round(H * scale);
       const posX = Math.round((W - scaledW) / 2 + tx);
       const posY = Math.round((H - scaledH) / 2 + ty);
 
-      // Determine smart crop for non-9:16 input
-      // We use scale to fit and then pad/crop
       const scaleFilter = `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=decrease,pad=${scaledW}:${scaledH}:(ow-iw)/2:(oh-ih)/2`;
+      const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS`;
 
-      // Trim from source
-      const trimFilter = `trim=start=${clip.sourceStart}:end=${clip.sourceEnd},setpts=PTS-STARTPTS`;
-
-      // Apply beat zoom if needed
+      // Beat Zoom filter - use scale+crop to keep canvas size
       let zoomFilter = '';
       const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
       const assetBeats = beatsMap.get(clip.assetId);
       if (beatZoomEffect?.enabled && assetBeats) {
-        // Generate enable expressions for zoom at each beat within clip timeline window
         const beatsInClip = assetBeats.beats.filter(
-          (b) => b >= clip.timelineStart && b < clip.timelineEnd
+          (b) => b >= clip.timelineStart && b <= clip.timelineEnd
         );
         if (beatsInClip.length > 0) {
           const pulseDur = beatZoomEffect.durationMs / 1000;
-          const zoomScale = 1 + beatZoomEffect.intensity;
+          const zoomFactor = 1 + beatZoomEffect.intensity;
+          // Build enable expression: sum of between() - non-zero means enabled
           const enableExpr = beatsInClip
             .map((b) => {
-              const t = b - clip.timelineStart;
-              return `between(t,${t.toFixed(3)},${(t + pulseDur).toFixed(3)})`;
+              const localT = (b - clip.timelineStart).toFixed(4);
+              const localTEnd = (b - clip.timelineStart + pulseDur).toFixed(4);
+              return `between(t,${localT},${localTEnd})`;
             })
             .join('+');
-          zoomFilter = `,scale=iw*if(${enableExpr},${zoomScale.toFixed(3)},1):ih*if(${enableExpr},${zoomScale.toFixed(3)},1),setpts=PTS`;
+          // Scale up then crop back to original size (keeps canvas bounds)
+          zoomFilter = `,scale=iw*if(gt(${enableExpr},0),${zoomFactor.toFixed(4)},1):ih*if(gt(${enableExpr},0),${zoomFactor.toFixed(4)},1),crop=${scaledW}:${scaledH}`;
         }
       }
 
       const clipPad = `clip${filterIdx}`;
       filterParts.push(
-        `[${inputIdx}:v]${trimFilter},${scaleFilter}${zoomFilter},setsar=1,format=yuva420p,colorchannelmixer=aa=${opacity.toFixed(3)}[${clipPad}]`
+        `[${inputIdx}:v]${trimFilter},${scaleFilter}${zoomFilter},setsar=1,format=yuva420p,colorchannelmixer=aa=${opacity.toFixed(4)}[${clipPad}]`
       );
 
       const overlayPad = `ov${filterIdx}`;
-      const delayedPad = `delayed${filterIdx}`;
-
-      // Delay video to correct timeline position using 'setpts'
-      // Use 'tpad' and 'overlay' with 'enable'
       filterParts.push(
-        `[${prevPad}][${clipPad}]overlay=${posX}:${posY}:enable='between(t,${delay.toFixed(3)},${(delay + outDuration).toFixed(3)})'[${overlayPad}]`
+        `[${prevPad}][${clipPad}]overlay=${posX}:${posY}:enable='between(t,${delay.toFixed(4)},${(delay + outDuration).toFixed(4)})'[${overlayPad}]`
       );
 
       prevPad = overlayPad;
@@ -278,10 +276,19 @@ export async function buildExportCommand(
     }
   }
 
-  // Audio filter: mix master + clip audios
-  const audioInputs: string[] = [];
+  // ─── Audio ───────────────────────────────────────────────────────────────────
+  const audioInputPads: string[] = [];
+
   if (masterAudioInputIdx >= 0) {
-    audioInputs.push(`[${masterAudioInputIdx}:a]`);
+    // Trim master audio to project duration
+    const masterClip = masterAudioTrack?.clips[0];
+    if (masterClip) {
+      const masterAudioPad = `maudio`;
+      filterParts.push(
+        `[${masterAudioInputIdx}:a]atrim=start=${masterClip.sourceStart.toFixed(4)}:end=${masterClip.sourceEnd.toFixed(4)},asetpts=PTS-STARTPTS,adelay=${Math.round(masterClip.timelineStart * 1000)}:all=1[${masterAudioPad}]`
+      );
+      audioInputPads.push(`[${masterAudioPad}]`);
+    }
   }
 
   // Clip audio contributions
@@ -291,55 +298,53 @@ export async function buildExportCommand(
       const inputIdx = assetInputIdxMap.get(clip.assetId);
       if (inputIdx === undefined) continue;
 
-      const vol = clip.clipAudioVolume;
-      const trimFilter = `atrim=start=${clip.sourceStart}:end=${clip.sourceEnd},asetpts=PTS-STARTPTS`;
-      const delayFilter = `adelay=${Math.round(clip.timelineStart * 1000)}:all=1`;
+      const vol = Math.max(0, clip.clipAudioVolume);
       const clipAudioPad = `caudio${filterIdx}`;
       filterParts.push(
-        `[${inputIdx}:a]${trimFilter},${delayFilter},volume=${vol}[${clipAudioPad}]`
+        `[${inputIdx}:a]atrim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},asetpts=PTS-STARTPTS,adelay=${Math.round(clip.timelineStart * 1000)}:all=1,volume=${vol.toFixed(4)}[${clipAudioPad}]`
       );
-      audioInputs.push(`[${clipAudioPad}]`);
+      audioInputPads.push(`[${clipAudioPad}]`);
       filterIdx++;
     }
   }
 
-  let audioOut = 'aout';
-  if (audioInputs.length > 1) {
-    filterParts.push(`${audioInputs.join('')}amix=inputs=${audioInputs.length}:normalize=0[${audioOut}]`);
-  } else if (audioInputs.length === 1) {
-    // pass through
-    audioOut = audioInputs[0].replace(/[\[\]]/g, '');
-    if (audioOut.includes(':')) {
-      // raw stream like 0:a - remap
-      const tmpAudio = 'aout';
-      filterParts.push(`${audioInputs[0]}acopy[${tmpAudio}]`);
-      audioOut = tmpAudio;
-    }
+  // Mix all audio into one named pad [aout]
+  let audioOutPad: string | null = null;
+  if (audioInputPads.length > 1) {
+    filterParts.push(
+      `${audioInputPads.join('')}amix=inputs=${audioInputPads.length}:normalize=0:dropout_transition=0[aout]`
+    );
+    audioOutPad = '[aout]';
+  } else if (audioInputPads.length === 1) {
+    filterParts.push(`${audioInputPads[0]}acopy[aout]`);
+    audioOutPad = '[aout]';
   }
 
-  // Lyrics subtitle filter (if enabled)
-  let outputVideoStream = `[${prevPad}]`;
+  // ─── Subtitle burn-in ─────────────────────────────────────────────────────────
+  let videoOutPad = `[${prevPad}]`;
   if (project.lyrics?.enabled && project.lyrics?.words && project.lyrics.words.length > 0) {
     const projectDir = ws.getProjectDir(project.id);
     const assPath = path.join(projectDir, 'lyrics.ass');
     if (fs.existsSync(assPath)) {
-      const subPad = `subbed`;
-      filterParts.push(`${outputVideoStream}subtitles='${assPath.replace(/'/g, "\\'")}':force_style='Fontsize=24'[${subPad}]`);
-      outputVideoStream = `[${subPad}]`;
+      // Escape path for ffmpeg (forward slashes, escape colons and backslashes)
+      const escapedPath = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+      const subbedPad = `subbed`;
+      filterParts.push(`${videoOutPad}subtitles='${escapedPath}'[${subbedPad}]`);
+      videoOutPad = `[${subbedPad}]`;
     }
   }
 
-  // Build full ffmpeg command
+  // ─── Build final args ─────────────────────────────────────────────────────────
   const filterComplex = filterParts.join('; ');
   const args: string[] = [
     '-y',
     ...inputArgs,
     '-filter_complex', filterComplex,
-    '-map', outputVideoStream,
+    '-map', videoOutPad,
   ];
 
-  if (audioInputs.length > 0) {
-    args.push('-map', `[${audioOut}]`);
+  if (audioOutPad) {
+    args.push('-map', audioOutPad);
   }
 
   args.push(
@@ -350,7 +355,7 @@ export async function buildExportCommand(
     '-r', '30',
   );
 
-  if (audioInputs.length > 0) {
+  if (audioOutPad) {
     args.push('-c:a', 'aac', '-b:a', '192k');
   }
 
@@ -364,22 +369,21 @@ export async function buildExportCommand(
 export function generateAss(lyrics: LyricsData, outputPath: string) {
   const style = lyrics.style ?? {
     fontSize: 48,
-    color: 'FFFFFF',
-    highlightColor: 'FFFF00',
+    color: '#FFFFFF',
+    highlightColor: '#FFE600',
     position: 'bottom',
     wordsPerChunk: 3,
   };
 
-  const alignmentMap = { top: 8, center: 5, bottom: 2 };
+  const alignmentMap: Record<string, number> = { top: 8, center: 5, bottom: 2 };
   const alignment = alignmentMap[style.position] ?? 2;
 
-  const hex2ass = (hex: string) => {
+  const hex2ass = (hex: string): string => {
     const h = hex.replace('#', '');
     if (h.length === 6) {
-      // ASS color is &H00BBGGRR
       return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}&`;
     }
-    return `&H00FFFFFF&`;
+    return '&H00FFFFFF&';
   };
 
   const header = `[Script Info]
@@ -396,7 +400,7 @@ Style: Default,Arial,${style.fontSize},${hex2ass(style.color)},${hex2ass(style.h
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  const toAssTime = (t: number) => {
+  const toAssTime = (t: number): string => {
     const h = Math.floor(t / 3600);
     const m = Math.floor((t % 3600) / 60);
     const s = Math.floor(t % 60);
@@ -405,22 +409,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   };
 
   const words = lyrics.words ?? [];
-  const chunkSize = style.wordsPerChunk;
+  const chunkSize = Math.max(1, style.wordsPerChunk);
   const events: string[] = [];
 
   for (let i = 0; i < words.length; i += chunkSize) {
-    const chunk = words.slice(i, Math.min(i + chunkSize, words.length));
+    const chunk = words.slice(i, i + chunkSize);
     if (chunk.length === 0) continue;
 
-    const chunkStart = chunk[0].start;
-    const chunkEnd = chunk[chunk.length - 1].end;
-
-    // For each word in chunk, show chunk with that word highlighted
     for (let j = 0; j < chunk.length; j++) {
       const w = chunk[j];
       const wordStart = w.start;
-      const wordEnd = j + 1 < chunk.length ? chunk[j + 1].start : chunkEnd;
+      const wordEnd = j + 1 < chunk.length ? chunk[j + 1].start : w.end;
 
+      // Build text: highlight current word
       const textParts = chunk.map((cw, ci) => {
         if (ci === j) {
           return `{\\c${hex2ass(style.highlightColor)}}${cw.word}{\\c${hex2ass(style.color)}}`;

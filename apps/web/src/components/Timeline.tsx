@@ -497,17 +497,19 @@ export default function Timeline({
         if (!clip) return;
 
         const asset = assets.find((a) => a.id === clip!.assetId);
-        const maxSourceDur = asset ? asset.duration : 9999;
+        // Max end is constrained by remaining source duration after current sourceStart
+        const maxSourceRemaining = asset ? asset.duration - clip.sourceStart : 9999;
+        const maxTimelineEnd = clip.timelineStart + maxSourceRemaining;
 
         const snapTargets = getSnapTargets(d.clipId);
         const snapThreshold = SNAP_THRESHOLD_PX / Z;
         t = snap(t, snapTargets, snapThreshold);
-        t = clamp(t, clip.timelineStart + 0.1, clip.timelineStart + maxSourceDur);
+        t = clamp(t, clip.timelineStart + 0.1, maxTimelineEnd);
 
         const dt = t - clip.timelineEnd;
         onClipUpdate(d.clipId, {
           timelineEnd: t,
-          sourceEnd: clip.sourceEnd + dt,
+          sourceEnd: Math.min(clip.sourceEnd + dt, asset ? asset.duration : clip.sourceEnd + dt),
         });
         return;
       }
@@ -657,7 +659,7 @@ function drawWaveform(
   const clipW = (clip.timelineEnd - clip.timelineStart) * zoom;
   const clipDur = clip.timelineEnd - clip.timelineStart;
 
-  if (clipW <= 0) return;
+  if (clipW <= 0 || wf.duration <= 0 || wf.samples.length === 0) return;
 
   ctx.save();
   ctx.beginPath();
