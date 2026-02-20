@@ -172,6 +172,106 @@ export async function assetsRoutes(app: FastifyInstance) {
     return reply.code(202).send({ jobId: job.id });
   });
 
+  // GET /media - list files available in the mounted local media directory
+  app.get('/media', async (_req, reply) => {
+    if (!config.mediaDir) {
+      return reply.code(404).send({ error: 'Local media directory not configured (set MEDIA_DIR env var)' });
+    }
+    if (!fs.existsSync(config.mediaDir)) {
+      return reply.send({ files: [] });
+    }
+    const files = fs.readdirSync(config.mediaDir)
+      .filter((f) => {
+        const ext = path.extname(f).toLowerCase();
+        return ALLOWED_EXTENSIONS.has(ext) && fs.statSync(path.join(config.mediaDir!, f)).isFile();
+      })
+      .map((f) => ({
+        name: f,
+        size: fs.statSync(path.join(config.mediaDir!, f)).size,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return reply.send({ files });
+  });
+
+  // POST /assets/link - link a file from the local media dir without copying
+  app.post<{ Body: { filename: string } }>('/assets/link', async (req, reply) => {
+    if (!config.mediaDir) {
+      return reply.code(400).send({ error: 'Local media directory not configured' });
+    }
+
+    const { filename } = req.body ?? {};
+    if (!filename) return reply.code(400).send({ error: 'filename is required' });
+
+    // Strip path components to prevent traversal
+    const basename = path.basename(filename);
+    const sourcePath = path.join(config.mediaDir, basename);
+
+    // Double-check resolved path is still inside mediaDir
+    if (!path.resolve(sourcePath).startsWith(path.resolve(config.mediaDir))) {
+      return reply.code(400).send({ error: 'Invalid filename' });
+    }
+
+    if (!fs.existsSync(sourcePath)) {
+      return reply.code(404).send({ error: 'File not found in media directory' });
+    }
+
+    const ext = path.extname(basename).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      return reply.code(400).send({ error: `File type not allowed: ${ext}` });
+    }
+
+    const assetId = `asset_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
+    const assetDir = ws.getAssetDir(assetId);
+    fs.mkdirSync(assetDir, { recursive: true });
+
+    // Symlink to the original instead of copying — instant regardless of file size
+    const originalPath = path.join(assetDir, `original${ext}`);
+    fs.symlinkSync(sourcePath, originalPath);
+
+    let probe: ffmpeg.ProbeResult;
+    try {
+      probe = ffmpeg.probeFile(originalPath);
+    } catch (e: any) {
+      fs.rmSync(assetDir, { recursive: true, force: true });
+      return reply.code(400).send({ error: 'Cannot probe file', details: e.message });
+    }
+
+    if (!probe.hasVideo && !probe.hasAudio) {
+      fs.rmSync(assetDir, { recursive: true, force: true });
+      return reply.code(400).send({ error: 'File has no audio or video streams' });
+    }
+
+    const assetType: Asset['type'] = probe.hasVideo ? 'video' : 'audio';
+    const asset: Asset = {
+      id: assetId,
+      name: basename,
+      type: assetType,
+      originalPath: `assets/${assetId}/original${ext}`,
+      duration: probe.duration,
+      width: probe.width,
+      height: probe.height,
+      fps: probe.fps,
+      createdAt: new Date().toISOString(),
+    };
+    ws.upsertAsset(asset);
+
+    // Start import pipeline (proxy + waveform) in background — same as regular import
+    const job = jq.createJob('import', assetId);
+    setImmediate(async () => {
+      try {
+        await ffmpeg.runImportPipeline(job.id, assetId, originalPath, probe);
+        const j = jq.getJob(job.id);
+        if (j) ws.writeJob({ ...j, status: 'DONE', progress: 100, updatedAt: new Date().toISOString() });
+      } catch (e: any) {
+        ws.appendJobLog(job.id, `ERROR: ${e.message}`);
+        const j = jq.getJob(job.id);
+        if (j) ws.writeJob({ ...j, status: 'ERROR', error: e.message, updatedAt: new Date().toISOString() });
+      }
+    });
+
+    return reply.code(202).send({ jobId: job.id, assetId });
+  });
+
   // POST /assets/:id/cutout - start cutout mask generation
   app.post<{ Params: { id: string } }>('/assets/:id/cutout', async (req, reply) => {
     const asset = ws.getAsset(req.params.id);

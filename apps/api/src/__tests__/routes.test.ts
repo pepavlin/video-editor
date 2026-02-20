@@ -18,6 +18,7 @@ vi.mock('../config', () => ({
     port: 3001,
     host: '0.0.0.0',
     corsOrigin: 'http://localhost:3000',
+    mediaDir: null,
   },
 }));
 
@@ -543,6 +544,138 @@ describe('GET /api/jobs/:id/output', () => {
     const res = await app.inject({ method: 'GET', url: `/api/jobs/${jobId}/output` });
     // Should reject: /etc/passwd is outside workspace
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+// ─── Local media browser ──────────────────────────────────────────────────────
+
+describe('GET /api/media', () => {
+  it('returns 404 when mediaDir is not configured', async () => {
+    (config as any).mediaDir = null;
+    const app = await buildTestApp();
+    const res = await app.inject({ method: 'GET', url: '/api/media' });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('returns empty files array when mediaDir exists but is empty', async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 've-media-'));
+    (config as any).mediaDir = mediaDir;
+    const app = await buildTestApp();
+    const res = await app.inject({ method: 'GET', url: '/api/media' });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).files).toEqual([]);
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+    await app.close();
+  });
+
+  it('returns only allowed file types', async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 've-media-'));
+    fs.writeFileSync(path.join(mediaDir, 'clip.mp4'), 'fake');
+    fs.writeFileSync(path.join(mediaDir, 'audio.mp3'), 'fake');
+    fs.writeFileSync(path.join(mediaDir, 'readme.txt'), 'text');
+    (config as any).mediaDir = mediaDir;
+    const app = await buildTestApp();
+    const res = await app.inject({ method: 'GET', url: '/api/media' });
+    expect(res.statusCode).toBe(200);
+    const { files } = JSON.parse(res.body);
+    const names = files.map((f: { name: string }) => f.name);
+    expect(names).toContain('clip.mp4');
+    expect(names).toContain('audio.mp3');
+    expect(names).not.toContain('readme.txt');
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+    await app.close();
+  });
+});
+
+describe('POST /api/assets/link', () => {
+  it('returns 400 when mediaDir is not configured', async () => {
+    (config as any).mediaDir = null;
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/link',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename: 'clip.mp4' }),
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('returns 400 when filename is missing', async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 've-media-'));
+    (config as any).mediaDir = mediaDir;
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/link',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.statusCode).toBe(400);
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+    await app.close();
+  });
+
+  it('returns 404 when file does not exist in mediaDir', async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 've-media-'));
+    (config as any).mediaDir = mediaDir;
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/link',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename: 'missing.mp4' }),
+    });
+    expect(res.statusCode).toBe(404);
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+    await app.close();
+  });
+
+  it('blocks path traversal attempts', async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 've-media-'));
+    (config as any).mediaDir = mediaDir;
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/link',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename: '../../../etc/passwd' }),
+    });
+    // basename strips the traversal, so the file simply won't exist in mediaDir
+    expect(res.statusCode).toBe(404);
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+    await app.close();
+  });
+
+  it('creates asset with symlink and starts import job', async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 've-media-'));
+    fs.writeFileSync(path.join(mediaDir, 'clip.mp4'), 'fake-video');
+    (config as any).mediaDir = mediaDir;
+
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/link',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename: 'clip.mp4' }),
+    });
+    expect(res.statusCode).toBe(202);
+    const body = JSON.parse(res.body);
+    expect(body.assetId).toBeTruthy();
+    expect(body.jobId).toBeTruthy();
+
+    // Asset should be registered
+    const asset = ws.getAsset(body.assetId);
+    expect(asset).toBeTruthy();
+    expect(asset!.name).toBe('clip.mp4');
+
+    // Original path should be a symlink
+    const originalAbs = path.join(tmpDir, asset!.originalPath);
+    expect(fs.lstatSync(originalAbs).isSymbolicLink()).toBe(true);
+
+    fs.rmSync(mediaDir, { recursive: true, force: true });
     await app.close();
   });
 });

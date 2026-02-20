@@ -50,6 +50,18 @@ export async function startCutout(assetId: string): Promise<{ jobId: string }> {
   return apiFetch(`/assets/${assetId}/cutout`, { method: 'POST' });
 }
 
+export async function listMediaFiles(): Promise<{ files: Array<{ name: string; size: number }> }> {
+  return apiFetch('/media');
+}
+
+export async function linkAsset(filename: string): Promise<{ jobId: string; assetId: string }> {
+  return apiFetch('/assets/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename }),
+  });
+}
+
 // ─── Projects ────────────────────────────────────────────────────────────────
 
 export async function createProject(name: string): Promise<{ id: string; project: Project }> {

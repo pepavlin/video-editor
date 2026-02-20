@@ -10,4 +10,7 @@ export const config = {
   ffmpegBin: process.env.FFMPEG_BIN ?? 'ffmpeg',
   ffprobeBin: process.env.FFPROBE_BIN ?? 'ffprobe',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+  // Optional: local media directory mounted into the container.
+  // When set, files can be linked without uploading (POST /assets/link).
+  mediaDir: process.env.MEDIA_DIR || null,
 };

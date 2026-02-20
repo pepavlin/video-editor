@@ -15,6 +15,14 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mediaFiles, setMediaFiles] = useState<Array<{ name: string; size: number }> | null>(null);
+  const [showBrowser, setShowBrowser] = useState(false);
+
+  useEffect(() => {
+    api.listMediaFiles()
+      .then(({ files }) => setMediaFiles(files))
+      .catch(() => setMediaFiles(null)); // null = feature not available
+  }, []);
 
   const handleImport = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -66,6 +74,29 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
     e.dataTransfer.effectAllowed = 'copy';
   };
 
+  const handleLinkFile = async (filename: string) => {
+    setShowBrowser(false);
+    try {
+      const { jobId, assetId } = await api.linkAsset(filename);
+      setImportProgress((p) => ({ ...p, [assetId]: 0 }));
+      api.pollJob(
+        jobId,
+        (job) => setImportProgress((p) => ({ ...p, [assetId]: job.progress })),
+        800
+      ).then(() => {
+        setImportProgress((p) => { const n = { ...p }; delete n[assetId]; return n; });
+        onAssetsChange();
+        // Refresh media file list in case file was already there
+        api.listMediaFiles().then(({ files }) => setMediaFiles(files)).catch(() => {});
+      }).catch((e) => {
+        console.error('Link failed', e);
+        setImportProgress((p) => { const n = { ...p }; delete n[assetId]; return n; });
+      });
+    } catch (e) {
+      console.error('Link error', e);
+    }
+  };
+
   return (
     <div
       className="flex flex-col h-full"
@@ -73,8 +104,17 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
       onDragOver={handleDragOver}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Media</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border gap-1">
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex-1">Media</span>
+        {mediaFiles !== null && (
+          <button
+            className="btn text-xs py-1 px-2 bg-surface-hover hover:bg-surface-border text-gray-300"
+            onClick={() => setShowBrowser((v) => !v)}
+            title="Browse files from the mounted local media directory"
+          >
+            Local
+          </button>
+        )}
         <button
           className="btn btn-primary text-xs py-1"
           onClick={() => fileInputRef.current?.click()}
@@ -91,6 +131,35 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
           onChange={(e) => handleImport(e.target.files)}
         />
       </div>
+
+      {/* Local media browser panel */}
+      {showBrowser && mediaFiles !== null && (
+        <div className="border-b border-surface-border bg-surface-hover">
+          <div className="px-3 py-1.5 flex items-center justify-between">
+            <span className="text-xs text-gray-400">Local files</span>
+            <button className="text-xs text-gray-600 hover:text-gray-400" onClick={() => setShowBrowser(false)}>✕</button>
+          </div>
+          {mediaFiles.length === 0 ? (
+            <p className="px-3 pb-2 text-xs text-gray-600">
+              No files found. Put media files in the mounted directory or set <code>LOCAL_MEDIA_DIR</code> in your <code>.env</code>.
+            </p>
+          ) : (
+            <div className="max-h-48 overflow-y-auto">
+              {mediaFiles.map((f) => (
+                <button
+                  key={f.name}
+                  className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-surface-border truncate block"
+                  onClick={() => handleLinkFile(f.name)}
+                  title={f.name}
+                >
+                  {f.name}
+                  <span className="text-gray-600 ml-1">({(f.size / 1024 / 1024).toFixed(1)} MB)</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Drop zone hint + assets list */}
       <div className="flex-1 overflow-y-auto">

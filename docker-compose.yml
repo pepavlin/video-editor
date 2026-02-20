@@ -10,8 +10,11 @@ services:
       - "3001:3001"
     volumes:
       - workspace:/data/workspace
-      # Development: mount source for hot-reload (optional)
-      # - ./apps/api/src:/app/apps/api/src
+      # Mount a local media directory so files can be linked without uploading.
+      # Set LOCAL_MEDIA_DIR to your video folder in a .env file or as an env var.
+      # Example:  LOCAL_MEDIA_DIR=/Users/me/Movies docker compose up
+      # Default:  empty named volume (browse panel shows "No files found").
+      - ${LOCAL_MEDIA_DIR:-media_dir}:/data/media:ro
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -22,6 +25,7 @@ services:
       FFMPEG_BIN: ffmpeg
       FFPROBE_BIN: ffprobe
       CORS_ORIGIN: http://localhost:3000
+      MEDIA_DIR: /data/media
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -49,4 +53,6 @@ services:
 
 volumes:
   workspace:
+    driver: local
+  media_dir:
     driver: local
