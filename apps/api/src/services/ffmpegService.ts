@@ -206,8 +206,19 @@ export function buildExportCommand(
   const filterParts: string[] = [];
   let filterIdx = 0;
 
-  // Base canvas (black background at 30fps)
-  filterParts.push(`color=c=black:s=${W}x${H}:r=30[base]`);
+  // Compute effective project duration from clips if project.duration is 0
+  let effectiveDuration = project.duration;
+  if (effectiveDuration <= 0) {
+    for (const track of project.tracks) {
+      for (const clip of track.clips) {
+        if (clip.timelineEnd > effectiveDuration) effectiveDuration = clip.timelineEnd;
+      }
+    }
+  }
+  if (effectiveDuration <= 0) effectiveDuration = 1; // safety fallback
+
+  // Base canvas (black background at 30fps) — explicit duration so the stream ends
+  filterParts.push(`color=c=black:s=${W}x${H}:r=30:duration=${effectiveDuration.toFixed(4)}[base]`);
   let prevPad = 'base';
 
   // Video clips
@@ -348,6 +359,7 @@ export function buildExportCommand(
   }
 
   args.push(
+    '-t', effectiveDuration.toFixed(4),   // hard stop — prevents infinite encoding
     '-c:v', 'libx264',
     '-preset', PRESET,
     '-crf', String(CRF),

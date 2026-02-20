@@ -164,9 +164,32 @@ export default function Editor() {
   const refreshAssetsRef = useRef(refreshAssets);
   useEffect(() => { refreshAssetsRef.current = refreshAssets; }, [refreshAssets]);
 
+  // Persist open project ID to URL and restore on page load
+  const setUrlProject = (id: string | null) => {
+    const url = id ? `?p=${id}` : window.location.pathname;
+    window.history.replaceState(null, '', url);
+  };
+
   useEffect(() => {
-    refreshAssetsRef.current();
     refreshProjects();
+
+    const params = new URLSearchParams(window.location.search);
+    const urlProjectId = params.get('p');
+    if (urlProjectId) {
+      projectHook.loadProject(urlProjectId)
+        .then(() => {
+          refreshAssetsRef.current();
+          setShowProjectPicker(false);
+        })
+        .catch(() => {
+          // Project not found — clear stale URL param and show picker
+          setUrlProject(null);
+          refreshAssetsRef.current();
+        });
+    } else {
+      refreshAssetsRef.current();
+    }
+
     const iv = setInterval(() => refreshAssetsRef.current(), 3000);
     return () => clearInterval(iv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -310,7 +333,8 @@ export default function Editor() {
               placeholder="Project name"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  createProject(newProjectName).then(() => {
+                  createProject(newProjectName).then((proj) => {
+                    if (proj?.id) setUrlProject(proj.id);
                     refreshAssets();
                     setShowProjectPicker(false);
                   });
@@ -320,7 +344,8 @@ export default function Editor() {
             <button
               className="btn btn-primary w-full py-2.5"
               onClick={async () => {
-                await createProject(newProjectName);
+                const proj = await createProject(newProjectName);
+                if (proj?.id) setUrlProject(proj.id);
                 await refreshAssets();
                 setShowProjectPicker(false);
               }}
@@ -353,6 +378,7 @@ export default function Editor() {
                     }}
                     onClick={async () => {
                       await projectHook.loadProject(p.id);
+                      setUrlProject(p.id);
                       await refreshAssets();
                       setShowProjectPicker(false);
                     }}

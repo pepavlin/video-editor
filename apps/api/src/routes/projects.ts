@@ -228,12 +228,23 @@ export async function projectsRoutes(app: FastifyInstance) {
         await new Promise<void>((resolve, reject) => {
           const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
-          const updateProgress = (line: string) => {
+          // Use effective duration (from clips) in case project.duration is 0
+        let effectiveDuration = project.duration;
+        if (effectiveDuration <= 0) {
+          for (const track of project.tracks) {
+            for (const clip of track.clips) {
+              if (clip.timelineEnd > effectiveDuration) effectiveDuration = clip.timelineEnd;
+            }
+          }
+        }
+        if (effectiveDuration <= 0) effectiveDuration = 1;
+
+        const updateProgress = (line: string) => {
             ws.appendJobLog(job.id, line);
             const timeMatch = line.match(/time=(\d+):(\d+):(\d+\.\d+)/);
             if (timeMatch) {
               const t = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
-              const pct = Math.min(99, Math.round((t / Math.max(project.duration, 1)) * 100));
+              const pct = Math.min(99, Math.round((t / effectiveDuration) * 100));
               jq.setJobProgress(job.id, pct);
             }
           };
