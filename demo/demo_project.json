@@ -1,0 +1,93 @@
+{
+  "id": "proj_demo000001",
+  "name": "Demo Short - Music Video",
+  "duration": 40,
+  "aspectRatio": "9:16",
+  "outputResolution": { "w": 1080, "h": 1920 },
+  "tracks": [
+    {
+      "id": "track_v1_demo",
+      "type": "video",
+      "name": "Video 1",
+      "muted": false,
+      "clips": [
+        {
+          "id": "clip_demo_v1_1",
+          "assetId": "REPLACE_WITH_YOUR_ASSET_ID",
+          "trackId": "track_v1_demo",
+          "timelineStart": 0,
+          "timelineEnd": 10,
+          "sourceStart": 0,
+          "sourceEnd": 10,
+          "useClipAudio": false,
+          "clipAudioVolume": 1,
+          "transform": { "scale": 1, "x": 0, "y": 0, "rotation": 0, "opacity": 1 },
+          "effects": [
+            {
+              "type": "beatZoom",
+              "enabled": true,
+              "intensity": 0.06,
+              "durationMs": 120,
+              "easing": "easeOut"
+            }
+          ]
+        },
+        {
+          "id": "clip_demo_v1_2",
+          "assetId": "REPLACE_WITH_YOUR_ASSET_ID",
+          "trackId": "track_v1_demo",
+          "timelineStart": 10,
+          "timelineEnd": 20,
+          "sourceStart": 5,
+          "sourceEnd": 15,
+          "useClipAudio": false,
+          "clipAudioVolume": 1,
+          "transform": { "scale": 1, "x": 0, "y": 0, "rotation": 0, "opacity": 1 },
+          "effects": []
+        }
+      ]
+    },
+    {
+      "id": "track_v2_demo",
+      "type": "video",
+      "name": "Video 2",
+      "muted": false,
+      "clips": []
+    },
+    {
+      "id": "track_master_demo",
+      "type": "audio",
+      "isMaster": true,
+      "name": "Master Audio",
+      "muted": false,
+      "clips": [
+        {
+          "id": "clip_demo_audio_1",
+          "assetId": "REPLACE_WITH_YOUR_AUDIO_ASSET_ID",
+          "trackId": "track_master_demo",
+          "timelineStart": 0,
+          "timelineEnd": 40,
+          "sourceStart": 0,
+          "sourceEnd": 40,
+          "useClipAudio": true,
+          "clipAudioVolume": 1,
+          "transform": { "scale": 1, "x": 0, "y": 0, "rotation": 0, "opacity": 1 },
+          "effects": []
+        }
+      ]
+    }
+  ],
+  "lyrics": {
+    "text": "Example lyrics here\nWord by word aligned\nTo the beat of the song",
+    "enabled": false,
+    "style": {
+      "fontSize": 48,
+      "color": "#FFFFFF",
+      "highlightColor": "#FFE600",
+      "position": "bottom",
+      "wordsPerChunk": 3
+    }
+  },
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}

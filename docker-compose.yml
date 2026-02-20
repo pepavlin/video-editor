@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: video-editor-api
+    ports:
+      - "3001:3001"
+    volumes:
+      - workspace:/data/workspace
+      # Development: mount source for hot-reload (optional)
+      # - ./apps/api/src:/app/apps/api/src
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      WORKSPACE_DIR: /data/workspace
+      SCRIPTS_DIR: /app/scripts
+      PYTHON_BIN: python3
+      FFMPEG_BIN: ffmpeg
+      FFPROBE_BIN: ffprobe
+      CORS_ORIGIN: http://localhost:3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
+    container_name: video-editor-web
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  workspace:
+    driver: local

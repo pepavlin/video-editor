@@ -1,0 +1,65 @@
+FROM node:20-slim
+
+# Install system deps: ffmpeg, python3, pip
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy root workspace config + lockfile first (for cache layering)
+COPY package.json package-lock.json ./
+
+# Copy ALL workspace package.json files so npm can resolve the monorepo
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+# Create empty web package.json so npm workspace glob doesn't fail
+COPY apps/web/package.json ./apps/web/
+
+# Install Node dependencies (root-level installs all workspaces)
+RUN npm ci --ignore-scripts
+
+# Build shared package
+COPY packages/shared/tsconfig.json ./packages/shared/
+COPY packages/shared/src ./packages/shared/src
+RUN npm run build -w packages/shared
+
+# Copy API source
+COPY apps/api/tsconfig.json ./apps/api/
+COPY apps/api/src ./apps/api/src
+
+# Copy Python scripts
+COPY scripts ./scripts
+
+# Install Python dependencies (lightweight core ones, skip Whisper/torch by default)
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir --break-system-packages librosa soundfile numpy \
+    || pip3 install --no-cache-dir librosa soundfile numpy
+
+# Optional: Whisper for lyrics alignment (comment in to enable, adds ~1.5GB)
+# RUN pip3 install --no-cache-dir --break-system-packages openai-whisper \
+#     || pip3 install --no-cache-dir openai-whisper
+
+# Build API
+RUN npm run build -w apps/api
+
+# Workspace data directory
+RUN mkdir -p /data/workspace
+
+ENV NODE_ENV=production
+ENV WORKSPACE_DIR=/data/workspace
+ENV SCRIPTS_DIR=/app/scripts
+ENV PYTHON_BIN=python3
+ENV FFMPEG_BIN=ffmpeg
+ENV FFPROBE_BIN=ffprobe
+ENV PORT=3001
+ENV HOST=0.0.0.0
+ENV CORS_ORIGIN=http://localhost:3000
+
+EXPOSE 3001
+
+CMD ["node", "apps/api/dist/index.js"]

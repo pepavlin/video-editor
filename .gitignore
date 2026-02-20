@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+*.log
+.env
+.env.local
+workspace/
+tmp/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.DS_Store
