@@ -56,19 +56,19 @@ export function easeInOut(t: number): number {
 
 // ─── Beat zoom scale at time t ────────────────────────────────────────────────
 
+// beats[] contains absolute timeline timestamps (= song time, since master audio starts at 0).
+// t is also absolute timeline time. Compare directly without any offset.
 export function getBeatZoomScale(
   t: number,
   beats: number[],
-  clipTimelineStart: number,
   intensity: number,
   durationMs: number,
   easing: string
 ): number {
   const dur = durationMs / 1000;
   for (const beat of beats) {
-    const localBeat = beat - clipTimelineStart;
-    if (t >= localBeat && t < localBeat + dur) {
-      const progress = (t - localBeat) / dur;
+    if (t >= beat && t < beat + dur) {
+      const progress = (t - beat) / dur;
       const invProgress = 1 - progress; // zoom then release
       let e: number;
       if (easing === 'easeOut') e = easeOut(invProgress);

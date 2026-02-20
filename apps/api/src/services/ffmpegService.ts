@@ -249,11 +249,13 @@ export function buildExportCommand(
       const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS`;
 
       // Beat Zoom filter - use scale+crop to keep canvas size
+      // Beats come from the master audio asset, not from the individual video clip's asset
       let zoomFilter = '';
       const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
-      const assetBeats = beatsMap.get(clip.assetId);
-      if (beatZoomEffect?.enabled && assetBeats) {
-        const beatsInClip = assetBeats.beats.filter(
+      const masterAudioClip2 = masterAudioTrack?.clips[0];
+      const masterBeats = masterAudioClip2 ? beatsMap.get(masterAudioClip2.assetId) : undefined;
+      if (beatZoomEffect?.enabled && masterBeats) {
+        const beatsInClip = masterBeats.beats.filter(
           (b) => b >= clip.timelineStart && b <= clip.timelineEnd
         );
         if (beatsInClip.length > 0) {

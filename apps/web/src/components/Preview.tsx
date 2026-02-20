@@ -89,6 +89,11 @@ export default function Preview({
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
+    // Beats come from the master audio asset, not individual video clips
+    const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
+    const masterClip = masterTrack?.clips[0];
+    const masterBeats = masterClip ? beatsData.get(masterClip.assetId) : undefined;
+
     // Render video tracks (bottom to top)
     const videoTracks = project.tracks.filter((t) => t.type === 'video' && !t.muted);
 
@@ -131,20 +136,16 @@ export default function Preview({
         const transform = clip.transform;
         let scale = transform.scale;
 
-        // Apply beat zoom effect
+        // Apply beat zoom effect (beats come from master audio, not the video asset)
         const beatZoom = clip.effects.find((e) => e.type === 'beatZoom');
-        if (beatZoom && beatZoom.type === 'beatZoom' && beatZoom.enabled) {
-          const beats = beatsData.get(asset.id);
-          if (beats) {
-            scale *= getBeatZoomScale(
-              currentTime,
-              beats.beats,
-              clip.timelineStart,
-              beatZoom.intensity,
-              beatZoom.durationMs,
-              beatZoom.easing
-            );
-          }
+        if (beatZoom && beatZoom.type === 'beatZoom' && beatZoom.enabled && masterBeats) {
+          scale *= getBeatZoomScale(
+            currentTime,
+            masterBeats.beats,
+            beatZoom.intensity,
+            beatZoom.durationMs,
+            beatZoom.easing
+          );
         }
 
         ctx.save();

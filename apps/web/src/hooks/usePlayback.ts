@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Project, Asset, BeatsData } from '@video-editor/shared';
-import { getBeatZoomScale } from '@/lib/utils';
 
 export interface PlaybackControls {
   isPlaying: boolean;
