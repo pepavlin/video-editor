@@ -1,9 +1,26 @@
 FROM node:20-slim
 
+# Replace Debian sources with snapshot.debian.org to bypass CDN cache inconsistencies.
+# node:20-slim uses DEB822 format in sources.list.d/debian.sources (no sources.list).
+RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/10snapshot \
+    && printf '%s\n' \
+    'Types: deb' \
+    'URIs: http://snapshot.debian.org/archive/debian/20260202T000000Z/' \
+    'Suites: bookworm bookworm-updates' \
+    'Components: main' \
+    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+    '' \
+    'Types: deb' \
+    'URIs: http://snapshot.debian.org/archive/debian-security/20260202T000000Z/' \
+    'Suites: bookworm-security' \
+    'Components: main' \
+    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+    > /etc/apt/sources.list.d/debian.sources
+
 # Install system deps: ffmpeg, python3, pip
 RUN rm -rf /var/lib/apt/lists/* \
     && apt-get update \
-    && apt-get install -y --fix-missing \
+    && apt-get install -y \
     ffmpeg \
     python3 \
     python3-pip \
@@ -39,8 +56,8 @@ COPY scripts ./scripts
 
 # Install Python dependencies (lightweight core ones, skip Whisper/torch by default)
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages librosa soundfile numpy \
-    || pip3 install --no-cache-dir librosa soundfile numpy
+RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: librosa soundfile numpy \
+    || pip3 install --no-cache-dir --only-binary=:all: librosa soundfile numpy
 
 # Optional: Whisper for lyrics alignment (comment in to enable, adds ~1.5GB)
 # RUN pip3 install --no-cache-dir --break-system-packages openai-whisper \
