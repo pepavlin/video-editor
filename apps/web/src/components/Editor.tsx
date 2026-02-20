@@ -339,16 +339,26 @@ export default function Editor() {
                     key={p.id}
                     className="w-full text-left rounded-xl p-3 transition-all duration-150"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,160,0.1)'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseEnter={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = 'rgba(0,212,160,0.09)';
+                      el.style.borderColor = 'rgba(0,212,160,0.28)';
+                      el.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = 'rgba(255,255,255,0.04)';
+                      el.style.borderColor = 'rgba(255,255,255,0.07)';
+                      el.style.transform = '';
+                    }}
                     onClick={async () => {
                       await projectHook.loadProject(p.id);
                       await refreshAssets();
                       setShowProjectPicker(false);
                     }}
                   >
-                    <div className="text-sm text-gray-200 font-medium">{p.name}</div>
-                    <div className="text-xs text-gray-600 mt-0.5">{new Date(p.updatedAt).toLocaleDateString()}</div>
+                    <div className="text-sm font-medium" style={{ color: '#d0ece6' }}>{p.name}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
                   </button>
                 ))}
               </div>
@@ -365,11 +375,12 @@ export default function Editor() {
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center px-4 h-11 flex-shrink-0 gap-4 border-b"
+        className="flex items-center px-4 h-12 flex-shrink-0 gap-4 border-b"
         style={{
-          background: 'rgba(8,16,28,0.94)',
-          backdropFilter: 'blur(20px)',
-          borderColor: 'rgba(0,212,160,0.18)',
+          background: 'rgba(10,18,32,0.96)',
+          backdropFilter: 'blur(24px)',
+          borderColor: 'rgba(255,255,255,0.08)',
+          boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.10)',
         }}
       >
         <span className="font-semibold text-gradient text-sm">
@@ -391,7 +402,7 @@ export default function Editor() {
           Projects
         </button>
 
-        <div className="w-px h-4 bg-surface-border" />
+        <div className="w-px h-4" style={{ background: 'rgba(255,255,255,0.1)' }} />
 
         <button
           className="btn btn-ghost text-base px-2 py-1 disabled:opacity-25"
@@ -417,7 +428,7 @@ export default function Editor() {
         {/* Left: Media Bin */}
         <div
           className="flex-shrink-0 border-r panel flex flex-col"
-          style={{ width: leftWidth, borderColor: 'rgba(0,212,160,0.18)' }}
+          style={{ width: leftWidth, borderColor: 'rgba(255,255,255,0.07)' }}
         >
           <MediaBin assets={assets} onAssetsChange={refreshAssets} />
         </div>
@@ -425,7 +436,7 @@ export default function Editor() {
         {/* Left resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(0,212,160,0.07)' }}
+          style={{ width: 4, background: 'rgba(255,255,255,0.04)' }}
           onMouseDown={onLeftResize}
         />
 
@@ -466,14 +477,14 @@ export default function Editor() {
           {/* Timeline resize handle */}
           <div
             className="resize-handle-v flex-shrink-0 transition-colors duration-100"
-            style={{ height: 4, background: 'rgba(0,212,160,0.07)', borderTop: '1px solid rgba(0,212,160,0.18)' }}
+            style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(255,255,255,0.07)' }}
             onMouseDown={onTimelineResize}
           />
 
           {/* Timeline */}
           <div
             className="flex-shrink-0 overflow-x-auto"
-            style={{ height: timelineHeight, borderTop: '1px solid rgba(0,212,160,0.18)' }}
+            style={{ height: timelineHeight, borderTop: '1px solid rgba(255,255,255,0.07)' }}
           >
             <Timeline
               project={project}
@@ -495,14 +506,14 @@ export default function Editor() {
         {/* Right resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(0,212,160,0.07)' }}
+          style={{ width: 4, background: 'rgba(255,255,255,0.04)' }}
           onMouseDown={onRightResize}
         />
 
         {/* Right: Inspector */}
         <div
           className="flex-shrink-0 border-l panel flex flex-col overflow-y-auto"
-          style={{ width: rightWidth, borderColor: 'rgba(0,212,160,0.18)' }}
+          style={{ width: rightWidth, borderColor: 'rgba(255,255,255,0.07)' }}
         >
           <Inspector
             project={project}
@@ -527,7 +538,7 @@ export default function Editor() {
           {jobNotifications.map((msg, i) => (
             <div
               key={i}
-              className="glass rounded-xl px-4 py-3 text-xs text-gray-200 shadow-panel flex items-center gap-2"
+              className="glass rounded-xl px-4 py-3 text-xs text-gray-200 shadow-panel flex items-center gap-2 toast-enter"
               style={{ minWidth: 220 }}
             >
               <span

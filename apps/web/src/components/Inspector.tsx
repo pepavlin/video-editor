@@ -30,23 +30,44 @@ interface Props {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="border-b border-surface-border">
+    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
       <button
-        className="flex items-center justify-between w-full px-3 py-2 text-left hover:bg-surface-hover"
+        className="flex items-center justify-between w-full px-3 py-2.5 text-left"
+        style={{ transition: 'background 0.15s ease' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(0,212,160,0.75)' }}>{title}</span>
-        <span className="text-gray-600">{open ? '▾' : '▸'}</span>
+        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.85)', letterSpacing: '0.08em' }}>
+          {title}
+        </span>
+        <span style={{
+          color: 'rgba(0,212,160,0.45)',
+          display: 'inline-block',
+          fontSize: 12,
+          transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+          transition: 'transform 0.2s cubic-bezier(0.4,0,0.2,1)',
+        }}>▾</span>
       </button>
-      {open && <div className="px-3 pb-3 space-y-2">{children}</div>}
+      {/* CSS grid trick for smooth height animation */}
+      <div className={`section-body ${open ? 'open' : 'closed'}`}>
+        <div className="section-inner">
+          <div className="px-3 pb-3 space-y-2">{children}</div>
+        </div>
+      </div>
     </div>
   );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 w-16 flex-shrink-0">{label}</span>
+    <div
+      className="flex items-center gap-2 rounded-md px-1 py-0.5 -mx-1"
+      style={{ transition: 'background 0.12s ease' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+    >
+      <span className="text-xs w-16 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.38)' }}>{label}</span>
       <div className="flex-1">{children}</div>
     </div>
   );
@@ -394,7 +415,10 @@ export default function Inspector({
           </Section>
         </>
       ) : (
-        <div className="p-3 text-xs text-gray-600">Select a clip to inspect</div>
+        <div className="flex flex-col items-center justify-center h-28 gap-2" style={{ color: 'rgba(255,255,255,0.2)' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
+          <span className="text-xs">Select a clip to inspect</span>
+        </div>
       )}
 
       {/* Lyrics */}

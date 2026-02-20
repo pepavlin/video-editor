@@ -110,7 +110,7 @@ export default function Timeline({
     const SL = scrollLeftRef.current;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#0b1623';
+    ctx.fillStyle = '#0e1a2e';
     ctx.fillRect(0, 0, W, H);
 
     if (!project) {
@@ -125,7 +125,7 @@ export default function Timeline({
     const tracks = project.tracks;
 
     // ─── Ruler ────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#091420';
+    ctx.fillStyle = '#0b1826';
     ctx.fillRect(HEADER_WIDTH, 0, timeWidth, RULER_HEIGHT);
 
     // Determine tick interval
@@ -187,7 +187,7 @@ export default function Timeline({
       const isAudio = track.type === 'audio';
 
       // Track header
-      ctx.fillStyle = '#0c1d2e';
+      ctx.fillStyle = '#101f33';
       ctx.fillRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
       ctx.strokeStyle = 'rgba(0,212,160,0.18)';
       ctx.lineWidth = 1;
@@ -601,7 +601,7 @@ export default function Timeline({
       className="relative"
       style={{
         height: `${RULER_HEIGHT + (project?.tracks.length ?? 3) * TRACK_HEIGHT + 8}px`,
-        background: '#0b1623',
+        background: '#0e1a2e',
       }}
     >
       <canvas
