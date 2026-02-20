@@ -38,7 +38,7 @@ def detect_beats(audio_path: str, output_path: str) -> None:
     ).tolist()
 
     result = {
-        "tempo": float(tempo) if hasattr(tempo, '__float__') else float(tempo[0]),
+        "tempo": float(np.asarray(tempo).flat[0]),
         "beats": beat_times_refined,
         "beat_count": len(beat_times_refined),
         "duration": float(len(y) / sr),

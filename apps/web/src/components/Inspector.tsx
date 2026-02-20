@@ -22,7 +22,6 @@ interface Props {
   onUpdateEffect: (clipId: string, type: string, updates: any) => void;
   onUpdateProject: (updater: (p: Project) => Project) => void;
   masterAssetId?: string;
-  onAnalyzeBeats: (assetId: string) => Promise<void>;
   onAlignLyrics: (text: string) => Promise<void>;
   onStartCutout: (clipId: string) => Promise<void>;
   onExport: () => Promise<void>;
@@ -89,14 +88,12 @@ export default function Inspector({
   onUpdateEffect,
   onUpdateProject,
   masterAssetId,
-  onAnalyzeBeats,
   onAlignLyrics,
   onStartCutout,
   onExport,
 }: Props) {
   const [lyricsText, setLyricsText] = useState('');
   const [aligningLyrics, setAligningLyrics] = useState(false);
-  const [analyzingBeats, setAnalyzingBeats] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
 
@@ -123,16 +120,6 @@ export default function Inspector({
       await onAlignLyrics(lyricsText);
     } finally {
       setAligningLyrics(false);
-    }
-  };
-
-  const handleAnalyzeBeats = async () => {
-    if (!masterAssetId) return;
-    setAnalyzingBeats(true);
-    try {
-      await onAnalyzeBeats(masterAssetId);
-    } finally {
-      setAnalyzingBeats(false);
     }
   };
 
@@ -409,21 +396,6 @@ export default function Inspector({
       ) : (
         <div className="p-3 text-xs text-gray-600">Select a clip to inspect</div>
       )}
-
-      {/* Beat Analysis */}
-      <Section title="Beat Analysis">
-        {masterAssetId ? (
-          <button
-            className="btn btn-ghost border border-surface-border w-full text-xs"
-            onClick={handleAnalyzeBeats}
-            disabled={analyzingBeats}
-          >
-            {analyzingBeats ? 'Analyzing...' : 'Analyze Beats'}
-          </button>
-        ) : (
-          <p className="text-xs text-gray-600">Add a master audio clip first</p>
-        )}
-      </Section>
 
       {/* Lyrics */}
       <Section title="Lyrics / Text">

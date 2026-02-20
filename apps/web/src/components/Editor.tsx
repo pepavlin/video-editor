@@ -11,6 +11,7 @@ import Preview from './Preview';
 import Timeline from './Timeline';
 import Inspector from './Inspector';
 import TransportControls from './TransportControls';
+import ProjectBar from './ProjectBar';
 
 // ─── Resize handle ───────────────────────────────────────────────────────────
 
@@ -180,15 +181,19 @@ export default function Editor() {
   const masterTrack = project?.tracks.find((t) => t.type === 'audio' && t.isMaster);
   const masterClip = masterTrack?.clips[0];
   const masterAssetId = masterClip?.assetId;
+  const masterAsset = masterAssetId ? assets.find((a) => a.id === masterAssetId) ?? null : null;
 
-  const handleAnalyzeBeats = async (assetId: string) => {
+  const handleAnalyzeBeats = async (assetId?: string) => {
+    const id = assetId ?? masterAssetId;
+    if (!id) return;
     notify('Starting beat analysis...');
     try {
-      const { jobId } = await api.analyzeBeats(assetId);
+      const { jobId } = await api.analyzeBeats(id);
       await api.pollJob(jobId, (j) => notify(`Beats: ${j.progress}%`));
-      const beats = await api.getBeats(assetId);
-      setBeatsData((prev) => new Map(prev).set(assetId, beats));
+      const beats = await api.getBeats(id);
+      setBeatsData((prev) => new Map(prev).set(id, beats));
       notify('Beat analysis done!');
+      refreshAssets();
     } catch (e: any) { notify(`Beat analysis failed: ${e.message}`); }
   };
 
@@ -376,6 +381,14 @@ export default function Editor() {
 
         {/* Center: Preview + Transport + Timeline */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          {/* Project bar (global: master, beats, export) */}
+          <ProjectBar
+            masterAsset={masterAsset}
+            beatsData={beatsData}
+            onAnalyzeBeats={handleAnalyzeBeats}
+            onExport={handleExport}
+          />
+
           {/* Transport */}
           <TransportControls
             isPlaying={playback.isPlaying}
@@ -445,7 +458,6 @@ export default function Editor() {
             onUpdateEffect={updateEffect}
             onUpdateProject={updateProject}
             masterAssetId={masterAssetId}
-            onAnalyzeBeats={handleAnalyzeBeats}
             onAlignLyrics={handleAlignLyrics}
             onStartCutout={handleStartCutout}
             onExport={handleExport}
