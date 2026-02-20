@@ -385,9 +385,9 @@ describe('buildExportCommand', () => {
 
     const fcIdx = args.indexOf('-filter_complex');
     const fc = args[fcIdx + 1];
-    // Should use gt() to check if sum of between() is > 0
-    expect(fc).toContain('gt(between(t');
-    // Should use crop to keep canvas size
-    expect(fc).toContain('crop=');
+    // Beat zoom uses dual filter chains: a pre-zoomed clip overlaid only during beat windows.
+    // The zoomed chain uses a fixed crop-back approach (no per-frame dimension changes).
+    expect(fc).toContain('clip0z]'); // zoomed clip output pad
+    expect(fc).toContain("enable='between(t"); // beat-window overlay enable expression
   });
 });

@@ -61,7 +61,7 @@ export function createProxy(inputPath: string, outputPath: string): void {
   execFileSync(FF, [
     '-y',
     '-i', inputPath,
-    '-vf', 'scale=-2:540',
+    '-vf', 'scale=-2:540,setsar=1',  // setsar=1 normalizes non-square-pixel SAR
     '-c:v', 'libx264',
     '-preset', 'veryfast',
     '-crf', '28',
@@ -238,7 +238,6 @@ export function buildExportCommand(
 
       const delay = clip.timelineStart;
       const scale = Math.max(0.01, clip.transform.scale);
-      const opacity = Math.min(1, Math.max(0, clip.transform.opacity));
       const tx = Math.round(clip.transform.x);
       const ty = Math.round(clip.transform.y);
 
@@ -248,18 +247,26 @@ export function buildExportCommand(
       const posX = Math.round((W - scaledW) / 2 + tx);
       const posY = Math.round((H - scaledH) / 2 + ty);
 
-      const scaleFilter = `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=decrease,pad=${scaledW}:${scaledH}:(ow-iw)/2:(oh-ih)/2`;
+      // Use increase+crop instead of decrease+pad. With "decrease", scale output can be 1-2px
+      // larger than the target due to even-pixel rounding, causing pad to fail with
+      // "Padded dimensions cannot be smaller than input dimensions" in ffmpeg 5.1.
+      // With "increase", scale output is always >= target, and crop always succeeds.
+      // crop without explicit x/y defaults to center-crop.
+      const scaleFilter = `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=increase,crop=${scaledW}:${scaledH}`;
       const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS`;
 
-      // Beat Zoom filter - use scale+crop to keep canvas size.
-      // Beats come from the master audio asset (source timestamps) converted to
-      // absolute timeline time accounting for master clip's timelineStart/sourceStart offset.
-      let zoomFilter = '';
+      // Beat Zoom: render a second pre-zoomed filter chain and overlay it only during beat
+      // windows. This avoids any per-frame variable output sizes (scale:eval=frame causes
+      // upstream filter reinitialisation in ffmpeg 5.x; zoompan's `t` variable is missing
+      // in ffmpeg 8.x). Both chains output a FIXED size — no dynamic sizing at all.
       const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
       const masterAudioClip = masterAudioTrack?.clips[0];
       const masterBeats = masterAudioClip ? beatsMap.get(masterAudioClip.assetId) : undefined;
+
+      let zoomedClipPad = '';
+      let beatEnableExpr = '';
+
       if (beatZoomEffect?.enabled && masterBeats && masterAudioClip) {
-        // Convert beat source-timestamps to absolute timeline timestamps
         const timelineBeats = masterBeats.beats.map(
           (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
         );
@@ -269,30 +276,54 @@ export function buildExportCommand(
         if (beatsInClip.length > 0) {
           const pulseDur = beatZoomEffect.durationMs / 1000;
           const zoomFactor = 1 + beatZoomEffect.intensity;
-          // ffmpeg `t` is clip-local (after setpts=PTS-STARTPTS), so subtract clip start
-          const enableExpr = beatsInClip
+
+          // overlay enable uses timeline `t` (same as the normal overlay enable below)
+          beatEnableExpr = beatsInClip
             .map((b) => {
-              const localT = (b - clip.timelineStart).toFixed(4);
-              const localTEnd = (b - clip.timelineStart + pulseDur).toFixed(4);
-              return `between(t,${localT},${localTEnd})`;
+              const beatEnd = Math.min(b + pulseDur, clip.timelineEnd);
+              return `between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})`;
             })
             .join('+');
-          // Scale up then crop back to original size (keeps canvas bounds)
-          zoomFilter = `,scale=iw*if(gt(${enableExpr},0),${zoomFactor.toFixed(4)},1):ih*if(gt(${enableExpr},0),${zoomFactor.toFixed(4)},1),crop=${scaledW}:${scaledH}`;
+
+          // Scale to zoomFactor × target, then crop the centre back to target size.
+          // Output is always scaledW × scaledH — no per-frame dimension changes.
+          // Use increase so scale output >= zoomedW×zoomedH, then crop trims any overshoot.
+          // crop without explicit x/y defaults to center-crop.
+          const zoomedW = Math.round(scaledW * zoomFactor);
+          const zoomedH = Math.round(scaledH * zoomFactor);
+          const zoomedScaleFilter =
+            `scale=${zoomedW}:${zoomedH}:force_original_aspect_ratio=increase,` +
+            `crop=${scaledW}:${scaledH}`;
+
+          zoomedClipPad = `clip${filterIdx}z`;
+          filterParts.push(
+            `[${inputIdx}:v]${trimFilter},${zoomedScaleFilter},format=yuv420p[${zoomedClipPad}]`
+          );
         }
       }
 
+      // Normal clip
       const clipPad = `clip${filterIdx}`;
       filterParts.push(
-        `[${inputIdx}:v]${trimFilter},${scaleFilter}${zoomFilter},setsar=1,format=yuva420p,colorchannelmixer=aa=${opacity.toFixed(4)}[${clipPad}]`
+        `[${inputIdx}:v]${trimFilter},${scaleFilter},format=yuv420p[${clipPad}]`
       );
 
+      // Overlay normal clip for its full timeline duration
       const overlayPad = `ov${filterIdx}`;
       filterParts.push(
         `[${prevPad}][${clipPad}]overlay=${posX}:${posY}:enable='between(t,${delay.toFixed(4)},${(delay + outDuration).toFixed(4)})'[${overlayPad}]`
       );
-
       prevPad = overlayPad;
+
+      // Overlay pre-zoomed clip on top, only during beat windows
+      if (zoomedClipPad && beatEnableExpr) {
+        const zoomedOverlayPad = `ov${filterIdx}z`;
+        filterParts.push(
+          `[${prevPad}][${zoomedClipPad}]overlay=${posX}:${posY}:enable='${beatEnableExpr}'[${zoomedOverlayPad}]`
+        );
+        prevPad = zoomedOverlayPad;
+      }
+
       filterIdx++;
     }
   }

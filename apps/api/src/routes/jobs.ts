@@ -14,6 +14,14 @@ export async function jobsRoutes(app: FastifyInstance) {
     return reply.send({ job: { ...job, lastLogLines } });
   });
 
+  // GET /jobs/:id/log - full log output
+  app.get<{ Params: { id: string } }>('/jobs/:id/log', async (req, reply) => {
+    const job = jq.getJob(req.params.id);
+    if (!job) return reply.code(404).send({ error: 'Job not found' });
+    const lines = ws.readJobLog(req.params.id);
+    return reply.send({ lines });
+  });
+
   // GET /jobs/:id/output - download output file
   app.get<{ Params: { id: string } }>('/jobs/:id/output', async (req, reply) => {
     const job = jq.getJob(req.params.id);
