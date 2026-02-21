@@ -486,14 +486,15 @@ export default function Preview({
       const track = project.tracks.find((t) => t.clips.some((c) => c.id === clip.id));
       if (!track) return null;
 
-      if (track.type === 'video') {
+      // Text clips can live on any visual track (video or legacy text type)
+      if (clip.textContent) {
+        return getTextBounds(clip, transform, ctx, W, H);
+      } else if (track.type === 'video') {
         const asset = assetMap.current.get(clip.assetId);
         const videoEl = asset?.proxyPath
           ? videoElementCache.get(asset.id) ?? null
           : null;
         return getVideoBounds(transform, videoEl, W, H);
-      } else if (track.type === 'text') {
-        return getTextBounds(clip, transform, ctx, W, H);
       }
       return null;
     },
@@ -545,6 +546,12 @@ export default function Preview({
         const transform = (live?.clipId === clip.id)
           ? live.transform
           : (clip.transform ?? { ...DEFAULT_TRANSFORM });
+
+        // Text clips can live on any visual track (video or legacy text type)
+        if (clip.textContent) {
+          drawTextClip(ctx, clip, transform, W, H);
+          continue;
+        }
 
         if (track.type === 'video') {
           const asset = assetMap.current.get(clip.assetId);
@@ -625,8 +632,6 @@ export default function Preview({
           }
 
           ctx.restore();
-        } else if (track.type === 'text') {
-          drawTextClip(ctx, clip, transform, W, H);
         }
       }
     }

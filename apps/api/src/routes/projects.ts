@@ -21,14 +21,14 @@ function makeDefaultProject(name: string): Project {
       {
         id: `track_v1_${uuidv4().slice(0, 8)}`,
         type: 'video',
-        name: 'Video 1',
+        name: 'Video',
         clips: [],
       },
       {
         id: `track_master_${uuidv4().slice(0, 8)}`,
         type: 'audio',
         isMaster: true,
-        name: 'Master Audio',
+        name: 'Audio',
         clips: [],
       },
     ],

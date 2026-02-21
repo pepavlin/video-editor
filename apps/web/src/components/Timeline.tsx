@@ -424,8 +424,9 @@ export default function Timeline({
       const trackH = getTrackH(track);
       const isAudio = track.type === 'audio';
       const isGhostTrack = ghost?.trackId === track.id;
-      const isTextTrack = track.type === 'text';
-      const isLyricsTrack = track.type === 'lyrics';
+      // text/lyrics tracks are treated as video tracks visually (no separate row type)
+      const isTextTrack = false;
+      const isLyricsTrack = false;
       const isEffectTrack = track.type === 'effect';
 
       // Highlight if being reordered over
@@ -474,8 +475,12 @@ export default function Timeline({
       ctx.textAlign = 'center';
       ctx.lineWidth = 1;
       ctx.globalAlpha = isReorderSource ? 0.4 : 1;
+      // Show track type label: VIDEO or AUDIO (not the full name which may be long)
+      const trackTypeLabel = isEffectTrack
+        ? track.name.toUpperCase()
+        : isAudio ? 'AUDIO' : 'VIDEO';
       ctx.fillText(
-        track.name.toUpperCase(),
+        trackTypeLabel,
         HEADER_WIDTH / 2,
         trackY + trackH / 2 + (isEffectTrack ? 3 : 4)
       );
@@ -533,9 +538,10 @@ export default function Timeline({
       }
 
       // ─── Clips ──────────────────────────────────────────────────────────
-      const isText = track.type === 'text';
-      const isLyrics = track.type === 'lyrics';
       for (const clip of track.clips) {
+        // A clip is a "text clip" when it carries textContent (regardless of track type)
+        const isText = !!clip.textContent || track.type === 'text';
+        const isLyrics = track.type === 'lyrics';
         const clipX = clip.timelineStart * Z - SL + HEADER_WIDTH;
         const clipW = (clip.timelineEnd - clip.timelineStart) * Z;
         if (clipX + clipW < HEADER_WIDTH || clipX > W) continue;

@@ -208,8 +208,9 @@ export default function Editor() {
   const handleDropAssetNewTrack = useCallback(
     (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => {
       updateProject((p) => {
-        const count = p.tracks.filter((t) => t.type === assetType).length;
-        const name = assetType === 'audio' ? `Audio ${count + 1}` : `Video ${count + 1}`;
+        const count = p.tracks.filter((t) => t.type === assetType || (assetType === 'video' && t.type === 'text')).length;
+        const baseName = assetType === 'audio' ? 'Audio' : 'Video';
+        const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
         const trackId = `track_${Date.now()}`;
         const isVideo = assetType === 'video';
         const newClip = {

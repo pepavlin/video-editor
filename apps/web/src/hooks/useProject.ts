@@ -178,8 +178,9 @@ export function useProject() {
     (type: 'video' | 'audio', options: { name?: string; isMaster?: boolean } = {}): string => {
       const trackId = genId('track');
       updateProject((p) => {
-        const count = p.tracks.filter((t) => t.type === type).length;
-        const name = options.name ?? (type === 'audio' ? `Audio ${count + 1}` : `Video ${count + 1}`);
+        const count = p.tracks.filter((t) => t.type === type || (type === 'video' && t.type === 'text')).length;
+        const baseName = type === 'audio' ? 'Audio' : 'Video';
+        const name = options.name ?? (count === 0 ? baseName : `${baseName} ${count + 1}`);
         const newTrack: Track = {
           id: trackId,
           type,
@@ -195,10 +196,10 @@ export function useProject() {
     [updateProject]
   );
 
-  // Add a text track with one clip at timelineStart
+  // Add a text clip to a video track (or create a new video track if none exists).
+  // targetTrackId optionally pins the clip to a specific track.
   const addTextTrack = useCallback(
-    (timelineStart: number, duration: number, text: string = 'Text') => {
-      const trackId = genId('track');
+    (timelineStart: number, duration: number, text: string = 'Text', targetTrackId?: string) => {
       const clipId = genId('clip');
       const defaultStyle: TextStyle = {
         fontFamily: 'Arial',
@@ -209,16 +210,48 @@ export function useProject() {
         align: 'center',
       };
       updateProject((p) => {
+        // Find target video track: prefer explicit, then first video track
+        const videoTrack = targetTrackId
+          ? p.tracks.find((t) => t.id === targetTrackId)
+          : p.tracks.find((t) => t.type === 'video' || t.type === 'text');
+
+        if (videoTrack) {
+          // Add text clip to existing video track
+          const textClip: Clip = {
+            id: clipId,
+            assetId: '',
+            trackId: videoTrack.id,
+            timelineStart,
+            timelineEnd: timelineStart + duration,
+            sourceStart: 0,
+            sourceEnd: duration,
+            textContent: text,
+            textStyle: defaultStyle,
+            transform: { ...DEFAULT_TRANSFORM },
+          };
+          return {
+            ...p,
+            tracks: p.tracks.map((t) =>
+              t.id === videoTrack.id ? { ...t, clips: [...t.clips, textClip] } : t
+            ),
+          };
+        }
+
+        // No video track exists – create a new "Video" track with the text clip
+        const newTrackId = genId('track');
+        const count = p.tracks.filter((t) => t.type === 'video').length;
+        const baseName = 'Video';
+        const trackName = count === 0 ? baseName : `${baseName} ${count + 1}`;
         const newTrack: Track = {
-          id: trackId,
-          type: 'text',
-          name: 'Text',
+          id: newTrackId,
+          type: 'video',
+          name: trackName,
           muted: false,
           clips: [
             {
               id: clipId,
               assetId: '',
-              trackId,
+              trackId: newTrackId,
               timelineStart,
               timelineEnd: timelineStart + duration,
               sourceStart: 0,
