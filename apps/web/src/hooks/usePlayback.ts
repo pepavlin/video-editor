@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Project, Asset, BeatsData } from '@video-editor/shared';
 
 export interface PlaybackControls {
@@ -111,7 +111,7 @@ export function usePlayback(
     // ── Master audio track ──────────────────────────────────────────────────
     const masterTrack = proj.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
-    const masterBuffer = masterClip ? audioCache.get(masterClip.assetId) : undefined;
+    const masterBuffer = (masterClip && !masterTrack?.muted) ? audioCache.get(masterClip.assetId) : undefined;
 
     if (masterBuffer && masterClip) {
       const src = ctx.createBufferSource();
@@ -337,6 +337,62 @@ export function usePlayback(
       }
     }
   }, [project, assets, loadAudio]);
+
+  // Derive a compact signature of all audio-affecting project properties.
+  // When this signature changes while playing, audio nodes are restarted immediately
+  // so that mute toggles, useClipAudio changes, and volume changes are reflected live.
+  const audioSignature = useMemo(() => {
+    if (!project) return '';
+    return project.tracks.map((t) =>
+      `${t.id}:${t.muted}:` +
+      t.clips.map((c) =>
+        `${c.id}:${c.useClipAudio ?? false}:${c.clipAudioVolume ?? 1}`
+      ).join(',')
+    ).join('|');
+  }, [project]);
+
+  const prevAudioSignatureRef = useRef(audioSignature);
+
+  useEffect(() => {
+    // Skip on first render — audio is started by play() explicitly.
+    if (audioSignature === prevAudioSignatureRef.current) return;
+    prevAudioSignatureRef.current = audioSignature;
+
+    if (!isPlayingRef.current) return;
+
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    // Preload any newly required audio buffers (e.g. useClipAudio just enabled),
+    // then restart all audio nodes from the current playback position.
+    const proj = projectRef.current;
+    const loads: Promise<unknown>[] = [];
+    if (proj) {
+      for (const track of proj.tracks) {
+        if (track.type !== 'video' || track.muted) continue;
+        for (const clip of track.clips) {
+          if (!clip.useClipAudio) continue;
+          const asset = assetsRef.current.find((a) => a.id === clip.assetId);
+          if (asset && !audioCache.has(asset.id)) {
+            loads.push(loadAudio(asset));
+          }
+        }
+      }
+    }
+
+    Promise.all(loads).then(() => {
+      if (!isPlayingRef.current) return;
+      const activeCtx = ctxRef.current;
+      if (!activeCtx) return;
+      const currentT = getTime();
+      stopAllNodes();
+      startFromCache(activeCtx, currentT);
+      // Re-anchor wall time so the RAF tick stays in sync
+      startWallTimeRef.current = performance.now();
+      startProjectTimeRef.current = currentT;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioSignature]);
 
   // Update duration when project changes
   useEffect(() => {
