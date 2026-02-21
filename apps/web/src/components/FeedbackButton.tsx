@@ -3,13 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 
 const WEBHOOK_URL = 'https://n8n.pavlin.dev/webhook/c6169b15-e4d2-4515-a059-4f6306819e1c';
+const POLL_INTERVAL_MS = 15_000;
 
 type Status = 'idle' | 'sending' | 'sent' | 'error';
+interface TaskStats { running: number; queued: number }
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<Status>('idle');
+  const [taskStats, setTaskStats] = useState<TaskStats>({ running: 0, queued: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -29,6 +32,26 @@ export default function FeedbackButton() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [open]);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch(WEBHOOK_URL, { method: 'GET' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const tasks: { status: string }[] = data.tasks ?? [];
+        setTaskStats({
+          running: tasks.filter((t) => t.status === 'running').length,
+          queued: tasks.filter((t) => t.status === 'queued').length,
+        });
+      } catch {
+        // silently ignore
+      }
+    }
+    fetchStats();
+    const id = setInterval(fetchStats, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,8 +85,88 @@ export default function FeedbackButton() {
     }
   }
 
+  const hasActive = taskStats.running > 0 || taskStats.queued > 0;
+
   return (
     <>
+      {/* Task status pill — shown above the button when there are active tasks */}
+      {hasActive && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '88px',
+            right: '14px',
+            zIndex: 9999,
+            display: 'flex',
+            gap: '6px',
+            pointerEvents: 'none',
+          }}
+        >
+          {taskStats.running > 0 && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(14,26,46,0.92)',
+                border: '1px solid rgba(0,212,160,0.35)',
+                borderRadius: '20px',
+                padding: '3px 9px 3px 7px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#00d4a0',
+                backdropFilter: 'blur(12px)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: '#00d4a0',
+                  display: 'inline-block',
+                  animation: 'taskPulse 1.4s ease-in-out infinite',
+                  flexShrink: 0,
+                }}
+              />
+              {taskStats.running} běží
+            </span>
+          )}
+          {taskStats.queued > 0 && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(14,26,46,0.92)',
+                border: '1px solid rgba(250,180,50,0.35)',
+                borderRadius: '20px',
+                padding: '3px 9px 3px 7px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#fab432',
+                backdropFilter: 'blur(12px)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: '#fab432',
+                  display: 'inline-block',
+                  flexShrink: 0,
+                  opacity: 0.85,
+                }}
+              />
+              {taskStats.queued} čeká
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Floating trigger button */}
       <button
         onClick={() => {
@@ -112,6 +215,32 @@ export default function FeedbackButton() {
             <rect x="8.5" y="18" width="7" height="1.5" rx="0.75" fill="currentColor" opacity="0.7"/>
             <rect x="9.5" y="20.5" width="5" height="1.5" rx="0.75" fill="currentColor" opacity="0.5"/>
           </svg>
+        )}
+        {/* Notification badge — total active tasks */}
+        {hasActive && (
+          <span
+            style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              minWidth: '18px',
+              height: '18px',
+              borderRadius: '9px',
+              background: taskStats.running > 0 ? '#00d4a0' : '#fab432',
+              color: '#040a08',
+              fontSize: '10px',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 4px',
+              border: '2px solid rgba(4,10,8,0.85)',
+              lineHeight: 1,
+              animation: taskStats.running > 0 ? 'taskPulse 1.4s ease-in-out infinite' : 'none',
+            }}
+          >
+            {taskStats.running + taskStats.queued}
+          </span>
         )}
       </button>
 
@@ -274,6 +403,10 @@ export default function FeedbackButton() {
         }
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes taskPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.6; transform: scale(1.15); }
         }
       `}</style>
     </>
