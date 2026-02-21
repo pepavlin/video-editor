@@ -40,6 +40,7 @@ interface Props {
   onDropAsset: (trackId: string, assetId: string, timelineStart: number, duration: number) => void;
   onDropAssetNewTrack: (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => void;
   onWorkAreaChange: (start: number, end: number) => void;
+  onTrackReorder: (fromIdx: number, toIdx: number) => void;
 }
 
 type DragMode =
@@ -71,6 +72,7 @@ export default function Timeline({
   onDropAsset,
   onDropAssetNewTrack,
   onWorkAreaChange,
+  onTrackReorder,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -79,6 +81,10 @@ export default function Timeline({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [drag, setDrag] = useState<DragMode>({ type: 'none' });
   const [snapMode, setSnapMode] = useState<SnapMode>('clips');
+
+  // Track reorder drag state
+  const [trackDragFromIdx, setTrackDragFromIdx] = useState<number | null>(null);
+  const [trackDragOverIdx, setTrackDragOverIdx] = useState<number | null>(null);
 
   const dragRef = useRef<DragMode>({ type: 'none' });
   dragRef.current = drag;
@@ -374,18 +380,38 @@ export default function Timeline({
 
     // ─── Tracks ───────────────────────────────────────────────────────────
     let trackY = RULER_HEIGHT;
-    for (const track of tracks) {
+    for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
+      const track = tracks[trackIdx];
       const isAudio = track.type === 'audio';
       const isGhostTrack = ghost?.trackId === track.id;
-
       const isTextTrack = track.type === 'text';
 
+      // Highlight if being reordered over
+      const isReorderTarget = trackDragOverIdx === trackIdx && trackDragFromIdx !== null && trackDragFromIdx !== trackIdx;
+      const isReorderSource = trackDragFromIdx === trackIdx;
+
       // Track header
-      ctx.fillStyle = isGhostTrack ? 'rgba(0,212,160,0.15)' : '#101f33';
+      ctx.fillStyle = isReorderTarget
+        ? 'rgba(0,212,160,0.25)'
+        : isGhostTrack
+        ? 'rgba(0,212,160,0.15)'
+        : '#101f33';
+      ctx.globalAlpha = isReorderSource ? 0.4 : 1;
       ctx.fillRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = isGhostTrack ? 'rgba(0,212,160,0.50)' : 'rgba(0,212,160,0.18)';
-      ctx.lineWidth = isGhostTrack ? 2 : 1;
+      ctx.strokeStyle = isReorderTarget
+        ? 'rgba(0,212,160,0.85)'
+        : isGhostTrack
+        ? 'rgba(0,212,160,0.50)'
+        : 'rgba(0,212,160,0.18)';
+      ctx.lineWidth = isReorderTarget ? 2 : isGhostTrack ? 2 : 1;
       ctx.strokeRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
+      ctx.globalAlpha = 1;
+
+      // Draw reorder indicator line above target row
+      if (isReorderTarget && trackDragFromIdx !== null) {
+        ctx.fillStyle = '#00d4a0';
+        ctx.fillRect(0, trackY - 2, W, 3);
+      }
 
       ctx.fillStyle = isAudio
         ? 'rgba(0,212,160,0.65)'
@@ -395,7 +421,9 @@ export default function Timeline({
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
       ctx.lineWidth = 1;
+      ctx.globalAlpha = isReorderSource ? 0.4 : 1;
       ctx.fillText(track.name.toUpperCase(), HEADER_WIDTH / 2, trackY + TRACK_HEIGHT / 2 + 4);
+      ctx.globalAlpha = 1;
 
       // Track body background
       ctx.fillStyle = isAudio
@@ -403,7 +431,9 @@ export default function Timeline({
         : isTextTrack
         ? 'rgba(167,139,250,0.04)'
         : 'rgba(56,189,248,0.04)';
+      ctx.globalAlpha = isReorderSource ? 0.3 : 1;
       ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, TRACK_HEIGHT);
+      ctx.globalAlpha = 1;
 
       // Track separator
       ctx.fillStyle = 'rgba(0,212,160,0.14)';
@@ -452,6 +482,7 @@ export default function Timeline({
         // Base fill (lower opacity for video so thumbnails show through)
         ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
         ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.5;
+        ctx.globalAlpha *= isReorderSource ? 0.4 : 1;
         ctx.fillRect(visX, clipTop, visW, clipH);
         ctx.globalAlpha = 1;
 
@@ -462,10 +493,6 @@ export default function Timeline({
           const ar = asset.width && asset.height ? asset.width / asset.height : 9 / 16;
           const thumbH = clipH;
           const thumbW = Math.max(1, Math.round(thumbH * ar));
-          // Align frame grid to fixed asset-time intervals so the cache stays valid after trimming/cutting.
-          // Previously the grid started at sourceStart, so any trim shifted all cache keys → full regeneration.
-          // Now frames are at multiples of frameInterval from asset time 0; trimming only changes which
-          // frames are visible, not their cache keys.
           const frameInterval = thumbW / Z;
           const firstSourceTime = Math.floor(clip.sourceStart / frameInterval) * frameInterval;
           const maxFrames = Math.ceil(clipW / thumbW) + 3;
@@ -488,7 +515,7 @@ export default function Timeline({
             const bitmap = thumbnailCacheRef.current.get(thumbKey);
 
             if (bitmap) {
-              ctx.globalAlpha = 0.92;
+              ctx.globalAlpha = isReorderSource ? 0.35 : 0.92;
               ctx.drawImage(bitmap, frameX, clipTop, thumbW, thumbH);
               ctx.globalAlpha = 1;
             } else {
@@ -641,7 +668,7 @@ export default function Timeline({
       ctx.closePath();
       ctx.fill();
     }
-  }, []);
+  }, [trackDragFromIdx, trackDragOverIdx]);
 
   // Resize canvas
   useEffect(() => {
@@ -997,6 +1024,33 @@ export default function Timeline({
     [getClipAtPosition]
   );
 
+  // ─── Track reorder handlers ────────────────────────────────────────────
+
+  const handleTrackDragStart = useCallback((idx: number) => {
+    setTrackDragFromIdx(idx);
+  }, []);
+
+  const handleTrackDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+    e.preventDefault();
+    e.stopPropagation(); // prevent canvas drag-over
+    setTrackDragOverIdx(idx);
+  }, []);
+
+  const handleTrackDragEnd = useCallback(() => {
+    setTrackDragFromIdx(null);
+    setTrackDragOverIdx(null);
+  }, []);
+
+  const handleTrackDrop = useCallback((e: React.DragEvent<HTMLDivElement>, toIdx: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (trackDragFromIdx !== null && trackDragFromIdx !== toIdx) {
+      onTrackReorder(trackDragFromIdx, toIdx);
+    }
+    setTrackDragFromIdx(null);
+    setTrackDragOverIdx(null);
+  }, [trackDragFromIdx, onTrackReorder]);
+
   // Compute canvas height based on track count (+ extra row for new-track ghost zone)
   const numTracks = project?.tracks.length ?? 1;
   const extraRow = ghostRef.current?.trackId === null ? 1 : 0;
@@ -1065,6 +1119,54 @@ export default function Timeline({
           onDrop={handleDrop}
           onDoubleClick={handleDoubleClick}
         />
+
+        {/* ─── Track header drag handles (HTML overlay) ─────────────────── */}
+        {project && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: RULER_HEIGHT,
+              width: HEADER_WIDTH,
+              pointerEvents: 'none',
+            }}
+          >
+            {project.tracks.map((track, idx) => (
+              <div
+                key={track.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('trackReorder', String(idx));
+                  handleTrackDragStart(idx);
+                }}
+                onDragOver={(e) => handleTrackDragOver(e, idx)}
+                onDragEnd={handleTrackDragEnd}
+                onDrop={(e) => handleTrackDrop(e, idx)}
+                style={{
+                  height: TRACK_HEIGHT,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: 'auto',
+                  cursor: 'grab',
+                  opacity: trackDragFromIdx === idx ? 0 : 1,
+                }}
+                title={`Drag to reorder "${track.name}"`}
+              >
+                {/* Grip dots icon */}
+                <svg width="12" height="16" viewBox="0 0 12 16" fill="rgba(0,212,160,0.45)">
+                  <circle cx="4" cy="4"  r="1.5" />
+                  <circle cx="8" cy="4"  r="1.5" />
+                  <circle cx="4" cy="8"  r="1.5" />
+                  <circle cx="8" cy="8"  r="1.5" />
+                  <circle cx="4" cy="12" r="1.5" />
+                  <circle cx="8" cy="12" r="1.5" />
+                </svg>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

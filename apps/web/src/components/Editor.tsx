@@ -126,6 +126,7 @@ export default function Editor() {
     removeEffect,
     updateEffect,
     findClip,
+    reorderTrack,
   } = projectHook;
 
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -824,6 +825,7 @@ export default function Editor() {
               onDropAsset={(trackId, assetId, start, dur) => addClip(trackId, assetId, start, dur)}
               onDropAssetNewTrack={handleDropAssetNewTrack}
               onWorkAreaChange={handleWorkAreaChange}
+              onTrackReorder={reorderTrack}
             />
           </div>
         </div>

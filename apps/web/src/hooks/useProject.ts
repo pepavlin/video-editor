@@ -305,6 +305,19 @@ export function useProject() {
     [project]
   );
 
+  // Reorder tracks by index
+  const reorderTrack = useCallback(
+    (fromIdx: number, toIdx: number) => {
+      updateProject((p) => {
+        const tracks = [...p.tracks];
+        const [moved] = tracks.splice(fromIdx, 1);
+        tracks.splice(toIdx, 0, moved);
+        return { ...p, tracks };
+      });
+    },
+    [updateProject]
+  );
+
   return {
     project,
     setProject,
@@ -322,5 +335,6 @@ export function useProject() {
     removeEffect,
     updateEffect,
     findClip,
+    reorderTrack,
   };
 }

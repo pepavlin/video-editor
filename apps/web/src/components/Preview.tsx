@@ -123,7 +123,9 @@ function getTextBounds(
   const th = fontSize * 1.4;
   const cx = W / 2 + transform.x;
   const cy = H / 2 + transform.y;
-  return { x: cx - tw / 2, y: cy - th / 2, w: tw, h: th };
+  // Add generous padding for easier hit testing
+  const pad = Math.max(16, fontSize * 0.3);
+  return { x: cx - tw / 2 - pad, y: cy - th / 2 - pad, w: tw + pad * 2, h: th + pad * 2 };
 }
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
@@ -147,55 +149,6 @@ function getHandlePositions(bounds: Bounds): Record<Handle, [number, number]> {
 }
 
 // ─── Canvas drawing helpers ───────────────────────────────────────────────────
-
-function drawSelectionOverlay(
-  ctx: CanvasRenderingContext2D,
-  bounds: Bounds,
-  rotation: number
-) {
-  const { x, y, w, h } = bounds;
-  const cx = x + w / 2;
-  const cy = y + h / 2;
-
-  ctx.save();
-  if (rotation !== 0) {
-    ctx.translate(cx, cy);
-    ctx.rotate((rotation * Math.PI) / 180);
-    ctx.translate(-cx, -cy);
-  }
-
-  // Dashed selection rect
-  ctx.strokeStyle = '#00d4a0';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([5, 3]);
-  ctx.strokeRect(x, y, w, h);
-  ctx.setLineDash([]);
-
-  // Rotation handle line + circle
-  ctx.beginPath();
-  ctx.moveTo(cx, y);
-  ctx.lineTo(cx, y - ROTATE_HANDLE_OFFSET);
-  ctx.strokeStyle = '#00d4a0';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  const handles = getHandlePositions(bounds);
-  for (const [handle, [hx, hy]] of Object.entries(handles) as [Handle, [number, number]][]) {
-    ctx.beginPath();
-    ctx.arc(hx, hy, HANDLE_RADIUS, 0, Math.PI * 2);
-    if (handle === 'rotate') {
-      ctx.fillStyle = '#00d4a0';
-    } else {
-      ctx.fillStyle = '#ffffff';
-    }
-    ctx.fill();
-    ctx.strokeStyle = '#00d4a0';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
 
 function drawTextClip(
   ctx: CanvasRenderingContext2D,
@@ -249,6 +202,81 @@ function drawTextClip(
   ctx.restore();
 }
 
+// ─── SVG selection overlay helper ─────────────────────────────────────────────
+
+function updateSelectionSvg(
+  svg: SVGSVGElement,
+  bounds: Bounds | null,
+  rotation: number,
+  faded = false
+) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!bounds) return;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const { x, y, w, h } = bounds;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  const g = document.createElementNS(ns, 'g');
+  if (rotation !== 0) {
+    g.setAttribute('transform', `rotate(${rotation} ${cx} ${cy})`);
+  }
+
+  if (faded) {
+    // Faded outline when clip not at current time
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(y));
+    rect.setAttribute('width', String(w));
+    rect.setAttribute('height', String(h));
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', 'rgba(0,212,160,0.35)');
+    rect.setAttribute('stroke-width', '1');
+    rect.setAttribute('stroke-dasharray', '4,4');
+    g.appendChild(rect);
+    svg.appendChild(g);
+    return;
+  }
+
+  // Dashed selection rect
+  const rect = document.createElementNS(ns, 'rect');
+  rect.setAttribute('x', String(x));
+  rect.setAttribute('y', String(y));
+  rect.setAttribute('width', String(w));
+  rect.setAttribute('height', String(h));
+  rect.setAttribute('fill', 'none');
+  rect.setAttribute('stroke', '#00d4a0');
+  rect.setAttribute('stroke-width', '1.5');
+  rect.setAttribute('stroke-dasharray', '5,3');
+  g.appendChild(rect);
+
+  // Rotation handle line
+  const line = document.createElementNS(ns, 'line');
+  line.setAttribute('x1', String(cx));
+  line.setAttribute('y1', String(y));
+  line.setAttribute('x2', String(cx));
+  line.setAttribute('y2', String(y - ROTATE_HANDLE_OFFSET));
+  line.setAttribute('stroke', '#00d4a0');
+  line.setAttribute('stroke-width', '1.5');
+  g.appendChild(line);
+
+  // Handles
+  const handles = getHandlePositions(bounds);
+  for (const [handle, [hx, hy]] of Object.entries(handles) as [Handle, [number, number]][]) {
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', String(hx));
+    circle.setAttribute('cy', String(hy));
+    circle.setAttribute('r', String(HANDLE_RADIUS));
+    circle.setAttribute('fill', handle === 'rotate' ? '#00d4a0' : '#ffffff');
+    circle.setAttribute('stroke', '#00d4a0');
+    circle.setAttribute('stroke-width', '1.5');
+    g.appendChild(circle);
+  }
+
+  svg.appendChild(g);
+}
+
 // ─── Preview component ────────────────────────────────────────────────────────
 
 export default function Preview({
@@ -263,6 +291,7 @@ export default function Preview({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectionSvgRef = useRef<SVGSVGElement>(null);
 
   // Keep latest props in refs to avoid stale closures in rAF
   const propsRef = useRef({ project, assets, currentTime, isPlaying, beatsData, selectedClipId });
@@ -335,6 +364,7 @@ export default function Preview({
       ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No project loaded', canvas.width / 2, canvas.height / 2);
+      if (selectionSvgRef.current) updateSelectionSvg(selectionSvgRef.current, null, 0);
       return;
     }
 
@@ -352,82 +382,10 @@ export default function Preview({
       ? masterBeatData.beats.map((b) => masterClip.timelineStart + (b - masterClip.sourceStart))
       : undefined;
 
-    // ── Render video tracks ──────────────────────────────────────────────────
-    const videoTracks = project.tracks.filter((t) => t.type === 'video' && !t.muted);
-    for (const track of videoTracks) {
-      for (const clip of track.clips) {
-        if (currentTime < clip.timelineStart || currentTime >= clip.timelineEnd) continue;
+    // ── Render all non-audio tracks in order (respects z-index from track order) ──
+    for (const track of project.tracks) {
+      if (track.type === 'audio' || track.muted) continue;
 
-        const asset = assetMap.current.get(clip.assetId);
-        if (!asset) continue;
-
-        const elapsed = currentTime - clip.timelineStart;
-        const sourceTime = clip.sourceStart + elapsed;
-
-        const videoEl = asset.proxyPath
-          ? getOrCreateVideoEl(asset.id, `/files/${asset.proxyPath}`)
-          : null;
-        if (!videoEl) continue;
-
-        // Sync video element
-        const targetTime = Math.max(0, Math.min(sourceTime, videoEl.duration || 9999));
-        if (propsRef.current.isPlaying) {
-          if (videoEl.paused) {
-            videoEl.currentTime = targetTime;
-            videoEl.play().catch(() => {});
-          } else if (Math.abs(videoEl.currentTime - targetTime) > 0.5) {
-            videoEl.currentTime = targetTime;
-          }
-        } else {
-          if (Math.abs(videoEl.currentTime - targetTime) > 0.08) {
-            videoEl.currentTime = targetTime;
-          }
-        }
-
-        // Use live override if dragging this clip
-        const live = liveTransformRef.current;
-        const transform = (live?.clipId === clip.id)
-          ? live.transform
-          : (clip.transform ?? { ...DEFAULT_TRANSFORM });
-
-        let scale = transform.scale;
-
-        // Beat zoom effect
-        const beatZoom = clip.effects.find((e) => e.type === 'beatZoom');
-        if (beatZoom && beatZoom.type === 'beatZoom' && beatZoom.enabled && masterBeats) {
-          scale *= getBeatZoomScale(
-            currentTime, masterBeats, beatZoom.intensity, beatZoom.durationMs, beatZoom.easing
-          );
-        }
-
-        const effectiveTransform = { ...transform, scale };
-        const bounds = getVideoBounds(effectiveTransform, videoEl, W, H);
-
-        ctx.save();
-        ctx.globalAlpha = transform.opacity;
-
-        if (transform.rotation !== 0) {
-          const cx = bounds.x + bounds.w / 2;
-          const cy = bounds.y + bounds.h / 2;
-          ctx.translate(cx, cy);
-          ctx.rotate((transform.rotation * Math.PI) / 180);
-          ctx.translate(-cx, -cy);
-        }
-
-        try {
-          ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
-        } catch {
-          ctx.fillStyle = '#1a1a1a';
-          ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
-        }
-
-        ctx.restore();
-      }
-    }
-
-    // ── Render text tracks ───────────────────────────────────────────────────
-    const textTracks = project.tracks.filter((t) => t.type === 'text' && !t.muted);
-    for (const track of textTracks) {
       for (const clip of track.clips) {
         if (currentTime < clip.timelineStart || currentTime >= clip.timelineEnd) continue;
 
@@ -436,7 +394,68 @@ export default function Preview({
           ? live.transform
           : (clip.transform ?? { ...DEFAULT_TRANSFORM });
 
-        drawTextClip(ctx, clip, transform, W, H);
+        if (track.type === 'video') {
+          const asset = assetMap.current.get(clip.assetId);
+          if (!asset) continue;
+
+          const elapsed = currentTime - clip.timelineStart;
+          const sourceTime = clip.sourceStart + elapsed;
+
+          const videoEl = asset.proxyPath
+            ? getOrCreateVideoEl(asset.id, `/files/${asset.proxyPath}`)
+            : null;
+          if (!videoEl) continue;
+
+          // Sync video element
+          const targetTime = Math.max(0, Math.min(sourceTime, videoEl.duration || 9999));
+          if (propsRef.current.isPlaying) {
+            if (videoEl.paused) {
+              videoEl.currentTime = targetTime;
+              videoEl.play().catch(() => {});
+            } else if (Math.abs(videoEl.currentTime - targetTime) > 0.5) {
+              videoEl.currentTime = targetTime;
+            }
+          } else {
+            if (Math.abs(videoEl.currentTime - targetTime) > 0.08) {
+              videoEl.currentTime = targetTime;
+            }
+          }
+
+          let scale = transform.scale;
+
+          // Beat zoom effect
+          const beatZoom = clip.effects.find((e) => e.type === 'beatZoom');
+          if (beatZoom && beatZoom.type === 'beatZoom' && beatZoom.enabled && masterBeats) {
+            scale *= getBeatZoomScale(
+              currentTime, masterBeats, beatZoom.intensity, beatZoom.durationMs, beatZoom.easing
+            );
+          }
+
+          const effectiveTransform = { ...transform, scale };
+          const bounds = getVideoBounds(effectiveTransform, videoEl, W, H);
+
+          ctx.save();
+          ctx.globalAlpha = transform.opacity;
+
+          if (transform.rotation !== 0) {
+            const cx = bounds.x + bounds.w / 2;
+            const cy = bounds.y + bounds.h / 2;
+            ctx.translate(cx, cy);
+            ctx.rotate((transform.rotation * Math.PI) / 180);
+            ctx.translate(-cx, -cy);
+          }
+
+          try {
+            ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
+          } catch {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
+          }
+
+          ctx.restore();
+        } else if (track.type === 'text') {
+          drawTextClip(ctx, clip, transform, W, H);
+        }
       }
     }
 
@@ -445,38 +464,28 @@ export default function Preview({
       drawLyricsOverlay(ctx, W, H, currentTime, project.lyrics);
     }
 
-    // ── Selection overlay ────────────────────────────────────────────────────
-    if (selectedClipId) {
-      const selectedClip = project.tracks
-        .flatMap((t) => t.clips)
-        .find((c) => c.id === selectedClipId);
+    // ── Selection overlay (via SVG) ───────────────────────────────────────────
+    const svg = selectionSvgRef.current;
+    if (svg) {
+      if (selectedClipId) {
+        const selectedClip = project.tracks
+          .flatMap((t) => t.clips)
+          .find((c) => c.id === selectedClipId);
 
-      if (selectedClip && currentTime >= selectedClip.timelineStart && currentTime < selectedClip.timelineEnd) {
-        const live = liveTransformRef.current;
-        const transform = (live?.clipId === selectedClipId)
-          ? live.transform
-          : (selectedClip.transform ?? { ...DEFAULT_TRANSFORM });
+        if (selectedClip) {
+          const live = liveTransformRef.current;
+          const transform = (live?.clipId === selectedClipId)
+            ? live.transform
+            : (selectedClip.transform ?? { ...DEFAULT_TRANSFORM });
 
-        const bounds = getClipBounds(selectedClip, transform, W, H, ctx);
-        if (bounds) {
-          drawSelectionOverlay(ctx, bounds, transform.rotation);
+          const bounds = getClipBounds(selectedClip, transform, W, H, ctx);
+          const isAtCurrentTime = currentTime >= selectedClip.timelineStart && currentTime < selectedClip.timelineEnd;
+          updateSelectionSvg(svg, bounds, transform.rotation, !isAtCurrentTime);
+        } else {
+          updateSelectionSvg(svg, null, 0);
         }
-      } else if (selectedClip) {
-        // Show outline even when clip is not at current time (so user knows it's selected)
-        const live = liveTransformRef.current;
-        const transform = (live?.clipId === selectedClipId)
-          ? live.transform
-          : (selectedClip.transform ?? { ...DEFAULT_TRANSFORM });
-        const bounds = getClipBounds(selectedClip, transform, W, H, ctx);
-        if (bounds) {
-          ctx.save();
-          ctx.strokeStyle = 'rgba(0,212,160,0.35)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([4, 4]);
-          ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
-          ctx.setLineDash([]);
-          ctx.restore();
-        }
+      } else {
+        updateSelectionSvg(svg, null, 0);
       }
     }
   }, [getClipBounds]);
@@ -535,7 +544,7 @@ export default function Preview({
 
   // ── Mouse interactions ────────────────────────────────────────────────────
 
-  const getCanvasMousePos = (e: React.MouseEvent): { x: number; y: number } => {
+  const getCanvasMousePos = (e: MouseEvent | React.MouseEvent): { x: number; y: number } => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -546,123 +555,9 @@ export default function Preview({
     };
   };
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (e.button !== 0) return;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const { x: mx, y: my } = getCanvasMousePos(e);
-      const W = canvas.width;
-      const H = canvas.height;
-      const { project, selectedClipId, currentTime } = propsRef.current;
-      if (!project) return;
-
-      // Check handles of currently selected clip first
-      if (selectedClipId) {
-        const selClip = project.tracks.flatMap((t) => t.clips).find((c) => c.id === selectedClipId);
-        if (selClip) {
-          const live = liveTransformRef.current;
-          const transform = (live?.clipId === selectedClipId)
-            ? live.transform
-            : (selClip.transform ?? { ...DEFAULT_TRANSFORM });
-
-          const bounds = getClipBounds(selClip, transform, W, H, ctx);
-          if (bounds) {
-            const handles = getHandlePositions(bounds);
-
-            // Check rotation handle
-            const [rhx, rhy] = handles.rotate;
-            if (dist(mx, my, rhx, rhy) <= HANDLE_RADIUS + 4) {
-              const cx = bounds.x + bounds.w / 2;
-              const cy = bounds.y + bounds.h / 2;
-              const startAngle = Math.atan2(my - cy, mx - cx);
-              dragRef.current = {
-                type: 'rotate',
-                clipId: selectedClipId,
-                centerX: cx, centerY: cy,
-                startAngle,
-                startRotation: transform.rotation,
-              };
-              liveTransformRef.current = { clipId: selectedClipId, transform: { ...transform } };
-              e.preventDefault();
-              return;
-            }
-
-            // Check corner handles (scale)
-            for (const [handle, [hx, hy]] of Object.entries(handles) as [Handle, [number, number]][]) {
-              if (handle === 'rotate') continue;
-              if (dist(mx, my, hx, hy) <= HANDLE_RADIUS + 4) {
-                dragRef.current = {
-                  type: 'scale',
-                  clipId: selectedClipId,
-                  handle,
-                  startMouseX: mx, startMouseY: my,
-                  startScale: transform.scale,
-                  boundsW: bounds.w, boundsH: bounds.h,
-                };
-                liveTransformRef.current = { clipId: selectedClipId, transform: { ...transform } };
-                e.preventDefault();
-                return;
-              }
-            }
-
-            // Check if inside the clip body (move)
-            if (isInRect(mx, my, bounds)) {
-              dragRef.current = {
-                type: 'move',
-                clipId: selectedClipId,
-                startMouseX: mx, startMouseY: my,
-                startTX: transform.x, startTY: transform.y,
-              };
-              liveTransformRef.current = { clipId: selectedClipId, transform: { ...transform } };
-              e.preventDefault();
-              return;
-            }
-          }
-        }
-      }
-
-      // Hit test all clips at current time (topmost last = highest z-index)
-      const clipsAtTime: Array<{ clip: Clip; trackType: string }> = [];
-      for (const track of project.tracks) {
-        if (track.type === 'audio' || track.muted) continue;
-        for (const clip of track.clips) {
-          if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
-            clipsAtTime.push({ clip, trackType: track.type });
-          }
-        }
-      }
-
-      // Test in reverse (topmost rendered = last in array)
-      for (let i = clipsAtTime.length - 1; i >= 0; i--) {
-        const { clip } = clipsAtTime[i];
-        const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
-        const bounds = getClipBounds(clip, transform, W, H, ctx);
-        if (bounds && isInRect(mx, my, bounds)) {
-          onClipSelect(clip.id);
-          dragRef.current = {
-            type: 'move',
-            clipId: clip.id,
-            startMouseX: mx, startMouseY: my,
-            startTX: transform.x, startTY: transform.y,
-          };
-          liveTransformRef.current = { clipId: clip.id, transform: { ...transform } };
-          e.preventDefault();
-          return;
-        }
-      }
-
-      // Clicked empty space: deselect
-      onClipSelect(null);
-    },
-    [getClipBounds, onClipSelect]
-  );
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Document-level event handlers for drag outside canvas bounds
+  useEffect(() => {
+    const onDocMouseMove = (e: MouseEvent) => {
       const drag = dragRef.current;
       if (drag.type === 'none') return;
 
@@ -682,7 +577,6 @@ export default function Preview({
       } else if (drag.type === 'scale') {
         const dx = mx - drag.startMouseX;
         const dy = my - drag.startMouseY;
-        // Scale based on drag distance relative to original bounds diagonal
         const origSize = Math.sqrt(drag.boundsW ** 2 + drag.boundsH ** 2);
         const dragDist = drag.handle === 'tl' || drag.handle === 'bl'
           ? -(dx + dy) / 2
@@ -699,7 +593,6 @@ export default function Preview({
         const angle = Math.atan2(my - drag.centerY, mx - drag.centerX);
         const deltaAngle = ((angle - drag.startAngle) * 180) / Math.PI;
         let newRotation = drag.startRotation + deltaAngle;
-        // Snap to 0/90/180/270 if within 5 degrees
         for (const snap of [0, 90, 180, 270, -90, -180]) {
           if (Math.abs(newRotation - snap) < 5) { newRotation = snap; break; }
         }
@@ -710,28 +603,139 @@ export default function Preview({
         };
         drawFrame();
       }
+    };
+
+    const onDocMouseUp = () => {
+      const drag = dragRef.current;
+      if (drag.type === 'none') return;
+
+      const live = liveTransformRef.current;
+      if (live) {
+        onClipUpdate(live.clipId, { transform: live.transform });
+      }
+
+      dragRef.current = { type: 'none' };
+      liveTransformRef.current = null;
+
+      // Reset cursor
+      if (canvasRef.current) canvasRef.current.style.cursor = 'default';
+    };
+
+    document.addEventListener('mousemove', onDocMouseMove);
+    document.addEventListener('mouseup', onDocMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onDocMouseMove);
+      document.removeEventListener('mouseup', onDocMouseUp);
+    };
+  }, [drawFrame, onClipUpdate]);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (e.button !== 0) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const { x: mx, y: my } = getCanvasMousePos(e);
+      const W = canvas.width;
+      const H = canvas.height;
+      const { project, selectedClipId, currentTime } = propsRef.current;
+      if (!project) return;
+
+      // ── Step 1: Check handles of currently selected clip first ────────────
+      if (selectedClipId) {
+        const selClip = project.tracks.flatMap((t) => t.clips).find((c) => c.id === selectedClipId);
+        if (selClip) {
+          const live = liveTransformRef.current;
+          const transform = (live?.clipId === selectedClipId)
+            ? live.transform
+            : (selClip.transform ?? { ...DEFAULT_TRANSFORM });
+
+          const bounds = getClipBounds(selClip, transform, W, H, ctx);
+          if (bounds) {
+            const handles = getHandlePositions(bounds);
+
+            // Check rotation handle
+            const [rhx, rhy] = handles.rotate;
+            if (dist(mx, my, rhx, rhy) <= HANDLE_RADIUS + 8) {
+              const cx = bounds.x + bounds.w / 2;
+              const cy = bounds.y + bounds.h / 2;
+              const startAngle = Math.atan2(my - cy, mx - cx);
+              dragRef.current = {
+                type: 'rotate',
+                clipId: selectedClipId,
+                centerX: cx, centerY: cy,
+                startAngle,
+                startRotation: transform.rotation,
+              };
+              liveTransformRef.current = { clipId: selectedClipId, transform: { ...transform } };
+              e.preventDefault();
+              return;
+            }
+
+            // Check corner handles (scale)
+            for (const [handle, [hx, hy]] of Object.entries(handles) as [Handle, [number, number]][]) {
+              if (handle === 'rotate') continue;
+              if (dist(mx, my, hx, hy) <= HANDLE_RADIUS + 8) {
+                dragRef.current = {
+                  type: 'scale',
+                  clipId: selectedClipId,
+                  handle,
+                  startMouseX: mx, startMouseY: my,
+                  startScale: transform.scale,
+                  boundsW: bounds.w, boundsH: bounds.h,
+                };
+                liveTransformRef.current = { clipId: selectedClipId, transform: { ...transform } };
+                e.preventDefault();
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      // ── Step 2: Hit-test all clips at current time (topmost first) ─────────
+      // Build list of all visible clips (in track order, last = topmost z-index)
+      const clipsAtTime: Clip[] = [];
+      for (const track of project.tracks) {
+        if (track.type === 'audio' || track.muted) continue;
+        for (const clip of track.clips) {
+          if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
+            clipsAtTime.push(clip);
+          }
+        }
+      }
+
+      // Test in reverse (topmost rendered = last in array)
+      for (let i = clipsAtTime.length - 1; i >= 0; i--) {
+        const clip = clipsAtTime[i];
+        const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
+        const bounds = getClipBounds(clip, transform, W, H, ctx);
+        if (bounds && isInRect(mx, my, bounds)) {
+          onClipSelect(clip.id);
+          // Start move drag for the hit clip
+          dragRef.current = {
+            type: 'move',
+            clipId: clip.id,
+            startMouseX: mx, startMouseY: my,
+            startTX: transform.x, startTY: transform.y,
+          };
+          liveTransformRef.current = { clipId: clip.id, transform: { ...transform } };
+          e.preventDefault();
+          return;
+        }
+      }
+
+      // Clicked empty space: deselect
+      onClipSelect(null);
     },
-    [drawFrame]
+    [getClipBounds, onClipSelect]
   );
-
-  const handleMouseUp = useCallback(() => {
-    const drag = dragRef.current;
-    if (drag.type === 'none') return;
-
-    const live = liveTransformRef.current;
-    if (live) {
-      onClipUpdate(live.clipId, { transform: live.transform });
-    }
-
-    dragRef.current = { type: 'none' };
-    liveTransformRef.current = null;
-  }, [onClipUpdate]);
 
   // Update cursor based on what's under pointer
   const handleMouseMoveForCursor = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      handleMouseMove(e);
-
       const drag = dragRef.current;
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -763,13 +767,13 @@ export default function Preview({
           if (bounds) {
             const handles = getHandlePositions(bounds);
             const [rhx, rhy] = handles.rotate;
-            if (dist(mx, my, rhx, rhy) <= HANDLE_RADIUS + 4) {
+            if (dist(mx, my, rhx, rhy) <= HANDLE_RADIUS + 8) {
               canvas.style.cursor = 'grab';
               return;
             }
             for (const [handle, [hx, hy]] of Object.entries(handles) as [Handle, [number, number]][]) {
               if (handle === 'rotate') continue;
-              if (dist(mx, my, hx, hy) <= HANDLE_RADIUS + 4) {
+              if (dist(mx, my, hx, hy) <= HANDLE_RADIUS + 8) {
                 canvas.style.cursor = 'nwse-resize';
                 return;
               }
@@ -801,7 +805,7 @@ export default function Preview({
 
       canvas.style.cursor = foundClip ? 'move' : 'default';
     },
-    [handleMouseMove, getClipBounds]
+    [getClipBounds]
   );
 
   return (
@@ -810,14 +814,28 @@ export default function Preview({
       className="flex-1 flex items-center justify-center bg-black"
       style={{ minHeight: 0 }}
     >
-      <canvas
-        ref={canvasRef}
-        style={{ display: 'block', imageRendering: 'auto' }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMoveForCursor}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      />
+      {/* Wrapper div for canvas + SVG overlay */}
+      <div style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+        <canvas
+          ref={canvasRef}
+          style={{ display: 'block', imageRendering: 'auto' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMoveForCursor}
+        />
+        {/* SVG selection overlay — overflow:visible lets handles appear outside canvas */}
+        <svg
+          ref={selectionSvgRef}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: '100%',
+            height: '100%',
+            overflow: 'visible',
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
     </div>
   );
 }
