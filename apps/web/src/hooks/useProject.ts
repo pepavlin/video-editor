@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Effect, Transform, TextStyle, EffectClipConfig, EffectType } from '@video-editor/shared';
+import type { Project, Clip, Track, Transform, TextStyle, EffectClipConfig, EffectType } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 
@@ -107,13 +107,20 @@ export function useProject() {
       };
 
       updateProject((p) => {
+        // Resolve the parent video track: prefer the provided parentTrackId,
+        // fall back to the first video track in the project.
+        const tracks = [...p.tracks];
+        const resolvedParentId = (parentTrackId && tracks.some((t) => t.id === parentTrackId))
+          ? parentTrackId
+          : tracks.find((t) => t.type === 'video')?.id;
+
         const count = p.tracks.filter((t) => t.type === 'effect' && t.effectType === effectType).length;
         const name = `${effectNames[effectType]} ${count + 1}`;
         const newTrack: Track = {
           id: trackId,
           type: 'effect',
           effectType,
-          parentTrackId,
+          parentTrackId: resolvedParentId,
           name,
           muted: false,
           clips: [
@@ -125,16 +132,17 @@ export function useProject() {
               timelineEnd: timelineStart + duration,
               sourceStart: 0,
               sourceEnd: duration,
-              effects: [],
               effectConfig: defaultConfig,
             },
           ],
         };
 
-        // Insert directly before the parent video track (visually above it)
-        const tracks = [...p.tracks];
-        if (parentTrackId) {
-          const parentIdx = tracks.findIndex((t) => t.id === parentTrackId);
+        // Insert the effect track directly above (visually) its parent video track.
+        // "Above" means at a smaller array index → the row appears higher in the timeline.
+        // We insert right before the parent video track so effect tracks for a given
+        // video track cluster just above it. If no parent is found, append at end.
+        if (resolvedParentId) {
+          const parentIdx = tracks.findIndex((t) => t.id === resolvedParentId);
           if (parentIdx >= 0) {
             tracks.splice(parentIdx, 0, newTrack);
             return { ...p, tracks };
@@ -215,7 +223,6 @@ export function useProject() {
               timelineEnd: timelineStart + duration,
               sourceStart: 0,
               sourceEnd: duration,
-              effects: [],
               textContent: text,
               textStyle: defaultStyle,
               transform: { ...DEFAULT_TRANSFORM },
@@ -245,7 +252,6 @@ export function useProject() {
             timelineEnd: timelineStart + duration,
             sourceStart: 0,
             sourceEnd: duration,
-            effects: [],
             // Video-only fields:
             ...(isVideo && {
               useClipAudio: false,
@@ -321,63 +327,6 @@ export function useProject() {
     [updateProject]
   );
 
-  // Add effect to clip
-  const addEffect = useCallback(
-    (clipId: string, effect: Effect) => {
-      updateProject((p) => ({
-        ...p,
-        tracks: p.tracks.map((t) => ({
-          ...t,
-          clips: t.clips.map((c) =>
-            c.id === clipId ? { ...c, effects: [...c.effects, effect] } : c
-          ),
-        })),
-      }));
-    },
-    [updateProject]
-  );
-
-  // Remove effect from clip
-  const removeEffect = useCallback(
-    (clipId: string, effectType: string) => {
-      updateProject((p) => ({
-        ...p,
-        tracks: p.tracks.map((t) => ({
-          ...t,
-          clips: t.clips.map((c) =>
-            c.id === clipId
-              ? { ...c, effects: c.effects.filter((e) => e.type !== effectType) }
-              : c
-          ),
-        })),
-      }));
-    },
-    [updateProject]
-  );
-
-  // Update effect
-  const updateEffect = useCallback(
-    (clipId: string, effectType: string, updates: object) => {
-      updateProject((p) => ({
-        ...p,
-        tracks: p.tracks.map((t) => ({
-          ...t,
-          clips: t.clips.map((c) =>
-            c.id === clipId
-              ? {
-                  ...c,
-                  effects: c.effects.map((e) =>
-                    e.type === effectType ? ({ ...e, ...updates } as Effect) : e
-                  ),
-                }
-              : c
-          ),
-        })),
-      }));
-    },
-    [updateProject]
-  );
-
   // Find clip by id
   const findClip = useCallback(
     (clipId: string): Clip | undefined => {
@@ -419,9 +368,6 @@ export function useProject() {
     updateClip,
     deleteClip,
     splitClip,
-    addEffect,
-    removeEffect,
-    updateEffect,
     findClip,
     reorderTrack,
   };

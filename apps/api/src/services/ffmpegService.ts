@@ -4,7 +4,7 @@ import fs from 'fs';
 import { config } from '../config';
 import * as ws from './workspace';
 import { computeWaveform } from './waveform';
-import type { Project, Clip, BeatZoomEffect, HeadStabilizationEffect, CartoonEffect, WaveformData, BeatsData, LyricsData } from '@video-editor/shared';
+import type { Project, Clip, WaveformData, BeatsData, LyricsData } from '@video-editor/shared';
 
 const FF = config.ffmpegBin;
 const FFP = config.ffprobeBin;
@@ -167,13 +167,18 @@ export function buildExportCommand(
   const inputArgs: string[] = [];
 
   // Determine which assets should use the head-stabilized video path.
-  // If ANY clip for a given asset has headStabilization enabled+done, use the
-  // stabilized derivative for all clips of that asset.
+  // If the video track has a headStabilization effect track with status 'done',
+  // use the stabilized derivative for all clips on that track.
   const stabilizedAssetIds = new Set<string>();
   for (const track of videoTracks) {
-    for (const clip of track.clips) {
-      const hsEffect = clip.effects.find((e) => e.type === 'headStabilization') as HeadStabilizationEffect | undefined;
-      if (hsEffect?.enabled && hsEffect?.status === 'done') {
+    const hsEffectTrack = project.tracks.find(
+      (t) => t.type === 'effect' && t.effectType === 'headStabilization' && t.parentTrackId === track.id
+    );
+    const hasActiveHs = hsEffectTrack?.clips.some(
+      (ec) => ec.effectConfig?.enabled && ec.effectConfig?.stabilizationStatus === 'done'
+    );
+    if (hasActiveHs) {
+      for (const clip of track.clips) {
         stabilizedAssetIds.add(clip.assetId);
       }
     }
@@ -304,94 +309,44 @@ export function buildExportCommand(
       // overlay+enable pattern which is unreliable for multi-input filters in ffmpeg 8.x
       // (causes "stays zoomed" or OOM).
       //
-      // Beat zoom sources: clip.effects (clip-level) AND effect tracks (track-level).
-      // Both are collected and merged into a unified set of beat windows.
+      // Beat zoom source: effect track (type='effect', effectType='beatZoom') scoped to
+      // this video track via parentTrackId.
       let beatZoomCropFilter = '';
-      const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
       const masterAudioClip = masterAudioTrack?.clips[0];
       const masterBeats = masterAudioClip ? beatsMap.get(masterAudioClip.assetId) : undefined;
 
-      if (masterBeats && masterAudioClip) {
+      // Read beat zoom config from effect track (type='effect', effectType='beatZoom')
+      const beatZoomEffectTrack = project.tracks.find(
+        (t) => t.type === 'effect' && t.effectType === 'beatZoom' && t.parentTrackId === track.id
+      );
+      const beatZoomEffectClip = beatZoomEffectTrack?.clips.find(
+        (ec) => ec.effectConfig?.enabled &&
+          ec.timelineStart < clip.timelineEnd && ec.timelineEnd > clip.timelineStart
+      );
+      const beatZoomCfg = beatZoomEffectClip?.effectConfig;
+
+      if (beatZoomCfg?.enabled && masterBeats && masterAudioClip) {
         const timelineBeats = masterBeats.beats.map(
           (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
         );
-
-        // Collect all beat windows from clip-level and track-level beat zoom effects.
-        // Each window: { start, end, zoomFactor }. If the same beat is covered by
-        // multiple sources, their zoom factors are multiplied (matching preview).
-        interface BeatZoomWindow { start: number; end: number; zoomFactor: number }
-        const beatZoomWindows: BeatZoomWindow[] = [];
-
-        const addBeatWindows = (intensity: number, durationMs: number, rangeStart: number, rangeEnd: number) => {
-          const pulseDur = durationMs / 1000;
-          const zf = 1 + intensity;
-          const beatsInRange = timelineBeats.filter((b) => b >= rangeStart && b < rangeEnd);
-          for (const b of beatsInRange) {
-            const windowEnd = Math.min(b + pulseDur, rangeEnd);
-            const existing = beatZoomWindows.find((w) => Math.abs(w.start - b) < 0.001);
-            if (existing) {
-              // Multiply zoom factors when multiple sources fire on the same beat
-              existing.zoomFactor *= zf;
-              existing.end = Math.max(existing.end, windowEnd);
-            } else {
-              beatZoomWindows.push({ start: b, end: windowEnd, zoomFactor: zf });
-            }
-          }
-        };
-
-        // 1. Clip-level beat zoom (stored in clip.effects)
-        if (beatZoomEffect?.enabled) {
-          addBeatWindows(beatZoomEffect.intensity, beatZoomEffect.durationMs, clip.timelineStart, clip.timelineEnd);
-        }
-
-        // 2. Track-level beat zoom (stored in effectConfig on 'effect' track clips)
-        for (const et of project.tracks) {
-          if (et.type !== 'effect' || et.effectType !== 'beatZoom') continue;
-          for (const ec of et.clips) {
-            const cfg = ec.effectConfig;
-            if (!cfg?.enabled || cfg.effectType !== 'beatZoom') continue;
-            if (cfg.intensity == null || cfg.durationMs == null) continue;
-            const overlapStart = Math.max(clip.timelineStart, ec.timelineStart);
-            const overlapEnd = Math.min(clip.timelineEnd, ec.timelineEnd);
-            if (overlapStart >= overlapEnd) continue;
-            addBeatWindows(cfg.intensity, cfg.durationMs, overlapStart, overlapEnd);
-          }
-        }
-
-        if (beatZoomWindows.length > 0) {
-          // If all windows share the same zoom factor, use a simple sum expression.
-          // Otherwise use nested if() to apply per-window zoom factors.
-          const allSameZF = beatZoomWindows.every(
-            (w) => Math.abs(w.zoomFactor - beatZoomWindows[0].zoomFactor) < 0.0001
-          );
-
-          if (allSameZF) {
-            const zf = beatZoomWindows[0].zoomFactor.toFixed(6);
-            const beatSumExpr = beatZoomWindows
-              .map((w) => `between(t,${w.start.toFixed(4)},${w.end.toFixed(4)})`)
-              .join('+');
-            beatZoomCropFilter =
-              `,crop=w='if(gt(${beatSumExpr},0),iw/${zf},iw)'` +
-              `:h='if(gt(${beatSumExpr},0),ih/${zf},ih)'` +
-              `:x='(iw-ow)/2':y='(ih-oh)/2'`;
-          } else {
-            // Different zoom factors: build nested if() expressions, highest ZF first
-            const sorted = [...beatZoomWindows].sort((a, b) => b.zoomFactor - a.zoomFactor);
-            let wExpr = 'iw';
-            let hExpr = 'ih';
-            for (let i = sorted.length - 1; i >= 0; i--) {
-              const w = sorted[i];
-              const zf = w.zoomFactor.toFixed(6);
-              const activeExpr = `between(t,${w.start.toFixed(4)},${w.end.toFixed(4)})`;
-              wExpr = `if(gt(${activeExpr},0),iw/${zf},${wExpr})`;
-              hExpr = `if(gt(${activeExpr},0),ih/${zf},${hExpr})`;
-            }
-            // crop to center region with dynamic zoom factor per beat window
-            beatZoomCropFilter =
-              `,crop=w='${wExpr}'` +
-              `:h='${hExpr}'` +
-              `:x='(iw-ow)/2':y='(ih-oh)/2'`;
-          }
+        const beatsInClip = timelineBeats.filter(
+          (b) => b >= clip.timelineStart && b < clip.timelineEnd
+        );
+        if (beatsInClip.length > 0) {
+          const pulseDur = (beatZoomCfg.durationMs ?? 150) / 1000;
+          const zf = (1 + (beatZoomCfg.intensity ?? 0.08)).toFixed(6);
+          const beatSumExpr = beatsInClip
+            .map((b) => {
+              const beatEnd = Math.min(b + pulseDur, clip.timelineEnd);
+              return `between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})`;
+            })
+            .join('+');
+          // crop to center region iw/ZF × ih/ZF during beat windows; full frame otherwise.
+          // ffmpeg evaluates expressions containing `t` per-frame automatically.
+          beatZoomCropFilter =
+            `,crop=w='if(gt(${beatSumExpr},0),iw/${zf},iw)'` +
+            `:h='if(gt(${beatSumExpr},0),ih/${zf},ih)'` +
+            `:x='(iw-ow)/2':y='(ih-oh)/2'`;
         }
       }
 
@@ -405,12 +360,20 @@ export function buildExportCommand(
       // Uses hqdn3d for color simplification + edgedetect for cartoon outlines +
       // blend (multiply) to composite them + eq to boost saturation.
       // This is a multi-input filter so we extend the chain with split/blend steps.
-      const cartoonEffect = clip.effects.find((e) => e.type === 'cartoon') as CartoonEffect | undefined;
+      // Read cartoon config from effect track (type='effect', effectType='cartoon')
+      const cartoonEffectTrack = project.tracks.find(
+        (t) => t.type === 'effect' && t.effectType === 'cartoon' && t.parentTrackId === track.id
+      );
+      const cartoonEffectClip = cartoonEffectTrack?.clips.find(
+        (ec) => ec.effectConfig?.enabled &&
+          ec.timelineStart < clip.timelineEnd && ec.timelineEnd > clip.timelineStart
+      );
+      const cartoonCfg = cartoonEffectClip?.effectConfig;
       let clipPad = baseClipPad;
-      if (cartoonEffect?.enabled) {
-        const cs = cartoonEffect.colorSimplification;
-        const es = cartoonEffect.edgeStrength;
-        const sat = Math.max(0, Math.min(3, cartoonEffect.saturation)).toFixed(2);
+      if (cartoonCfg?.enabled) {
+        const cs = cartoonCfg.colorSimplification ?? 0.5;
+        const es = cartoonCfg.edgeStrength ?? 0.6;
+        const sat = Math.max(0, Math.min(3, cartoonCfg.saturation ?? 1.5)).toFixed(2);
 
         // hqdn3d parameters: luma_spatial, chroma_spatial, luma_tmp, chroma_tmp
         const ls = (1 + cs * 8).toFixed(1);
