@@ -165,6 +165,24 @@ describe('useVersionCheck', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it('does not poll for updates when running in Next.js dev mode (buildId === "development")', async () => {
+    // In `next dev`, Next.js always sets __NEXT_DATA__.buildId to 'development'.
+    // Polling should be skipped entirely so no false-positive banner appears.
+    setNextDataBuildId('development');
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ buildId: 'some-server-build' }), { status: 200 }),
+    );
+
+    const { result } = renderHook(() => useVersionCheck());
+
+    await act(async () => {
+      vi.advanceTimersByTime(70_001); // past initial delay + full interval
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.current.status).toBeNull();
+  });
+
   it('falls back to "dev" build ID when __NEXT_DATA__ is absent', () => {
     delete (window as unknown as Record<string, unknown>).__NEXT_DATA__;
     localStorage.setItem(VERSION_KEY, 'some-old-value');
