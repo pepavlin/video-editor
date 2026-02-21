@@ -12,7 +12,12 @@ const WORK_BAR_H = 8; // top portion of ruler reserved for work area bar
 const MIN_ZOOM = 20;   // px per second
 const MAX_ZOOM = 400;
 const SNAP_THRESHOLD_PX = 8;
-const WA_HANDLE_HIT = 8; // hit radius in px for work area handles
+const WA_HANDLE_HIT = 8; // hit radius in px for work area handles (mouse)
+
+// Touch-friendly hit areas (larger to accommodate finger precision)
+const TOUCH_HANDLE = 24;       // trim handle hit area for touch
+const TOUCH_WA_HANDLE_HIT = 20; // work area handle hit area for touch
+const TOUCH_SNAP_THRESHOLD_PX = 16; // larger snap zone for touch
 
 function getTrackH(track: Track): number {
   return track.type === 'effect' ? EFFECT_TRACK_HEIGHT : TRACK_HEIGHT;
@@ -111,6 +116,16 @@ export default function Timeline({
 
   // Ghost clip ref (updated during drag-over without triggering re-renders)
   const ghostRef = useRef<GhostClip | null>(null);
+
+  // ─── Touch state refs ─────────────────────────────────────────────────────
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef<number>(80);
+  // 'drag' = interacting with clip/ruler, 'scroll' = panning timeline, 'pinch' = zoom
+  const touchModeRef = useRef<'drag' | 'scroll' | 'pinch' | 'none'>('none');
+  const touchScrollStartClientXRef = useRef<number>(0);
+  const touchScrollStartSLRef = useRef<number>(0);
+  // True after any touch event is received – used to widen hit areas
+  const isTouchDeviceRef = useRef(false);
 
   // Half-hover state: which clip + which half is under cursor during moveClip drag
   const clipHoverRef = useRef<{
@@ -912,40 +927,41 @@ export default function Timeline({
     [project]
   );
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const rect = canvasRef.current!.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+  // ─── Shared pointer-down logic (mouse + touch) ─────────────────────────
+  // Returns true if a drag interaction was started (clip/ruler), false if empty area
+  const handlePointerDown = useCallback(
+    (x: number, y: number, isTouch: boolean): boolean => {
       const Z = zoomRef.current;
       const SL = scrollLeftRef.current;
+      const handleSize = isTouch ? TOUCH_HANDLE : 8;
+      const waHit = isTouch ? TOUCH_WA_HANDLE_HIT : WA_HANDLE_HIT;
 
       if (y < RULER_HEIGHT) {
         const wa = workAreaRef.current;
         if (wa) {
           const waS = wa.start * Z - SL + HEADER_WIDTH;
           const waE = wa.end * Z - SL + HEADER_WIDTH;
-          if (Math.abs(x - waS) < WA_HANDLE_HIT) {
+          if (Math.abs(x - waS) < waHit) {
             setDrag({ type: 'workAreaStart' });
-            return;
+            return true;
           }
-          if (Math.abs(x - waE) < WA_HANDLE_HIT) {
+          if (Math.abs(x - waE) < waHit) {
             setDrag({ type: 'workAreaEnd' });
-            return;
+            return true;
           }
         }
         const t = (x + SL - HEADER_WIDTH) / Z;
         onSeek(Math.max(0, t));
         setDrag({ type: 'seek' });
-        return;
+        return true;
       }
 
-      if (x < HEADER_WIDTH) return;
+      if (x < HEADER_WIDTH) return false;
 
       const hit = getClipAtPosition(x, y);
       if (!hit) {
         onClipSelect(null);
-        return;
+        return false;
       }
 
       const { clip, track } = hit;
@@ -954,14 +970,12 @@ export default function Timeline({
       const clipXStart = clip.timelineStart * Z - SL + HEADER_WIDTH;
       const clipXEnd = clip.timelineEnd * Z - SL + HEADER_WIDTH;
 
-      const HANDLE = 8;
-      if (x < clipXStart + HANDLE) {
+      if (x < clipXStart + handleSize) {
         setDrag({ type: 'trimLeft', clipId: clip.id });
-      } else if (x > clipXEnd - HANDLE) {
+      } else if (x > clipXEnd - handleSize) {
         setDrag({ type: 'trimRight', clipId: clip.id });
       } else {
         const offsetSeconds = (x + SL - HEADER_WIDTH) / Z - clip.timelineStart;
-        // Find clips immediately adjacent (sharing a border) on the same track
         const leftAdjacentId = track.clips.find(
           (c) => c.id !== clip.id && Math.abs(c.timelineEnd - clip.timelineStart) < 0.001
         )?.id ?? null;
@@ -970,19 +984,27 @@ export default function Timeline({
         )?.id ?? null;
         setDrag({ type: 'moveClip', clipId: clip.id, trackId: track.id, offsetSeconds, leftAdjacentId, rightAdjacentId });
       }
+      return true;
     },
     [getClipAtPosition, onClipSelect, onSeek]
   );
 
-  const handleMouseMove = useCallback(
+  const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!project) return;
       const rect = canvasRef.current!.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      handlePointerDown(e.clientX - rect.left, e.clientY - rect.top, false);
+    },
+    [handlePointerDown]
+  );
+
+  // ─── Shared pointer-move logic (mouse + touch) ─────────────────────────
+  const handlePointerMove = useCallback(
+    (x: number, y: number, isTouch: boolean) => {
+      if (!project) return;
       const Z = zoomRef.current;
       const SL = scrollLeftRef.current;
       const d = dragRef.current;
+      const snapThreshold = (isTouch ? TOUCH_SNAP_THRESHOLD_PX : SNAP_THRESHOLD_PX) / Z;
 
       if (d.type === 'seek') {
         const t = Math.max(0, (x + SL - HEADER_WIDTH) / Z);
@@ -1022,14 +1044,11 @@ export default function Timeline({
 
         const dur = clip.timelineEnd - clip.timelineStart;
         const snapTargets = getSnapTargets(d.clipId);
-        const snapThreshold = SNAP_THRESHOLD_PX / Z;
         t = snap(t, snapTargets, snapThreshold);
         t = snap(t + dur, snapTargets, snapThreshold) - dur;
         t = Math.max(0, t);
 
         // ── Half-hover detection ──────────────────────────────────────────
-        // Find a clip on the SAME track that the cursor time overlaps with.
-        // The half that already borders the dragged clip is blocked (no-op move).
         const cursorTime = (x + SL - HEADER_WIDTH) / Z;
         const hoveredClip = clipTrack.clips.find(
           (c) => c.id !== d.clipId && cursorTime >= c.timelineStart && cursorTime <= c.timelineEnd
@@ -1037,14 +1056,11 @@ export default function Timeline({
         if (hoveredClip) {
           const midpoint = (hoveredClip.timelineStart + hoveredClip.timelineEnd) / 2;
           const half: 'left' | 'right' = cursorTime < midpoint ? 'left' : 'right';
-          // Left half of right-adjacent clip is blocked (B was already touching its left edge)
-          // Right half of left-adjacent clip is blocked (B was already touching its right edge)
           const blocked =
             (half === 'left' && hoveredClip.id === d.rightAdjacentId) ||
             (half === 'right' && hoveredClip.id === d.leftAdjacentId);
           clipHoverRef.current = { clip: hoveredClip, half, blocked };
           if (!blocked) {
-            // Override snap: place B just before or just after the hovered clip
             if (half === 'left') {
               t = Math.max(0, hoveredClip.timelineStart - dur);
             } else {
@@ -1069,11 +1085,8 @@ export default function Timeline({
         }
         if (!clip) return;
 
-        // Earliest possible timelineStart is when sourceStart would reach 0
         const minTimelineStart = Math.max(0, clip.timelineStart - clip.sourceStart);
-
         const snapTargets = getSnapTargets(d.clipId);
-        const snapThreshold = SNAP_THRESHOLD_PX / Z;
         t = snap(t, snapTargets, snapThreshold);
         t = clamp(t, minTimelineStart, clip.timelineEnd - 0.1);
 
@@ -1096,7 +1109,6 @@ export default function Timeline({
         const maxTimelineEnd = clip.timelineStart + maxSourceRemaining;
 
         const snapTargets = getSnapTargets(d.clipId);
-        const snapThreshold = SNAP_THRESHOLD_PX / Z;
         t = snap(t, snapTargets, snapThreshold);
         t = clamp(t, clip.timelineStart + 0.1, maxTimelineEnd);
 
@@ -1111,10 +1123,113 @@ export default function Timeline({
     [project, assets, getSnapTargets, onClipUpdate, onSeek, onWorkAreaChange, draw]
   );
 
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const rect = canvasRef.current!.getBoundingClientRect();
+      handlePointerMove(e.clientX - rect.left, e.clientY - rect.top, false);
+    },
+    [handlePointerMove]
+  );
+
   const handleMouseUp = useCallback(() => {
     clipHoverRef.current = null;
     setDrag({ type: 'none' });
   }, []);
+
+  // ─── Touch handlers ────────────────────────────────────────────────────────
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault(); // prevent scroll / zoom interference
+      isTouchDeviceRef.current = true;
+
+      if (e.touches.length === 2) {
+        // Pinch-to-zoom: record initial distance
+        touchModeRef.current = 'pinch';
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        pinchStartDistRef.current = Math.sqrt(dx * dx + dy * dy);
+        pinchStartZoomRef.current = zoomRef.current;
+        return;
+      }
+
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const rect = canvasRef.current!.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+
+        // Decide: drag (clip/ruler) or scroll (empty area)
+        let shouldDrag = false;
+        if (y < RULER_HEIGHT) {
+          shouldDrag = true; // ruler always triggers seek or work-area drag
+        } else if (x >= HEADER_WIDTH) {
+          const hit = getClipAtPosition(x, y);
+          if (hit) shouldDrag = true;
+        }
+
+        if (shouldDrag) {
+          touchModeRef.current = 'drag';
+          handlePointerDown(x, y, true);
+        } else {
+          // Start a horizontal pan
+          touchModeRef.current = 'scroll';
+          touchScrollStartClientXRef.current = touch.clientX;
+          touchScrollStartSLRef.current = scrollLeftRef.current;
+        }
+      }
+    },
+    [getClipAtPosition, handlePointerDown]
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+
+      if (e.touches.length === 2 && touchModeRef.current === 'pinch' && pinchStartDistRef.current !== null) {
+        // Pinch zoom
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const scale = dist / pinchStartDistRef.current;
+        setZoom((z) => clamp(pinchStartZoomRef.current * scale, MIN_ZOOM, MAX_ZOOM));
+        return;
+      }
+
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+
+        if (touchModeRef.current === 'scroll') {
+          // Horizontal pan
+          const dx = touch.clientX - touchScrollStartClientXRef.current;
+          setScrollLeft(Math.max(0, touchScrollStartSLRef.current - dx));
+          return;
+        }
+
+        if (touchModeRef.current === 'drag') {
+          const rect = canvasRef.current!.getBoundingClientRect();
+          const x = touch.clientX - rect.left;
+          const y = touch.clientY - rect.top;
+          handlePointerMove(x, y, true);
+        }
+      }
+    },
+    [handlePointerMove]
+  );
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      if (e.touches.length === 0) {
+        pinchStartDistRef.current = null;
+        touchModeRef.current = 'none';
+        // End any active drag
+        clipHoverRef.current = null;
+        setDrag({ type: 'none' });
+      }
+    },
+    []
+  );
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -1301,7 +1416,8 @@ export default function Timeline({
       {/* Toolbar */}
       <div
         style={{
-          height: 28,
+          height: isTouchDeviceRef.current ? 40 : 28,
+          minHeight: 36,
           display: 'flex',
           alignItems: 'center',
           gap: 4,
@@ -1325,16 +1441,18 @@ export default function Timeline({
             key={mode}
             onClick={() => setSnapMode(mode)}
             style={{
-              fontSize: 10,
-              padding: '2px 8px',
-              borderRadius: 4,
+              fontSize: 11,
+              padding: '5px 10px',
+              borderRadius: 6,
               border: snapMode === mode ? '1px solid rgba(0,212,160,0.6)' : '1px solid rgba(255,255,255,0.12)',
               background: snapMode === mode ? 'rgba(0,212,160,0.15)' : 'transparent',
               color: snapMode === mode ? 'rgba(0,212,160,0.95)' : 'rgba(255,255,255,0.45)',
               cursor: 'pointer',
               userSelect: 'none',
-              lineHeight: '16px',
-            }}
+              lineHeight: '18px',
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
+            } as React.CSSProperties}
           >
             {label}
           </button>
@@ -1349,9 +1467,9 @@ export default function Timeline({
             onClick={() => setShowEffectMenu((v) => !v)}
             title="Add a new effect track to the timeline"
             style={{
-              fontSize: 10,
-              padding: '2px 8px',
-              borderRadius: 4,
+              fontSize: 11,
+              padding: '5px 10px',
+              borderRadius: 6,
               border: showEffectMenu
                 ? '1px solid rgba(251,146,60,0.70)'
                 : '1px solid rgba(251,146,60,0.38)',
@@ -1361,11 +1479,13 @@ export default function Timeline({
               color: 'rgba(251,146,60,0.95)',
               cursor: 'pointer',
               userSelect: 'none',
-              lineHeight: '16px',
+              lineHeight: '18px',
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-            }}
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
+            } as React.CSSProperties}
           >
             <span style={{ fontSize: 11 }}>✦</span> Add Effect
           </button>
@@ -1420,14 +1540,16 @@ export default function Timeline({
                   style={{
                     display: 'block',
                     width: '100%',
-                    padding: '6px 12px',
+                    padding: '10px 12px',
                     background: 'transparent',
                     border: 'none',
                     color: 'rgba(251,146,60,0.90)',
-                    fontSize: 11,
+                    fontSize: 12,
                     textAlign: 'left',
                     cursor: 'pointer',
-                  }}
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent',
+                  } as React.CSSProperties}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(251,146,60,0.12)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
@@ -1448,7 +1570,7 @@ export default function Timeline({
       >
         <canvas
           ref={canvasRef}
-          style={{ cursor, display: 'block', width: '100%', height: '100%' }}
+          style={{ cursor, display: 'block', width: '100%', height: '100%', touchAction: 'none' }}
           onMouseDown={handleMouseDown}
           onMouseMove={(e) => { handleMouseMove(e); handleMouseMoveForCursor(e); }}
           onMouseUp={handleMouseUp}
@@ -1458,6 +1580,9 @@ export default function Timeline({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onDoubleClick={handleDoubleClick}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         />
 
         {/* ─── Track header drag handles (HTML overlay) ─────────────────── */}
