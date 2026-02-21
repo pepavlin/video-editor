@@ -24,7 +24,7 @@ services:
       PYTHON_BIN: python3
       FFMPEG_BIN: ffmpeg
       FFPROBE_BIN: ffprobe
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://localhost:${PORT:-3000}
       MEDIA_DIR: /data/media
     restart: unless-stopped
     healthcheck:
@@ -42,9 +42,10 @@ services:
         NEXT_PUBLIC_API_URL: http://api:3001
     container_name: video-editor-web
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
       NODE_ENV: production
+      PORT: ${PORT:-3000}
       NEXT_PUBLIC_API_URL: http://api:3001
     depends_on:
       api:
