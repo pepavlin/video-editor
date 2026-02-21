@@ -55,7 +55,6 @@ export interface Clip {
   useClipAudio?: boolean;    // use embedded audio from video clip
   clipAudioVolume?: number;  // 0..2, defaults to 1
   transform?: Transform;     // position/scale/rotation/opacity (video + text tracks)
-  effects?: Effect[]; // @deprecated – use effect tracks (Track.type === 'effect') instead
   // Text-clip-only fields:
   textContent?: string;      // text to display (text tracks only)
   textStyle?: TextStyle;     // text appearance (text tracks only)
@@ -93,46 +92,12 @@ export interface Transform {
   opacity: number;  // 0..1
 }
 
-// ─── Effects ────────────────────────────────────────────────────────────────
-
-export type Effect = BeatZoomEffect | CutoutEffect | HeadStabilizationEffect | CartoonEffect;
-
-export interface BeatZoomEffect {
-  type: 'beatZoom';
-  enabled: boolean;
-  intensity: number;     // fraction, e.g. 0.08 = +8%
-  durationMs: number;    // pulse duration
-  easing: 'linear' | 'easeOut' | 'easeIn' | 'easeInOut';
-}
-
-export interface CutoutEffect {
-  type: 'cutout';
-  enabled: boolean;
-  background: BackgroundConfig;
-  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
-}
+// ─── Background config (used by cutout effect in EffectClipConfig) ──────────
 
 export interface BackgroundConfig {
   type: 'solid' | 'video';
   color?: string;    // hex, for solid
   assetId?: string;  // for video background
-}
-
-export interface HeadStabilizationEffect {
-  type: 'headStabilization';
-  enabled: boolean;
-  smoothingX: number;  // 0-1: stabilization strength on X axis (0=off, 1=full)
-  smoothingY: number;  // 0-1: stabilization strength on Y axis
-  smoothingZ: number;  // 0-1: stabilization strength on Z/zoom axis
-  status?: 'pending' | 'processing' | 'done' | 'error';
-}
-
-export interface CartoonEffect {
-  type: 'cartoon';
-  enabled: boolean;
-  edgeStrength: number;        // 0-1: prominence of cartoon edges
-  colorSimplification: number; // 0-1: how much to simplify/flatten colors
-  saturation: number;          // 0-2: color saturation (1=normal, 1.5=vivid)
 }
 
 // ─── Assets ─────────────────────────────────────────────────────────────────
