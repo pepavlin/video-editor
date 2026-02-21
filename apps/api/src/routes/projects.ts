@@ -263,7 +263,7 @@ export async function projectsRoutes(app: FastifyInstance) {
   // POST /projects/:id/export
   app.post<{
     Params: { id: string };
-    Body: { width?: number; height?: number; crf?: number; preset?: string };
+    Body: { width?: number; height?: number; crf?: number; preset?: string; startTime?: number; endTime?: number };
   }>('/projects/:id/export', async (req, reply) => {
     const project = ws.readProject(req.params.id);
     if (!project) return reply.code(404).send({ error: 'Project not found' });
@@ -311,6 +311,8 @@ export async function projectsRoutes(app: FastifyInstance) {
             height: req.body?.height ?? project.outputResolution.h,
             crf: req.body?.crf,
             preset: req.body?.preset,
+            startTime: req.body?.startTime,
+            endTime: req.body?.endTime,
           },
           beatsMap
         );
@@ -319,12 +321,15 @@ export async function projectsRoutes(app: FastifyInstance) {
         ws.appendJobLog(job.id, `[export] cmd: ${cmd} ${args.join(' ')}`);
         ws.appendJobLog(job.id, `[export] running ffmpeg...`);
 
-        // Use effective duration (from clips) in case project.duration is 0
-        let effectiveDuration = project.duration;
+        // Use work area range for progress calculation if provided
+        const exportStart = req.body?.startTime ?? 0;
+        let effectiveDuration = (req.body?.endTime != null)
+          ? req.body.endTime - exportStart
+          : project.duration - exportStart;
         if (effectiveDuration <= 0) {
           for (const track of project.tracks) {
             for (const clip of track.clips) {
-              if (clip.timelineEnd > effectiveDuration) effectiveDuration = clip.timelineEnd;
+              if (clip.timelineEnd > effectiveDuration + exportStart) effectiveDuration = clip.timelineEnd - exportStart;
             }
           }
         }

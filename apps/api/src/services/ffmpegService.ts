@@ -146,6 +146,8 @@ export interface ExportOptions {
   height?: number;
   crf?: number;
   preset?: string;
+  startTime?: number; // work area start (seconds)
+  endTime?: number;   // work area end (seconds)
 }
 
 export function buildExportCommand(
@@ -401,8 +403,16 @@ export function buildExportCommand(
     args.push('-map', audioOutPad);
   }
 
+  // Output time range: use work area if provided, otherwise full duration
+  const outStart = opts.startTime ?? 0;
+  const outEnd = opts.endTime ?? effectiveDuration;
+  const outDur = Math.max(0.1, outEnd - outStart);
+
+  if (outStart > 0) {
+    args.push('-ss', outStart.toFixed(4));
+  }
   args.push(
-    '-t', effectiveDuration.toFixed(4),   // hard stop — prevents infinite encoding
+    '-t', outDur.toFixed(4),              // hard stop — prevents infinite encoding
     '-c:v', 'libx264',
     '-preset', PRESET,
     '-crf', String(CRF),
