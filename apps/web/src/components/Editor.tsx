@@ -534,6 +534,7 @@ export default function Editor() {
             onToggle={playback.toggle}
             onLoopToggle={playback.toggleLoop}
             onSeek={playback.seek}
+            getTime={playback.getTime}
           />
 
           {/* Preview */}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { formatTime } from '@/lib/utils';
 
 interface Props {
@@ -10,10 +11,45 @@ interface Props {
   onToggle: () => void;
   onLoopToggle: () => void;
   onSeek: (t: number) => void;
+  /** Real-time position getter — bypasses React render latency for smooth progress updates. */
+  getTime?: () => number;
 }
 
-export default function TransportControls({ isPlaying, currentTime, duration, isLooping, onToggle, onLoopToggle, onSeek }: Props) {
+export default function TransportControls({ isPlaying, currentTime, duration, isLooping, onToggle, onLoopToggle, onSeek, getTime }: Props) {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  // Refs for direct DOM updates during playback, bypassing React render cycle
+  const progressFillRef = useRef<HTMLDivElement>(null);
+  const scrubDotRef = useRef<HTMLDivElement>(null);
+  const timeDisplayRef = useRef<HTMLSpanElement>(null);
+  const rafRef = useRef<number>(0);
+
+  // When playing, update progress bar directly via DOM to guarantee 60fps updates
+  // regardless of React's render scheduling.
+  useEffect(() => {
+    if (!isPlaying || !getTime) return;
+
+    const update = () => {
+      const t = getTime();
+      const pct = duration > 0 ? (t / duration) * 100 : 0;
+      const clampedPct = Math.min(100, Math.max(0, pct));
+
+      if (progressFillRef.current) {
+        progressFillRef.current.style.width = `${clampedPct}%`;
+      }
+      if (scrubDotRef.current) {
+        scrubDotRef.current.style.left = `calc(${clampedPct}% - 10px)`;
+      }
+      if (timeDisplayRef.current) {
+        timeDisplayRef.current.textContent = formatTime(t);
+      }
+
+      rafRef.current = requestAnimationFrame(update);
+    };
+
+    rafRef.current = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [isPlaying, duration, getTime]);
 
   return (
     <div
@@ -117,15 +153,18 @@ export default function TransportControls({ isPlaying, currentTime, duration, is
         </svg>
       </button>
 
-      {/* Current time */}
-      <span style={{
-        fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
-        fontSize: 15,
-        minWidth: 80,
-        fontVariantNumeric: 'tabular-nums',
-        fontWeight: 600,
-        color: '#7de0cc',
-      }}>
+      {/* Current time — updated via DOM ref during playback for smooth display */}
+      <span
+        ref={timeDisplayRef}
+        style={{
+          fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
+          fontSize: 15,
+          minWidth: 80,
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 600,
+          color: '#7de0cc',
+        }}
+      >
         {formatTime(currentTime)}
       </span>
 
@@ -146,8 +185,9 @@ export default function TransportControls({ isPlaying, currentTime, duration, is
           onSeek(ratio * duration);
         }}
       >
-        {/* Filled portion */}
+        {/* Filled portion — width driven by DOM ref during playback */}
         <div
+          ref={progressFillRef}
           style={{
             position: 'absolute',
             left: 0,
@@ -156,7 +196,7 @@ export default function TransportControls({ isPlaying, currentTime, duration, is
             width: `${progress}%`,
             borderRadius: 6,
             overflow: 'hidden',
-            transition: 'width 0.08s linear',
+            transition: isPlaying ? 'none' : 'width 0.08s linear',
           }}
         >
           <div
@@ -172,6 +212,7 @@ export default function TransportControls({ isPlaying, currentTime, duration, is
         </div>
         {/* Scrubber dot */}
         <div
+          ref={scrubDotRef}
           className="opacity-0 group-hover:opacity-100"
           style={{
             position: 'absolute',
