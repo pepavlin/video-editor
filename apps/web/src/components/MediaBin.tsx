@@ -99,16 +99,37 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
 
   return (
     <div
-      className="flex flex-col h-full"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 gap-1" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <span className="text-xs font-semibold uppercase tracking-widest flex-1" style={{ color: 'rgba(0,212,160,0.85)', letterSpacing: '0.08em' }}>Media</span>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '14px 16px',
+        gap: 8,
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        flexShrink: 0,
+      }}>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.10em',
+          color: 'rgba(0,212,160,0.80)',
+          flex: 1,
+        }}>Media</span>
         {mediaFiles !== null && (
           <button
-            className="btn text-xs py-1 px-2 bg-surface-hover hover:bg-surface-border text-gray-300"
+            className="btn btn-ghost"
+            style={{
+              fontSize: 12,
+              padding: '5px 10px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.10)',
+            }}
             onClick={() => setShowBrowser((v) => !v)}
             title="Browse files from the mounted local media directory"
           >
@@ -116,7 +137,8 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
           </button>
         )}
         <button
-          className="btn btn-primary text-xs py-1"
+          className="btn btn-primary"
+          style={{ fontSize: 12, padding: '6px 12px' }}
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
         >
@@ -127,42 +149,59 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
           type="file"
           multiple
           accept="video/*,audio/*,.mp4,.mov,.mp3,.wav,.m4a"
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={(e) => handleImport(e.target.files)}
         />
       </div>
 
       {/* Local media browser panel */}
       {showBrowser && mediaFiles !== null && (
-        <div className="border-b fade-up" style={{ borderColor: 'rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.025)' }}>
-          <div className="px-3 py-2 flex items-center justify-between">
-            <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Local files</span>
+        <div className="border-b fade-up" style={{ borderColor: 'rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.025)', flexShrink: 0 }}>
+          <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.50)', fontWeight: 500 }}>Local files</span>
             <button
-              className="text-xs transition-colors"
-              style={{ color: 'rgba(255,255,255,0.25)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)'; }}
+              style={{ fontSize: 14, color: 'rgba(255,255,255,0.28)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.28)'; }}
               onClick={() => setShowBrowser(false)}
             >✕</button>
           </div>
           {mediaFiles.length === 0 ? (
-            <p className="px-3 pb-3 text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-              No files found. Put media files in the mounted directory or set <code className="text-xs" style={{ color: 'rgba(0,212,160,0.6)' }}>LOCAL_MEDIA_DIR</code> in your <code className="text-xs" style={{ color: 'rgba(0,212,160,0.6)' }}>.env</code>.
+            <p style={{ padding: '0 16px 14px', fontSize: 13, color: 'rgba(255,255,255,0.28)' }}>
+              No files found. Put media files in the mounted directory or set{' '}
+              <code style={{ fontSize: 12, color: 'rgba(0,212,160,0.6)' }}>LOCAL_MEDIA_DIR</code>{' '}
+              in your{' '}
+              <code style={{ fontSize: 12, color: 'rgba(0,212,160,0.6)' }}>.env</code>.
             </p>
           ) : (
-            <div className="max-h-48 overflow-y-auto">
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
               {mediaFiles.map((f) => (
                 <button
                   key={f.name}
-                  className="w-full text-left px-3 py-1.5 text-xs truncate block transition-all duration-100"
-                  style={{ color: '#c0ddd6' }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '8px 16px',
+                    fontSize: 13,
+                    color: '#c0ddd6',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    transition: 'background 0.1s',
+                  }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,160,0.07)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                   onClick={() => handleLinkFile(f.name)}
                   title={f.name}
                 >
                   {f.name}
-                  <span className="ml-1" style={{ color: 'rgba(255,255,255,0.25)' }}>({(f.size / 1024 / 1024).toFixed(1)} MB)</span>
+                  <span style={{ marginLeft: 6, color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
+                    ({(f.size / 1024 / 1024).toFixed(1)} MB)
+                  </span>
                 </button>
               ))}
             </div>
@@ -171,35 +210,54 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
       )}
 
       {/* Drop zone hint + assets list */}
-      <div className="flex-1 overflow-y-auto">
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {assets.length === 0 && Object.keys(importProgress).length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-xs gap-2 p-4" style={{ color: 'rgba(255,255,255,0.2)' }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            gap: 12,
+            padding: 24,
+            color: 'rgba(255,255,255,0.18)',
+          }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <p className="text-center">Drop videos/audio here<br />or click Import</p>
+            <p style={{ fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
+              Drop videos or audio here<br />or click Import
+            </p>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {/* Importing items */}
             {Object.entries(importProgress).map(([assetId, progress]) => (
-              <div key={assetId} className="rounded-xl p-2.5 text-xs" style={{ background: 'rgba(0,212,160,0.06)', border: '1px solid rgba(0,212,160,0.12)' }}>
-                <div className="flex justify-between mb-1.5">
-                  <span className="flex items-center gap-1.5" style={{ color: 'rgba(0,212,160,0.75)' }}>
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse inline-block" style={{ background: '#00d4a0' }} />
+              <div key={assetId} style={{
+                borderRadius: 12,
+                padding: '10px 12px',
+                background: 'rgba(0,212,160,0.06)',
+                border: '1px solid rgba(0,212,160,0.12)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(0,212,160,0.75)', fontSize: 13 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00d4a0', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
                     Importing...
                   </span>
-                  <span className="font-semibold tabular-nums" style={{ color: '#5ee8c8' }}>{progress}%</span>
+                  <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#5ee8c8', fontSize: 13 }}>{progress}%</span>
                 </div>
-                <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                <div style={{ position: 'relative', height: 4, borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,0.07)' }}>
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
                     style={{
-                      width: `${Math.max(3, progress)}%`,
+                      position: 'absolute',
+                      inset: 0,
+                      right: `${100 - Math.max(3, progress)}%`,
                       background: 'linear-gradient(90deg, #00d4a0, #38bdf8)',
                       boxShadow: '0 0 6px rgba(0,212,160,0.5)',
+                      borderRadius: 4,
+                      transition: 'right 0.3s ease',
                     }}
                   />
                   <div className="progress-shimmer" />
@@ -236,16 +294,22 @@ function AssetItem({
     <div
       draggable={isReady}
       onDragStart={(e) => onDragStart(e, asset)}
-      className={`flex items-center gap-2 rounded-xl p-2 ${isReady ? 'cursor-grab active:cursor-grabbing' : 'opacity-55 cursor-wait'}`}
       style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        borderRadius: 12,
+        padding: '10px 10px',
         border: '1px solid transparent',
+        opacity: isReady ? 1 : 0.55,
+        cursor: isReady ? 'grab' : 'wait',
         transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
       }}
       onMouseEnter={(e) => {
         if (!isReady) return;
         const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(255,255,255,0.07)';
-        el.style.borderColor = 'rgba(0,212,160,0.18)';
+        el.style.background = 'rgba(255,255,255,0.06)';
+        el.style.borderColor = 'rgba(0,212,160,0.20)';
         el.style.transform = 'translateY(-1px)';
       }}
       onMouseLeave={(e) => {
@@ -256,24 +320,35 @@ function AssetItem({
       }}
       title={asset.name}
     >
-      {/* Thumbnail icon */}
-      <div className="w-10 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* Thumbnail */}
+      <div style={{
+        width: 52,
+        height: 40,
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        overflow: 'hidden',
+        background: 'rgba(255,255,255,0.07)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}>
         {isVideo ? (
           asset.proxyPath ? (
             <video
               src={`/files/${asset.proxyPath}#t=0.5`}
-              className="w-full h-full object-cover"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               muted
               preload="metadata"
             />
           ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="1.8">
               <polygon points="23 7 16 12 23 17 23 7" />
               <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
             </svg>
           )
         ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="1.8">
             <path d="M9 18V5l12-2v13" />
             <circle cx="6" cy="18" r="3" />
             <circle cx="18" cy="16" r="3" />
@@ -282,9 +357,17 @@ function AssetItem({
       </div>
 
       {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium truncate" style={{ color: '#e0f0ea' }}>{asset.name}</div>
-        <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13,
+          fontWeight: 500,
+          color: '#d8ece6',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          marginBottom: 3,
+        }}>{asset.name}</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.30)' }}>
           {formatTime(asset.duration)}
           {!isReady && ' · processing...'}
         </div>
@@ -292,7 +375,7 @@ function AssetItem({
 
       {/* Resolution */}
       {isVideo && asset.width && (
-        <span className="text-xs flex-shrink-0" style={{ color: 'rgba(255,255,255,0.22)' }}>
+        <span style={{ fontSize: 11, flexShrink: 0, color: 'rgba(255,255,255,0.22)' }}>
           {asset.width}×{asset.height}
         </span>
       )}

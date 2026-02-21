@@ -32,19 +32,28 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
       <button
-        className="flex items-center justify-between w-full px-3 py-2.5 text-left"
-        style={{ transition: 'background 0.15s ease' }}
+        className="flex items-center justify-between w-full text-left"
+        style={{
+          padding: '14px 16px',
+          transition: 'background 0.15s ease',
+        }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.85)', letterSpacing: '0.08em' }}>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.10em',
+          color: 'rgba(0,212,160,0.80)',
+        }}>
           {title}
         </span>
         <span style={{
-          color: 'rgba(0,212,160,0.45)',
+          color: 'rgba(0,212,160,0.40)',
           display: 'inline-block',
-          fontSize: 12,
+          fontSize: 14,
           transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
           transition: 'transform 0.2s cubic-bezier(0.4,0,0.2,1)',
         }}>▾</span>
@@ -52,7 +61,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {/* CSS grid trick for smooth height animation */}
       <div className={`section-body ${open ? 'open' : 'closed'}`}>
         <div className="section-inner">
-          <div className="px-3 pb-3 space-y-2">{children}</div>
+          <div style={{ padding: '4px 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {children}
+          </div>
         </div>
       </div>
     </div>
@@ -62,13 +73,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div
-      className="flex items-center gap-2 rounded-md px-1 py-0.5 -mx-1"
-      style={{ transition: 'background 0.12s ease' }}
+      className="flex items-center gap-3 rounded-lg"
+      style={{
+        padding: '4px 8px',
+        margin: '0 -8px',
+        transition: 'background 0.12s ease',
+      }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
     >
-      <span className="text-xs w-16 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.38)' }}>{label}</span>
-      <div className="flex-1">{children}</div>
+      <span style={{
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.35)',
+        width: 80,
+        flexShrink: 0,
+      }}>{label}</span>
+      <div style={{ flex: 1 }}>{children}</div>
     </div>
   );
 }
@@ -94,7 +114,7 @@ function NumInput({
       max={max}
       step={step}
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="text-xs"
+      style={{ fontSize: 13 }}
     />
   );
 }
@@ -155,26 +175,24 @@ export default function Inspector({
     }
   };
 
+  const valueText = (v: number | string) => (
+    <span style={{ fontSize: 13, color: '#b8ddd6', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+  );
+
   return (
-    <div className="flex flex-col h-full overflow-y-auto text-sm">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
       {/* Clip properties */}
       {selectedClip ? (
         <>
-          <Section title="Clip">
+          <Section title="Clip Info">
             <Row label="Asset">
-              <span className="text-xs text-gray-400 truncate block">{selectedAsset?.name ?? selectedClip.assetId}</span>
-            </Row>
-            <Row label="Start">
-              <span className="text-xs text-gray-300">{formatTime(selectedClip.timelineStart)}</span>
-            </Row>
-            <Row label="End">
-              <span className="text-xs text-gray-300">{formatTime(selectedClip.timelineEnd)}</span>
-            </Row>
-            <Row label="Duration">
-              <span className="text-xs text-gray-300">
-                {formatTime(selectedClip.timelineEnd - selectedClip.timelineStart)}
+              <span style={{ fontSize: 13, color: '#8ab8b0', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedAsset?.name ?? selectedClip.assetId}
               </span>
             </Row>
+            <Row label="Start">{valueText(formatTime(selectedClip.timelineStart))}</Row>
+            <Row label="End">{valueText(formatTime(selectedClip.timelineEnd))}</Row>
+            <Row label="Duration">{valueText(formatTime(selectedClip.timelineEnd - selectedClip.timelineStart))}</Row>
           </Section>
 
           <Section title="Transform">
@@ -219,7 +237,7 @@ export default function Inspector({
                 max={1}
                 step={0.01}
                 value={selectedClip.transform.opacity}
-                className="w-full"
+                style={{ width: '100%' }}
                 onChange={(e) =>
                   onClipUpdate(selectedClip!.id, {
                     transform: { ...selectedClip!.transform, opacity: parseFloat(e.target.value) },
@@ -247,7 +265,7 @@ export default function Inspector({
                   max={2}
                   step={0.05}
                   value={selectedClip.clipAudioVolume}
-                  className="w-full"
+                  style={{ width: '100%' }}
                   onChange={(e) =>
                     onClipUpdate(selectedClip!.id, {
                       clipAudioVolume: parseFloat(e.target.value),
@@ -260,19 +278,22 @@ export default function Inspector({
 
           <Section title="Effects">
             {/* Beat Zoom */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300">Beat Zoom</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: '#c0ddd8' }}>Beat Zoom</span>
                 {beatZoom ? (
                   <button
-                    className="text-xs text-red-400 hover:text-red-300"
+                    style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
                     onClick={() => onRemoveEffect(selectedClip!.id, 'beatZoom')}
                   >
                     Remove
                   </button>
                 ) : (
                   <button
-                    className="text-xs btn btn-ghost border border-surface-border"
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
                     onClick={() =>
                       onAddEffect(selectedClip!.id, {
                         type: 'beatZoom',
@@ -288,8 +309,8 @@ export default function Inspector({
                 )}
               </div>
               {beatZoom && (
-                <div className="space-y-1 pl-2 border-l border-surface-border">
-                  <label className="flex items-center gap-2 text-xs text-gray-400">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={beatZoom.enabled}
@@ -304,14 +325,14 @@ export default function Inspector({
                       max={0.5}
                       step={0.01}
                       value={beatZoom.intensity}
-                      className="w-full"
+                      style={{ width: '100%' }}
                       onChange={(e) =>
                         onUpdateEffect(selectedClip!.id, 'beatZoom', {
                           intensity: parseFloat(e.target.value),
                         })
                       }
                     />
-                    <span className="text-xs text-gray-500">{(beatZoom.intensity * 100).toFixed(0)}%</span>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{(beatZoom.intensity * 100).toFixed(0)}%</span>
                   </Row>
                   <Row label="Duration">
                     <NumInput
@@ -323,12 +344,12 @@ export default function Inspector({
                         onUpdateEffect(selectedClip!.id, 'beatZoom', { durationMs: v })
                       }
                     />
-                    <span className="text-xs text-gray-500">ms</span>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>ms</span>
                   </Row>
                   <Row label="Easing">
                     <select
                       value={beatZoom.easing}
-                      className="text-xs"
+                      style={{ fontSize: 13 }}
                       onChange={(e) =>
                         onUpdateEffect(selectedClip!.id, 'beatZoom', { easing: e.target.value })
                       }
@@ -345,19 +366,22 @@ export default function Inspector({
 
             {/* Cutout */}
             {selectedAsset?.type === 'video' && (
-              <div className="space-y-2 mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-300">Cutout Person</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: '#c0ddd8' }}>Cutout Person</span>
                   {cutout ? (
                     <button
-                      className="text-xs text-red-400 hover:text-red-300"
+                      style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
                       onClick={() => onRemoveEffect(selectedClip!.id, 'cutout')}
                     >
                       Remove
                     </button>
                   ) : (
                     <button
-                      className="text-xs btn btn-ghost border border-surface-border"
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
                       onClick={async () => {
                         onAddEffect(selectedClip!.id, {
                           type: 'cutout',
@@ -373,14 +397,14 @@ export default function Inspector({
                   )}
                 </div>
                 {cutout && (
-                  <div className="space-y-1 pl-2 border-l border-surface-border">
-                    <div className="text-xs text-gray-500">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.38)' }}>
                       Mask: {cutout.maskStatus ?? 'unknown'}
                     </div>
                     <Row label="BG Type">
                       <select
                         value={cutout.background.type}
-                        className="text-xs"
+                        style={{ fontSize: 13 }}
                         onChange={(e) =>
                           onUpdateEffect(selectedClip!.id, 'cutout', {
                             background: {
@@ -404,7 +428,7 @@ export default function Inspector({
                               background: { ...cutout.background, color: e.target.value },
                             })
                           }
-                          className="w-full h-6"
+                          style={{ width: '100%', height: 36 }}
                         />
                       </Row>
                     )}
@@ -415,9 +439,9 @@ export default function Inspector({
           </Section>
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center h-28 gap-2" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
-          <span className="text-xs">Select a clip to inspect</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 120, gap: 10, color: 'rgba(255,255,255,0.18)' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
+          <span style={{ fontSize: 13 }}>Select a clip to inspect</span>
         </div>
       )}
 
@@ -427,18 +451,19 @@ export default function Inspector({
           placeholder="Paste lyrics here..."
           value={lyricsText || project?.lyrics?.text || ''}
           onChange={(e) => setLyricsText(e.target.value)}
-          className="w-full h-24 resize-none text-xs"
+          style={{ width: '100%', height: 100, resize: 'none', fontSize: 13 }}
         />
         <button
-          className="btn btn-ghost border border-surface-border w-full text-xs mt-1"
+          className="btn btn-ghost"
+          style={{ border: '1px solid rgba(255,255,255,0.12)', width: '100%', fontSize: 13 }}
           onClick={handleAlignLyrics}
           disabled={aligningLyrics || !lyricsText.trim()}
         >
           {aligningLyrics ? 'Aligning...' : 'Align Lyrics'}
         </button>
         {project?.lyrics?.words && (
-          <div className="mt-2">
-            <label className="flex items-center gap-2 text-xs text-gray-400">
+          <div style={{ marginTop: 4 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={project.lyrics.enabled ?? false}
@@ -451,13 +476,13 @@ export default function Inspector({
               />
               Show lyrics overlay
             </label>
-            <p className="text-xs text-gray-600 mt-1">
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', marginTop: 6 }}>
               {project.lyrics.words.length} words aligned
             </p>
           </div>
         )}
         {project?.lyrics?.words && (
-          <div className="space-y-1 mt-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Row label="Font size">
               <NumInput
                 value={project.lyrics.style?.fontSize ?? 48}
@@ -475,7 +500,7 @@ export default function Inspector({
             <Row label="Position">
               <select
                 value={project.lyrics?.style?.position ?? 'bottom'}
-                className="text-xs"
+                style={{ fontSize: 13 }}
                 onChange={(e) =>
                   onUpdateProject((p) => ({
                     ...p,
@@ -518,16 +543,17 @@ export default function Inspector({
       {/* Export */}
       <Section title="Export">
         <button
-          className="btn btn-primary w-full"
+          className="btn btn-primary"
+          style={{ width: '100%', fontSize: 14, padding: '12px 16px' }}
           onClick={handleExport}
           disabled={exporting}
         >
           {exporting ? 'Exporting...' : 'Export MP4'}
         </button>
         {exportDone && (
-          <p className="text-xs text-green-400 mt-1">Export started! Check jobs panel.</p>
+          <p style={{ fontSize: 13, color: '#4ade80', marginTop: 6 }}>Export started! Check jobs panel.</p>
         )}
-        <p className="text-xs text-gray-600 mt-1">Output: 1080×1920, H.264</p>
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', marginTop: 4 }}>Output: 1080×1920, H.264</p>
       </Section>
     </div>
   );
