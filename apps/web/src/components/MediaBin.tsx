@@ -9,9 +9,11 @@ interface Props {
   assets: Asset[];
   onAssetsChange: () => void;
   onDragAsset?: (assetId: string) => void;
+  /** Called on mobile when user taps the "+" button to add an asset to the timeline. */
+  onAddToTimeline?: (assetId: string, assetType: string, duration: number) => void;
 }
 
-export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props) {
+export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToTimeline }: Props) {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -281,6 +283,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
                 asset={asset}
                 index={idx}
                 onDragStart={handleAssetDragStart}
+                onAddToTimeline={onAddToTimeline}
               />
             ))}
           </div>
@@ -294,33 +297,43 @@ function AssetItem({
   asset,
   index = 0,
   onDragStart,
+  onAddToTimeline,
 }: {
   asset: Asset;
   index?: number;
   onDragStart: (e: React.DragEvent, asset: Asset) => void;
+  onAddToTimeline?: (assetId: string, assetType: string, duration: number) => void;
 }) {
   const isVideo = asset.type === 'video';
   const isReady = !!asset.waveformPath;
+  const [added, setAdded] = useState(false);
+
+  const handleAddToTimeline = () => {
+    if (!isReady || !onAddToTimeline) return;
+    onAddToTimeline(asset.id, asset.type, asset.duration);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
 
   return (
     <div
-      draggable={isReady}
+      draggable={isReady && !onAddToTimeline}
       onDragStart={(e) => onDragStart(e, asset)}
       className="stagger-item"
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: 10,
         borderRadius: 12,
         padding: '10px 10px',
         border: '1px solid transparent',
         opacity: isReady ? 1 : 0.55,
-        cursor: isReady ? 'grab' : 'wait',
+        cursor: onAddToTimeline ? 'default' : (isReady ? 'grab' : 'wait'),
         transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
         animationDelay: `${index * 0.05}s`,
       }}
       onMouseEnter={(e) => {
-        if (!isReady) return;
+        if (!isReady || onAddToTimeline) return;
         const el = e.currentTarget as HTMLElement;
         el.style.background = 'rgba(255,255,255,0.06)';
         el.style.borderColor = 'rgba(0,212,160,0.22)';
@@ -328,6 +341,7 @@ function AssetItem({
         el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
       }}
       onMouseLeave={(e) => {
+        if (onAddToTimeline) return;
         const el = e.currentTarget as HTMLElement;
         el.style.background = '';
         el.style.borderColor = 'transparent';
@@ -397,11 +411,39 @@ function AssetItem({
         </div>
       </div>
 
-      {/* Resolution */}
-      {isVideo && asset.width && (
+      {/* Resolution (hidden on mobile to save space) */}
+      {isVideo && asset.width && !onAddToTimeline && (
         <span style={{ fontSize: 11, flexShrink: 0, color: 'rgba(255,255,255,0.22)' }}>
           {asset.width}×{asset.height}
         </span>
+      )}
+
+      {/* Mobile: Add to timeline button */}
+      {onAddToTimeline && isReady && (
+        <button
+          onClick={handleAddToTimeline}
+          style={{
+            flexShrink: 0,
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: added
+              ? 'rgba(0,212,160,0.20)'
+              : 'rgba(0,212,160,0.10)',
+            border: `1px solid ${added ? 'rgba(0,212,160,0.55)' : 'rgba(0,212,160,0.25)'}`,
+            color: added ? '#00d4a0' : 'rgba(0,212,160,0.70)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            fontSize: 18,
+            lineHeight: 1,
+          }}
+          title="Add to timeline"
+        >
+          {added ? '✓' : '+'}
+        </button>
       )}
     </div>
   );

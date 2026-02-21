@@ -13,6 +13,21 @@ import Inspector from './Inspector';
 import TransportControls from './TransportControls';
 import ProjectBar from './ProjectBar';
 import { DockLayout } from './DockLayout';
+import { MobileLayout } from './MobileLayout';
+
+// ─── Responsive breakpoint ────────────────────────────────────────────────────
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
 
 // ─── Log line picker ─────────────────────────────────────────────────────────
 
@@ -32,6 +47,7 @@ function pickLogLine(lines: string[]): string | null {
 // ─── Editor ──────────────────────────────────────────────────────────────────
 
 export default function Editor() {
+  const isMobile = useIsMobile();
   const projectHook = useProject();
   const {
     project,
@@ -279,10 +295,11 @@ export default function Editor() {
       return;
     }
 
+    const cutoutMode = (clip.effectConfig.cutoutMode ?? 'removeBg') as 'removeBg' | 'removePerson';
     notify('Starting cutout processing...');
     updateEffectClipConfig(clipId, { maskStatus: 'processing' });
     try {
-      const { jobId } = await api.startCutout(uniqueAssetIds[0]);
+      const { jobId } = await api.startCutout(uniqueAssetIds[0], cutoutMode);
       api.pollJob(jobId, (j) => notify(`Cutout: ${j.progress}%`)).then(() => {
         updateEffectClipConfig(clipId, { maskStatus: 'done' });
         notify('Cutout done!');
@@ -394,7 +411,7 @@ export default function Editor() {
   // ── Project picker ─────────────────────────────────────────────────────────
   if (showProjectPicker) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: 'inherit', position: 'relative', overflow: 'hidden' }}>
+      <div className="h-screen flex items-center justify-center px-4" style={{ background: 'inherit', position: 'relative', overflow: 'hidden' }}>
         {/* Animated background orbs */}
         <div className="bg-orb bg-orb-1" />
         <div className="bg-orb bg-orb-2" />
@@ -410,8 +427,8 @@ export default function Editor() {
         }} />
 
         <div
-          className="glass rounded-2xl w-[480px] shadow-panel scale-in"
-          style={{ padding: '40px 40px 44px', position: 'relative', overflow: 'hidden' }}
+          className="glass rounded-2xl w-full shadow-panel scale-in"
+          style={{ maxWidth: 480, padding: isMobile ? '28px 20px' : '40px 40px 44px', position: 'relative', overflow: 'hidden' }}
         >
           {/* Card inner glow accent */}
           <div style={{
@@ -555,6 +572,9 @@ export default function Editor() {
         assets={assets}
         onAssetsChange={refreshAssets}
         onDragAsset={setDraggedAssetId}
+        onAddToTimeline={isMobile ? (assetId, assetType, duration) => {
+          handleDropAssetNewTrack(assetType as 'video' | 'audio', assetId, 0, duration);
+        } : undefined}
       />
     ),
 
@@ -570,6 +590,7 @@ export default function Editor() {
         exportLogLine={exportLogLine}
         completedExportJobId={completedExportJobId}
         onDownload={handleDownload}
+        isMobile={isMobile}
       />
     ),
 
@@ -598,6 +619,7 @@ export default function Editor() {
         onSeek={playback.seek}
         getTime={playback.getTime}
         onWorkAreaChange={handleWorkAreaChange}
+        isMobile={isMobile}
       />
     ),
 
@@ -654,9 +676,11 @@ export default function Editor() {
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center px-5 flex-shrink-0 gap-4 border-b animate-slide-down"
+        className="flex items-center flex-shrink-0 gap-2 border-b animate-slide-down"
         style={{
-          height: 56,
+          height: isMobile ? 48 : 56,
+          padding: isMobile ? '0 12px' : '0 20px',
+          gap: isMobile ? 8 : 16,
           background: 'rgba(8,16,30,0.97)',
           backdropFilter: 'blur(24px)',
           borderColor: 'rgba(255,255,255,0.07)',
@@ -683,14 +707,14 @@ export default function Editor() {
               </defs>
             </svg>
           </div>
-          <span className="font-bold text-gradient" style={{ fontSize: 15 }}>
+          <span className="font-bold text-gradient" style={{ fontSize: isMobile ? 14 : 15 }}>
             {project?.name ?? 'Video Editor'}
           </span>
         </div>
 
         {project && (
           <span
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all"
             style={{
               fontSize: 12,
               color: saving ? 'rgba(255,255,255,0.45)' : 'rgba(0,212,160,0.85)',
@@ -718,7 +742,7 @@ export default function Editor() {
                     />
                   ))}
                 </span>
-                Ukládání...
+                {!isMobile && 'Ukládání...'}
               </>
             ) : (
               <>
@@ -734,7 +758,7 @@ export default function Editor() {
                     style={{ animation: 'saveCheck 0.4s ease forwards' }}
                   />
                 </svg>
-                Uloženo
+                {!isMobile && 'Uloženo'}
               </>
             )}
           </span>
@@ -742,96 +766,155 @@ export default function Editor() {
 
         <div className="flex-1" />
 
+        {/* Projects button — always visible */}
         <button
           className="btn btn-ghost"
-          style={{ fontSize: 13 }}
+          style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? '4px 8px' : undefined }}
           onClick={() => { setShowProjectPicker(true); refreshProjects(); }}
         >
           Projects
         </button>
 
-        <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
+        {/* Undo/Redo — hidden on mobile */}
+        {!isMobile && (
+          <>
+            <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
+            <button
+              className="btn btn-ghost disabled:opacity-25"
+              style={{ fontSize: 18, padding: '4px 10px' }}
+              disabled={!history.canUndo}
+              onClick={history.undo}
+              title="Undo (Cmd+Z)"
+            >
+              ↺
+            </button>
+            <button
+              className="btn btn-ghost disabled:opacity-25"
+              style={{ fontSize: 18, padding: '4px 10px' }}
+              disabled={!history.canRedo}
+              onClick={history.redo}
+              title="Redo (Shift+Cmd+Z)"
+            >
+              ↻
+            </button>
 
-        <button
-          className="btn btn-ghost disabled:opacity-25"
-          style={{ fontSize: 18, padding: '4px 10px' }}
-          disabled={!history.canUndo}
-          onClick={history.undo}
-          title="Undo (Cmd+Z)"
-        >
-          ↺
-        </button>
-        <button
-          className="btn btn-ghost disabled:opacity-25"
-          style={{ fontSize: 18, padding: '4px 10px' }}
-          disabled={!history.canRedo}
-          onClick={history.redo}
-          title="Redo (Shift+Cmd+Z)"
-        >
-          ↻
-        </button>
+            <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
 
-        <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
+              disabled={!project}
+              title="Add a text element to the timeline"
+              onClick={() => {
+                if (!project) return;
+                const start = playback.currentTime;
+                const duration = 3;
+                const clipId = addTextTrack(start, duration, 'Text');
+                setSelectedClipId(clipId);
+              }}
+            >
+              <span style={{ fontSize: 15, fontWeight: 700 }}>T</span>
+              Add Text
+            </button>
+          </>
+        )}
 
-        <button
-          className="btn btn-ghost"
-          style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
-          disabled={!project}
-          title="Add a text element to the timeline"
-          onClick={() => {
-            if (!project) return;
-            const start = playback.currentTime;
-            const duration = 3;
-            const clipId = addTextTrack(start, duration, 'Text');
-            setSelectedClipId(clipId);
-          }}
-        >
-          <span style={{
-            fontSize: 14, fontWeight: 700,
-            background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}>T</span>
-          Add Text
-        </button>
+        {/* Desktop: Add Lyrics button (Add Text is already in the !isMobile block above) */}
+        {!isMobile && (
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
+            disabled={!project}
+            title="Add a lyrics track to the timeline"
+            onClick={() => {
+              if (!project) return;
+              const start = playback.currentTime;
+              const duration = 10;
+              const clipId = addLyricsTrack(start, duration);
+              setSelectedClipId(clipId);
+            }}
+          >
+            <span style={{
+              fontSize: 14, fontWeight: 700,
+              background: 'linear-gradient(135deg, #c084fc, #818cf8)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>♪</span>
+            Add Lyrics
+          </button>
+        )}
 
-        <button
-          className="btn btn-ghost"
-          style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
-          disabled={!project}
-          title="Add a lyrics track to the timeline"
-          onClick={() => {
-            if (!project) return;
-            const start = playback.currentTime;
-            const duration = 10;
-            const clipId = addLyricsTrack(start, duration);
-            setSelectedClipId(clipId);
-          }}
-        >
-          <span style={{
-            fontSize: 14, fontWeight: 700,
-            background: 'linear-gradient(135deg, #c084fc, #818cf8)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}>♪</span>
-          Add Lyrics
-        </button>
+        {/* Mobile: compact Add Text + undo/redo icons */}
+        {isMobile && (
+          <>
+            {/* Add Text — compact icon button */}
+            <button
+              style={{
+                width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: project ? 'rgba(0,212,160,0.10)' : 'none',
+                border: project ? '1px solid rgba(0,212,160,0.25)' : 'none',
+                cursor: 'pointer',
+                fontSize: 14, fontWeight: 700, color: project ? 'rgba(0,212,160,0.85)' : 'rgba(255,255,255,0.20)',
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+              } as React.CSSProperties}
+              disabled={!project}
+              title="Add Text"
+              onClick={() => {
+                if (!project) return;
+                const start = playback.currentTime;
+                const clipId = addTextTrack(start, 3, 'Text');
+                setSelectedClipId(clipId);
+              }}
+            >T</button>
+            <button
+              style={{
+                width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 18, color: history.canUndo ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.20)',
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+              } as React.CSSProperties}
+              disabled={!history.canUndo}
+              onClick={history.undo}
+              title="Undo"
+            >↺</button>
+            <button
+              style={{
+                width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 18, color: history.canRedo ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.20)',
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+              } as React.CSSProperties}
+              disabled={!history.canRedo}
+              onClick={history.redo}
+              title="Redo"
+            >↻</button>
+          </>
+        )}
       </div>
 
-      {/* ── Main area (DockLayout fills all remaining space) ────────────── */}
+      {/* ── Main area ───────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <DockLayout panelRenderers={panelRenderers} />
+        {isMobile
+          ? <MobileLayout panelRenderers={panelRenderers} />
+          : <DockLayout panelRenderers={panelRenderers} />
+        }
       </div>
 
       {/* ── Notifications ───────────────────────────────────────────────── */}
       {jobNotifications.length > 0 && (
-        <div className="fixed bottom-5 right-5 space-y-2 z-50" style={{ pointerEvents: 'none' }}>
+        <div
+          className="fixed right-3 space-y-2 z-50"
+          style={{ bottom: isMobile ? 'calc(68px + env(safe-area-inset-bottom, 0px) + 8px)' : '20px', pointerEvents: 'none' }}
+        >
           {jobNotifications.map((msg, i) => (
             <div
               key={i}
               className="glass rounded-xl shadow-panel toast-enter"
               style={{
-                minWidth: 296,
+                minWidth: isMobile ? 'min(220px, calc(100vw - 24px))' : 296,
                 color: '#c8e8e0',
                 fontSize: 13,
                 padding: '12px 16px',

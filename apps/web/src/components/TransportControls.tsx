@@ -15,6 +15,7 @@ interface Props {
   /** Real-time position getter — bypasses React render latency for smooth progress updates. */
   getTime?: () => number;
   onWorkAreaChange?: (start: number, end: number) => void;
+  isMobile?: boolean;
 }
 
 export default function TransportControls({
@@ -28,6 +29,7 @@ export default function TransportControls({
   onSeek,
   getTime,
   onWorkAreaChange,
+  isMobile = false,
 }: Props) {
   // Time displayed relative to work area start so 00:00 = start of interval
   const waStart = workArea?.start ?? 0;
@@ -126,17 +128,17 @@ export default function TransportControls({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 16,
-          padding: '0 20px',
-          height: 64,
+          gap: isMobile ? 10 : 16,
+          padding: isMobile ? '0 12px' : '0 20px',
+          height: isMobile ? 52 : 64,
         }}
       >
         {/* Play/Pause button */}
         <button
           onClick={onToggle}
           style={{
-            width: 52,
-            height: 52,
+            width: isMobile ? 44 : 52,
+            height: isMobile ? 44 : 52,
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
@@ -255,8 +257,8 @@ export default function TransportControls({
           ref={timeDisplayRef}
           style={{
             fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
-            fontSize: 15,
-            minWidth: 80,
+            fontSize: isMobile ? 13 : 15,
+            minWidth: isMobile ? 60 : 80,
             fontVariantNumeric: 'tabular-nums',
             fontWeight: 600,
             color: '#7de0cc',
@@ -328,17 +330,19 @@ export default function TransportControls({
           />
         </div>
 
-        {/* Duration of the work area interval */}
-        <span style={{
-          fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
-          fontSize: 15,
-          minWidth: 80,
-          textAlign: 'right',
-          fontVariantNumeric: 'tabular-nums',
-          color: 'rgba(255,255,255,0.22)',
-        }}>
-          {formatTime(displayDuration)}
-        </span>
+        {/* Duration of the work area interval — hidden on mobile to save space */}
+        {!isMobile && (
+          <span style={{
+            fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
+            fontSize: 15,
+            minWidth: 80,
+            textAlign: 'right',
+            fontVariantNumeric: 'tabular-nums',
+            color: 'rgba(255,255,255,0.22)',
+          }}>
+            {formatTime(displayDuration)}
+          </span>
+        )}
       </div>
 
       {/* ── Work area row: interval start / end inputs ── */}
@@ -347,8 +351,9 @@ export default function TransportControls({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            padding: '0 20px 10px',
+            gap: isMobile ? 6 : 8,
+            padding: isMobile ? '0 12px 8px' : '0 20px 10px',
+            flexWrap: 'nowrap',
           }}
         >
           <span style={{
@@ -359,7 +364,7 @@ export default function TransportControls({
             color: 'rgba(0,212,160,0.55)',
             flexShrink: 0,
           }}>
-            Interval
+            {isMobile ? 'In/Out' : 'Interval'}
           </span>
 
           {/* Start input */}
@@ -386,7 +391,7 @@ export default function TransportControls({
               fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
               fontSize: 12,
               fontVariantNumeric: 'tabular-nums',
-              width: 76,
+              width: isMobile ? 68 : 76,
               padding: '3px 6px',
               background: 'rgba(0,212,160,0.08)',
               border: '1px solid rgba(0,212,160,0.25)',
@@ -394,11 +399,12 @@ export default function TransportControls({
               color: '#7de0cc',
               outline: 'none',
               textAlign: 'center',
+              flexShrink: 0,
             }}
             title="Interval start (MM:SS.d)"
           />
 
-          <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13 }}>→</span>
+          <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, flexShrink: 0 }}>→</span>
 
           {/* End input */}
           <input
@@ -424,7 +430,7 @@ export default function TransportControls({
               fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
               fontSize: 12,
               fontVariantNumeric: 'tabular-nums',
-              width: 76,
+              width: isMobile ? 68 : 76,
               padding: '3px 6px',
               background: 'rgba(0,212,160,0.08)',
               border: '1px solid rgba(0,212,160,0.25)',
@@ -432,13 +438,16 @@ export default function TransportControls({
               color: '#7de0cc',
               outline: 'none',
               textAlign: 'center',
+              flexShrink: 0,
             }}
             title="Interval end (MM:SS.d)"
           />
 
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.20)', marginLeft: 2 }}>
-            ({formatTime(displayDuration)} total)
-          </span>
+          {!isMobile && (
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.20)', marginLeft: 2 }}>
+              ({formatTime(displayDuration)} total)
+            </span>
+          )}
         </div>
       )}
     </div>
