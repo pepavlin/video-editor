@@ -129,6 +129,35 @@ function movePanel(root: DockNode, sourcePanelId: PanelId, targetNodeId: string,
   return insertAtNode(afterRemove, targetNodeId, sourcePanelId, zone);
 }
 
+/**
+ * Dock a panel at the left or right edge of the entire layout.
+ * If root is already a horizontal split, the panel is prepended/appended directly.
+ * Otherwise root is wrapped in a new horizontal split.
+ * The new panel receives ~22 % of the total width.
+ */
+function insertAtRootEdge(root: DockNode, panelId: PanelId, edge: 'left' | 'right'): DockNode {
+  const afterRemove = removePanel(root, panelId);
+  if (!afterRemove) return { type: 'leaf', id: genId(), panelId };
+
+  const newLeaf: LeafNode = { type: 'leaf', id: genId(), panelId };
+  const NEW_SIZE = 0.22;
+
+  if (afterRemove.type === 'split' && afterRemove.direction === 'h') {
+    const scale = 1 - NEW_SIZE;
+    const scaledSizes = afterRemove.sizes.map(s => s * scale);
+    if (edge === 'left') {
+      return { ...afterRemove, children: [newLeaf, ...afterRemove.children], sizes: [NEW_SIZE, ...scaledSizes] };
+    } else {
+      return { ...afterRemove, children: [...afterRemove.children, newLeaf], sizes: [...scaledSizes, NEW_SIZE] };
+    }
+  }
+
+  const first  = edge === 'left' ? newLeaf       : afterRemove;
+  const second = edge === 'left' ? afterRemove   : newLeaf;
+  const sizes: [number, number] = edge === 'left' ? [NEW_SIZE, 1 - NEW_SIZE] : [1 - NEW_SIZE, NEW_SIZE];
+  return { type: 'split', id: genId(), direction: 'h', children: [first, second], sizes };
+}
+
 /** Update sizes for a specific split node. */
 function updateSizes(root: DockNode, splitId: string, sizes: number[]): DockNode {
   if (root.type === 'leaf') return root;
@@ -259,6 +288,13 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
+  // ── Page-edge docking state ──────────────────────────────────────────────────
+  const [pageEdge, setPageEdge] = useState<'left' | 'right' | null>(null);
+  const pageEdgeRef = useRef<'left' | 'right' | null>(null);
+  const rootContainerRef = useRef<HTMLDivElement | null>(null);
+  /** Distance (px) from the layout edge that activates page-edge docking. */
+  const PAGE_EDGE_THRESHOLD = 60;
+
   const registerLeaf = useCallback((nodeId: string, panelId: PanelId, el: HTMLElement | null) => {
     if (el) {
       leafRefs.current.set(nodeId, { el, panelId });
@@ -294,6 +330,30 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
         ghostRef.current.style.top  = `${y + 14}px`;
       }
 
+      // ── Page-edge detection (takes priority over panel drop zones) ────────────
+      let newPageEdge: 'left' | 'right' | null = null;
+      if (rootContainerRef.current) {
+        const rootRect = rootContainerRef.current.getBoundingClientRect();
+        if (x >= rootRect.left && x <= rootRect.right && y >= rootRect.top && y <= rootRect.bottom) {
+          if (x - rootRect.left < PAGE_EDGE_THRESHOLD) newPageEdge = 'left';
+          else if (rootRect.right - x < PAGE_EDGE_THRESHOLD) newPageEdge = 'right';
+        }
+      }
+      if (newPageEdge !== pageEdgeRef.current) {
+        pageEdgeRef.current = newPageEdge;
+        setPageEdge(newPageEdge);
+      }
+
+      // When hovering near the page edge, clear any panel drop-zone target and bail early
+      if (newPageEdge) {
+        if (lastTargetKey.current !== '') {
+          lastTargetKey.current = '';
+          currentTargetRef.current = null;
+          setDragState(s => ({ ...s, target: null }));
+        }
+        return;
+      }
+
       // Find which leaf panel the cursor is over
       let newTarget: DropTarget | null = null;
       leafRefs.current.forEach(({ el, panelId: pId }, nodeId) => {
@@ -325,8 +385,16 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
 
       const dragging = draggingPanelRef.current;
       const target   = currentTargetRef.current;
+      const edgeDrop = pageEdgeRef.current;
 
-      if (dragging && target) {
+      if (dragging && edgeDrop) {
+        // Page-edge dock: insert panel at the left/right border of the layout
+        setLayout(prev => {
+          const next = insertAtRootEdge(prev, dragging, edgeDrop);
+          saveLayout(next);
+          return next;
+        });
+      } else if (dragging && target) {
         setLayout(prev => {
           const next = movePanel(prev, dragging, target.nodeId, target.zone);
           saveLayout(next);
@@ -337,6 +405,8 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
       draggingPanelRef.current = null;
       currentTargetRef.current = null;
       lastTargetKey.current = '';
+      pageEdgeRef.current = null;
+      setPageEdge(null);
       setDragState({ panel: null, target: null });
     };
 
@@ -389,7 +459,41 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
   }, []);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex' }}>
+    <div ref={rootContainerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex' }}>
+      {/* Page-edge docking indicator – shown when dragging near left/right edge */}
+      {dragState.panel && pageEdge && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            ...(pageEdge === 'left'
+              ? { left: 0, width: '22%', borderRight: '2px solid rgba(0,212,160,0.9)', boxShadow: 'inset -6px 0 24px rgba(0,212,160,0.12), 4px 0 20px rgba(0,212,160,0.18)' }
+              : { right: 0, width: '22%', borderLeft: '2px solid rgba(0,212,160,0.9)', boxShadow: 'inset 6px 0 24px rgba(0,212,160,0.12), -4px 0 20px rgba(0,212,160,0.18)' }
+            ),
+            background: 'rgba(0,212,160,0.10)',
+            backdropFilter: 'blur(2px)',
+            zIndex: 300,
+            pointerEvents: 'none',
+            transition: 'opacity 0.08s ease',
+          }}
+        >
+          {/* Arrow indicating dock direction */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            color: 'rgba(0,212,160,1)',
+            fontSize: 28,
+            fontWeight: 700,
+            pointerEvents: 'none',
+            textShadow: '0 0 12px rgba(0,212,160,0.8)',
+          }}>
+            {pageEdge === 'left' ? '◀' : '▶'}
+          </div>
+        </div>
+      )}
       <RenderNode
         node={layout}
         dragState={dragState}
