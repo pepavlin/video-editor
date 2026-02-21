@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { Project, Asset, BeatsData, Clip, Transform, TextStyle } from '@video-editor/shared';
+import type { Project, Asset, BeatsData, Clip, Transform, TextStyle, CartoonEffect } from '@video-editor/shared';
 import { getBeatZoomScale, clamp } from '@/lib/utils';
 
 // ─── Zoom constants ────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ function applyCartoonEffectToCtx(
   ctx: CanvasRenderingContext2D,
   videoEl: HTMLVideoElement,
   bounds: Bounds,
-  effect: import('@video-editor/shared').CartoonEffect
+  effect: CartoonEffect
 ): void {
   const iw = Math.max(2, Math.round(bounds.w));
   const ih = Math.max(2, Math.round(bounds.h));
@@ -603,10 +603,23 @@ export default function Preview({
             ctx.translate(-cx, -cy);
           }
 
-          const cartoonEff = clip.effects.find((e) => e.type === 'cartoon' && e.enabled);
+          // Cartoon effect — read from effect track (same pattern as beat zoom)
+          const cartoonEffectTrack = project.tracks.find(
+            (t) => t.type === 'effect' && t.effectType === 'cartoon' && t.parentTrackId === track.id
+          );
+          const activeCartoonClip = cartoonEffectTrack?.clips.find(
+            (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
+          );
+          const cartoonCfg = activeCartoonClip?.effectConfig?.enabled ? activeCartoonClip.effectConfig : null;
           try {
-            if (cartoonEff && cartoonEff.type === 'cartoon') {
-              applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff);
+            if (cartoonCfg) {
+              applyCartoonEffectToCtx(ctx, videoEl, bounds, {
+                type: 'cartoon',
+                enabled: true,
+                edgeStrength: cartoonCfg.edgeStrength ?? 0.6,
+                colorSimplification: cartoonCfg.colorSimplification ?? 0.5,
+                saturation: cartoonCfg.saturation ?? 1.5,
+              });
             } else {
               ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
             }

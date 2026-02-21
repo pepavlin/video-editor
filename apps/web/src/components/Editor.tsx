@@ -268,7 +268,7 @@ export default function Editor() {
     const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
     const parentTrack = effectTrack?.parentTrackId
       ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
-      : undefined;
+      : project.tracks.find((t) => t.type === 'video');
     const videoClips = parentTrack?.clips ?? [];
     const seenAssets = new Set<string>();
     const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
@@ -304,7 +304,7 @@ export default function Editor() {
     const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
     const parentTrack = effectTrack?.parentTrackId
       ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
-      : undefined;
+      : project.tracks.find((t) => t.type === 'video');
     const videoClips = parentTrack?.clips ?? [];
     const seenAssets = new Set<string>();
     const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
