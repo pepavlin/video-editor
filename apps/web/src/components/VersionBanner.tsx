@@ -86,7 +86,7 @@ export default function VersionBanner() {
           Dostupná nová verze
         </span>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => { dismiss(); window.location.reload(); }}
           style={{
             background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
             border: 'none',

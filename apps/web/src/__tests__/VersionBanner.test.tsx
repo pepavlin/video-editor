@@ -47,8 +47,8 @@ describe('VersionBanner', () => {
     expect(screen.getByRole('button', { name: /obnovit/i })).toBeDefined();
   });
 
-  it('"Obnovit" button calls window.location.reload()', () => {
-    mockVersionCheck('update-available');
+  it('"Obnovit" button calls dismiss() and window.location.reload()', () => {
+    const { dismiss } = mockVersionCheck('update-available');
     const reloadMock = vi.fn();
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: reloadMock },
@@ -57,6 +57,10 @@ describe('VersionBanner', () => {
 
     render(<VersionBanner />);
     fireEvent.click(screen.getByRole('button', { name: /obnovit/i }));
+    // dismiss() must be called first so the dismissed buildId is persisted
+    // to localStorage before the page reloads – otherwise the banner can
+    // reappear when the browser serves a cached old page after reload.
+    expect(dismiss).toHaveBeenCalledOnce();
     expect(reloadMock).toHaveBeenCalledOnce();
   });
 
