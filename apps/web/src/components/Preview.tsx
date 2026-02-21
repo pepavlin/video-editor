@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import type { Project, Asset, BeatsData, Clip, Transform, TextStyle } from '@video-editor/shared';
 import { getBeatZoomScale, clamp } from '@/lib/utils';
+
+// ─── Zoom constants ────────────────────────────────────────────────────────────
+
+const MIN_VIEW_ZOOM = 0.1;
+const MAX_VIEW_ZOOM = 8;
+const ZOOM_STEP = 0.1; // for buttons
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -296,6 +302,28 @@ export default function Preview({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const selectionSvgRef = useRef<SVGSVGElement>(null);
+
+  // ── Viewport zoom / pan ───────────────────────────────────────────────────
+  const [viewZoom, setViewZoom] = useState(1);
+  const [viewPan, setViewPan] = useState({ x: 0, y: 0 });
+  // Refs for smooth zoom/pan updates without stale closures
+  const viewZoomRef = useRef(1);
+  const viewPanRef = useRef({ x: 0, y: 0 });
+  const midPanDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
+
+  const setZoom = useCallback((z: number) => {
+    viewZoomRef.current = z;
+    setViewZoom(z);
+  }, []);
+  const setPan = useCallback((p: { x: number; y: number }) => {
+    viewPanRef.current = p;
+    setViewPan(p);
+  }, []);
+
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [setZoom, setPan]);
 
   // Keep latest props in refs to avoid stale closures in rAF
   const propsRef = useRef({ project, assets, currentTime, isPlaying, beatsData, selectedClipId });
@@ -703,6 +731,86 @@ export default function Preview({
     };
   }, [drawFrame, onClipUpdate]);
 
+  // ── Viewport wheel zoom ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const containerCX = rect.left + rect.width / 2;
+      const containerCY = rect.top + rect.height / 2;
+
+      // Cursor offset from container center
+      const cursorX = e.clientX - containerCX;
+      const cursorY = e.clientY - containerCY;
+
+      const currentZoom = viewZoomRef.current;
+      const currentPan = viewPanRef.current;
+
+      // Point in "natural canvas space" (relative to canvas center) under cursor
+      const localX = (cursorX - currentPan.x) / currentZoom;
+      const localY = (cursorY - currentPan.y) / currentZoom;
+
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const newZoom = clamp(currentZoom * factor, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
+
+      // Adjust pan so the point under cursor stays fixed
+      const newPan = {
+        x: cursorX - localX * newZoom,
+        y: cursorY - localY * newZoom,
+      };
+
+      setZoom(newZoom);
+      setPan(newPan);
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [setZoom, setPan]);
+
+  // ── Middle-mouse-button pan ───────────────────────────────────────────────
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 1) return; // middle button only
+      e.preventDefault();
+      midPanDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: viewPanRef.current.x,
+        startPanY: viewPanRef.current.y,
+      };
+      container.style.cursor = 'grabbing';
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!midPanDragRef.current) return;
+      const { startX, startY, startPanX, startPanY } = midPanDragRef.current;
+      setPan({ x: startPanX + (e.clientX - startX), y: startPanY + (e.clientY - startY) });
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 1 || !midPanDragRef.current) return;
+      midPanDragRef.current = null;
+      container.style.cursor = '';
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [setPan]);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (e.button !== 0) return;
@@ -885,14 +993,36 @@ export default function Preview({
     [getClipBounds]
   );
 
+  // ── Zoom button handlers ──────────────────────────────────────────────────
+
+  const handleZoomIn = useCallback(() => {
+    const newZoom = clamp(viewZoomRef.current + ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
+    setZoom(newZoom);
+  }, [setZoom]);
+
+  const handleZoomOut = useCallback(() => {
+    const newZoom = clamp(viewZoomRef.current - ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
+    setZoom(newZoom);
+  }, [setZoom]);
+
   return (
     <div
       ref={containerRef}
       className="flex-1 flex items-center justify-center bg-black"
-      style={{ minHeight: 0 }}
+      style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}
     >
-      {/* Wrapper div for canvas + SVG overlay */}
-      <div style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+      {/* Zoomable canvas wrapper — CSS transform for viewport zoom */}
+      <div
+        data-testid="preview-zoom-wrapper"
+        style={{
+          position: 'relative',
+          display: 'inline-block',
+          lineHeight: 0,
+          transform: `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})`,
+          transformOrigin: 'center center',
+          willChange: 'transform',
+        }}
+      >
         <canvas
           ref={canvasRef}
           style={{ display: 'block', imageRendering: 'auto' }}
@@ -912,6 +1042,75 @@ export default function Preview({
             pointerEvents: 'none',
           }}
         />
+      </div>
+
+      {/* Zoom controls overlay */}
+      <div
+        data-testid="preview-zoom-controls"
+        style={{
+          position: 'absolute',
+          bottom: 10,
+          right: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: 'rgba(0,0,0,0.65)',
+          borderRadius: 6,
+          padding: '3px 6px',
+          userSelect: 'none',
+          zIndex: 10,
+        }}
+      >
+        <button
+          data-testid="zoom-out-btn"
+          onClick={handleZoomOut}
+          title="Zoom out (scroll down)"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ccc',
+            cursor: 'pointer',
+            fontSize: 16,
+            lineHeight: 1,
+            padding: '0 2px',
+          }}
+        >
+          −
+        </button>
+        <button
+          data-testid="zoom-reset-btn"
+          onClick={resetView}
+          title="Reset zoom (100%)"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ccc',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            minWidth: 40,
+            textAlign: 'center',
+            padding: '0 2px',
+          }}
+        >
+          {Math.round(viewZoom * 100)}%
+        </button>
+        <button
+          data-testid="zoom-in-btn"
+          onClick={handleZoomIn}
+          title="Zoom in (scroll up)"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ccc',
+            cursor: 'pointer',
+            fontSize: 16,
+            lineHeight: 1,
+            padding: '0 2px',
+          }}
+        >
+          +
+        </button>
       </div>
     </div>
   );
