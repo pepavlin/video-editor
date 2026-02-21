@@ -221,3 +221,54 @@ describe('snap', () => {
     expect(snap(7.0, [7.0, 14.0], 0.01)).toBe(7.0);
   });
 });
+
+// ─── snap mode behaviour ──────────────────────────────────────────────────────
+// These tests simulate what getSnapTargets() returns for each SnapMode and
+// verify that the snap() utility respects the resulting target list.
+
+describe('snap with mode:none (empty targets)', () => {
+  it('does not snap when targets are empty', () => {
+    expect(snap(4.95, [], 0.2)).toBe(4.95);
+  });
+
+  it('returns original value regardless of proximity', () => {
+    expect(snap(5.0, [], 0.5)).toBe(5.0);
+  });
+});
+
+describe('snap with mode:beats (only beat positions)', () => {
+  const beats = [0.5, 1.0, 1.5, 2.0]; // sample beat timestamps
+
+  it('snaps to a nearby beat', () => {
+    expect(snap(0.95, beats, 0.1)).toBe(1.0);
+  });
+
+  it('does not snap to clip edge (only beats supplied)', () => {
+    const clipEdge = 1.3; // not a beat
+    expect(snap(1.28, [clipEdge], 0.1)).toBe(clipEdge); // would snap to clipEdge
+    expect(snap(1.28, beats, 0.1)).toBe(1.28); // beats only → no snap
+  });
+
+  it('snaps to the closest beat among several', () => {
+    // 1.48 is 0.02 from beat 1.5 and 0.48 from beat 1.0
+    expect(snap(1.48, beats, 0.1)).toBe(1.5);
+  });
+});
+
+describe('snap with mode:clips (only clip edges)', () => {
+  const clipEdges = [0, 1.0, 2.5, 4.0]; // starts/ends of other clips
+
+  it('snaps to a nearby clip edge', () => {
+    expect(snap(2.48, clipEdges, 0.1)).toBe(2.5);
+  });
+
+  it('does not snap to beat (only clip edges supplied)', () => {
+    const beat = 1.8; // not a clip edge
+    expect(snap(1.79, [beat], 0.1)).toBe(beat); // would snap to beat
+    expect(snap(1.79, clipEdges, 0.1)).toBe(1.79); // clips only → no snap
+  });
+
+  it('snaps to timeline start (0) when close enough', () => {
+    expect(snap(0.05, clipEdges, 0.1)).toBe(0);
+  });
+});
