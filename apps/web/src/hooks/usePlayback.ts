@@ -237,10 +237,15 @@ export function usePlayback(
     if (isPlayingRef.current) {
       pause();
     } else {
-      // If at or past the work area end, restart from work area start
+      // Start from work area start when:
+      // - at or past the work area end (restart after finishing), OR
+      // - before the work area start (so 00:00 in display always = interval start in preview)
       const stopAt = workAreaRef.current?.end ?? duration;
       const restartFrom = workAreaRef.current?.start ?? 0;
-      if (stopAt > 0 && currentTimeRef.current >= stopAt - 0.05) {
+      if (
+        (stopAt > 0 && currentTimeRef.current >= stopAt - 0.05) ||
+        currentTimeRef.current < restartFrom
+      ) {
         currentTimeRef.current = restartFrom;
         setCurrentTime(restartFrom);
       }
