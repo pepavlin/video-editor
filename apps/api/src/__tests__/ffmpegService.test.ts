@@ -294,7 +294,7 @@ describe('buildExportCommand', () => {
   });
 
   it('filter_complex has valid beat zoom enable expression with gt()', () => {
-    // Create a project with a video track (beatZoom) and a master audio track.
+    // Create a project with a video track + beatZoom effect track + master audio track.
     // Beat zoom reads beats from the master audio asset, not the video asset.
     const videoAsset = {
       id: 'a1',
@@ -328,6 +328,31 @@ describe('buildExportCommand', () => {
     const project = makeProject({
       tracks: [
         {
+          id: 'fx_beatzoom',
+          type: 'effect',
+          effectType: 'beatZoom',
+          parentTrackId: 'track1',
+          name: 'Beat Zoom 1',
+          clips: [
+            {
+              id: 'fxclip1',
+              assetId: '',
+              trackId: 'fx_beatzoom',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              effectConfig: {
+                effectType: 'beatZoom',
+                enabled: true,
+                intensity: 0.08,
+                durationMs: 120,
+                easing: 'easeOut' as const,
+              },
+            },
+          ],
+        },
+        {
           id: 'track1',
           type: 'video',
           name: 'V1',
@@ -343,15 +368,6 @@ describe('buildExportCommand', () => {
               useClipAudio: false,
               clipAudioVolume: 1,
               transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
-              effects: [
-                {
-                  type: 'beatZoom' as const,
-                  enabled: true,
-                  intensity: 0.08,
-                  durationMs: 120,
-                  easing: 'easeOut' as const,
-                },
-              ],
             },
           ],
         },
@@ -369,10 +385,6 @@ describe('buildExportCommand', () => {
               timelineEnd: 10,
               sourceStart: 0,
               sourceEnd: 10,
-              useClipAudio: false,
-              clipAudioVolume: 1,
-              transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
-              effects: [],
             },
           ],
         },
@@ -398,7 +410,7 @@ describe('buildExportCommand', () => {
 
   // ─── Cartoon effect ──────────────────────────────────────────────────────────
 
-  function makeVideoProjectWithEffect(effects: any[]) {
+  function makeVideoProjectWithCartoonEffect(effectConfig: any) {
     const videoAsset = {
       id: 'va1',
       name: 'clip.mp4',
@@ -415,6 +427,25 @@ describe('buildExportCommand', () => {
     return makeProject({
       tracks: [
         {
+          id: 'fx_cartoon',
+          type: 'effect',
+          effectType: 'cartoon',
+          parentTrackId: 'tr1',
+          name: 'Cartoon 1',
+          clips: [
+            {
+              id: 'fxc1',
+              assetId: '',
+              trackId: 'fx_cartoon',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              effectConfig,
+            },
+          ],
+        },
+        {
           id: 'tr1',
           type: 'video',
           name: 'V1',
@@ -430,7 +461,6 @@ describe('buildExportCommand', () => {
               useClipAudio: false,
               clipAudioVolume: 1,
               transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
-              effects,
             },
           ],
         },
@@ -439,15 +469,13 @@ describe('buildExportCommand', () => {
   }
 
   it('cartoon effect adds hqdn3d, edgedetect, blend and eq filters', () => {
-    const project = makeVideoProjectWithEffect([
-      {
-        type: 'cartoon' as const,
-        enabled: true,
-        edgeStrength: 0.6,
-        colorSimplification: 0.5,
-        saturation: 1.5,
-      },
-    ]);
+    const project = makeVideoProjectWithCartoonEffect({
+      effectType: 'cartoon',
+      enabled: true,
+      edgeStrength: 0.6,
+      colorSimplification: 0.5,
+      saturation: 1.5,
+    });
 
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
     const fcIdx = args.indexOf('-filter_complex');
@@ -461,15 +489,13 @@ describe('buildExportCommand', () => {
   });
 
   it('cartoon effect disabled does not add cartoon filters', () => {
-    const project = makeVideoProjectWithEffect([
-      {
-        type: 'cartoon' as const,
-        enabled: false,
-        edgeStrength: 0.6,
-        colorSimplification: 0.5,
-        saturation: 1.5,
-      },
-    ]);
+    const project = makeVideoProjectWithCartoonEffect({
+      effectType: 'cartoon',
+      enabled: false,
+      edgeStrength: 0.6,
+      colorSimplification: 0.5,
+      saturation: 1.5,
+    });
 
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
     const fcIdx = args.indexOf('-filter_complex');
@@ -480,15 +506,13 @@ describe('buildExportCommand', () => {
   });
 
   it('cartoon saturation is clamped to 0-3 range in filter', () => {
-    const project = makeVideoProjectWithEffect([
-      {
-        type: 'cartoon' as const,
-        enabled: true,
-        edgeStrength: 0.5,
-        colorSimplification: 0.5,
-        saturation: 5.0, // over the limit
-      },
-    ]);
+    const project = makeVideoProjectWithCartoonEffect({
+      effectType: 'cartoon',
+      enabled: true,
+      edgeStrength: 0.5,
+      colorSimplification: 0.5,
+      saturation: 5.0, // over the limit
+    });
 
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
     const fcIdx = args.indexOf('-filter_complex');
@@ -519,6 +543,32 @@ describe('buildExportCommand', () => {
     const project = makeProject({
       tracks: [
         {
+          id: 'fx_hs',
+          type: 'effect',
+          effectType: 'headStabilization',
+          parentTrackId: 'tr1',
+          name: 'Head Stab 1',
+          clips: [
+            {
+              id: 'fxhs1',
+              assetId: '',
+              trackId: 'fx_hs',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              effectConfig: {
+                effectType: 'headStabilization',
+                enabled: true,
+                smoothingX: 0.7,
+                smoothingY: 0.7,
+                smoothingZ: 0.0,
+                stabilizationStatus: 'done' as const,
+              },
+            },
+          ],
+        },
+        {
           id: 'tr1',
           type: 'video',
           name: 'V1',
@@ -534,16 +584,6 @@ describe('buildExportCommand', () => {
               useClipAudio: false,
               clipAudioVolume: 1,
               transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
-              effects: [
-                {
-                  type: 'headStabilization' as const,
-                  enabled: true,
-                  smoothingX: 0.7,
-                  smoothingY: 0.7,
-                  smoothingZ: 0.0,
-                  status: 'done' as const,
-                },
-              ],
             },
           ],
         },
@@ -575,6 +615,32 @@ describe('buildExportCommand', () => {
     const project = makeProject({
       tracks: [
         {
+          id: 'fx_hs2',
+          type: 'effect',
+          effectType: 'headStabilization',
+          parentTrackId: 'tr1',
+          name: 'Head Stab 1',
+          clips: [
+            {
+              id: 'fxhs2',
+              assetId: '',
+              trackId: 'fx_hs2',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              effectConfig: {
+                effectType: 'headStabilization',
+                enabled: true,
+                smoothingX: 0.7,
+                smoothingY: 0.7,
+                smoothingZ: 0.0,
+                stabilizationStatus: 'pending' as const,  // not done
+              },
+            },
+          ],
+        },
+        {
           id: 'tr1',
           type: 'video',
           name: 'V1',
@@ -590,16 +656,6 @@ describe('buildExportCommand', () => {
               useClipAudio: false,
               clipAudioVolume: 1,
               transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
-              effects: [
-                {
-                  type: 'headStabilization' as const,
-                  enabled: true,
-                  smoothingX: 0.7,
-                  smoothingY: 0.7,
-                  smoothingZ: 0.0,
-                  status: 'pending' as const,  // not done
-                },
-              ],
             },
           ],
         },
