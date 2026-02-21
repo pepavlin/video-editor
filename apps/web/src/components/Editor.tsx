@@ -500,10 +500,30 @@ export default function Editor() {
         <span className="font-bold text-gradient" style={{ fontSize: 16 }}>
           {project?.name ?? 'Video Editor'}
         </span>
-        {saving && (
-          <span className="flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.30)', fontSize: 13 }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent/60 animate-pulse" />
-            Saving
+        {project && (
+          <span
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all"
+            style={{
+              fontSize: 12,
+              color: saving ? 'rgba(255,255,255,0.45)' : 'rgba(0,212,160,0.80)',
+              background: saving ? 'rgba(255,255,255,0.05)' : 'rgba(0,212,160,0.08)',
+              border: `1px solid ${saving ? 'rgba(255,255,255,0.08)' : 'rgba(0,212,160,0.20)'}`,
+              letterSpacing: '0.01em',
+            }}
+          >
+            {saving ? (
+              <>
+                <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.40)' }} />
+                Ukládání...
+              </>
+            ) : (
+              <>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Uloženo
+              </>
+            )}
           </span>
         )}
 
