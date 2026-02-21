@@ -96,6 +96,102 @@ export default function Timeline({
     propsRef.current = { project, currentTime, assets, waveforms, beatsData, selectedClipId, workArea };
   });
 
+  // ─── Video thumbnail cache ─────────────────────────────────────────────────
+  const thumbnailCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
+  const thumbnailPendingRef = useRef<Set<string>>(new Set());
+  const thumbnailVideoElemsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const thumbnailQueuesRef = useRef<Map<string, (() => Promise<void>)[]>>(new Map());
+  const thumbnailRunningRef = useRef<Set<string>>(new Set());
+  const [, setThumbnailTick] = useState(0); // incremented when new thumbnails arrive → triggers redraw
+
+  const requestThumbnail = useCallback(
+    (assetId: string, proxyPath: string, sourceTime: number, thumbW: number, thumbH: number): void => {
+      const key = `${assetId}:${sourceTime.toFixed(1)}`;
+      if (thumbnailCacheRef.current.has(key) || thumbnailPendingRef.current.has(key)) return;
+      if (thumbnailPendingRef.current.size >= 6) return; // cap concurrent extractions
+      thumbnailPendingRef.current.add(key);
+
+      if (!thumbnailQueuesRef.current.has(assetId)) {
+        thumbnailQueuesRef.current.set(assetId, []);
+      }
+      const queue = thumbnailQueuesRef.current.get(assetId)!;
+
+      queue.push(async () => {
+        try {
+          let video = thumbnailVideoElemsRef.current.get(assetId);
+          if (!video) {
+            video = document.createElement('video');
+            video.src = `/files/${proxyPath}`;
+            video.muted = true;
+            video.preload = 'metadata';
+            thumbnailVideoElemsRef.current.set(assetId, video);
+            if (video.readyState < 1) {
+              await new Promise<void>((resolve, reject) => {
+                const v = video!;
+                const onMeta = () => {
+                  v.removeEventListener('loadedmetadata', onMeta);
+                  v.removeEventListener('error', onErr);
+                  resolve();
+                };
+                const onErr = () => {
+                  v.removeEventListener('loadedmetadata', onMeta);
+                  v.removeEventListener('error', onErr);
+                  reject(new Error('video load failed'));
+                };
+                v.addEventListener('loadedmetadata', onMeta);
+                v.addEventListener('error', onErr);
+              });
+            }
+          }
+
+          video.currentTime = sourceTime;
+          await new Promise<void>((resolve) => {
+            const v = video!;
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              v.removeEventListener('seeked', finish);
+              resolve();
+            };
+            v.addEventListener('seeked', finish);
+            setTimeout(finish, 3000);
+          });
+
+          if (video.videoWidth > 0 && video.readyState >= 2) {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = thumbW;
+            offscreen.height = thumbH;
+            const c2d = offscreen.getContext('2d');
+            if (c2d) {
+              c2d.drawImage(video, 0, 0, thumbW, thumbH);
+              const bitmap = await createImageBitmap(offscreen);
+              thumbnailCacheRef.current.set(key, bitmap);
+              setThumbnailTick((n) => n + 1);
+            }
+          }
+        } catch {
+          // ignore errors silently
+        } finally {
+          thumbnailPendingRef.current.delete(key);
+        }
+      });
+
+      if (!thumbnailRunningRef.current.has(assetId)) {
+        thumbnailRunningRef.current.add(assetId);
+        const processQueue = async () => {
+          const q = thumbnailQueuesRef.current.get(assetId)!;
+          while (q.length > 0) {
+            await q.shift()!().catch(() => {});
+          }
+          thumbnailRunningRef.current.delete(assetId);
+        };
+        processQueue();
+      }
+    },
+    []
+  );
+
   // Get snap targets from clip edges + beat markers
   const getSnapTargets = useCallback(
     (excludeClipId?: string): number[] => {
@@ -338,10 +434,54 @@ export default function Timeline({
         const clipTop = trackY + 2;
         const clipH = TRACK_HEIGHT - 4;
 
+        // Base fill (lower opacity for video so thumbnails show through)
         ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
-        ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.88;
+        ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.5;
         ctx.fillRect(visX, clipTop, visW, clipH);
         ctx.globalAlpha = 1;
+
+        const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
+
+        // ─── Video thumbnails (filmstrip) ──────────────────────────────────
+        if (!isAudio && asset?.proxyPath) {
+          const ar = asset.width && asset.height ? asset.width / asset.height : 9 / 16;
+          const thumbH = clipH;
+          const thumbW = Math.max(1, Math.round(thumbH * ar));
+          const numFrames = Math.ceil(clipW / thumbW) + 2;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(visX, clipTop, visW, clipH);
+          ctx.clip();
+
+          for (let fi = 0; fi < numFrames; fi++) {
+            const frameRelTimeSec = (fi * thumbW) / Z;
+            const sourceTime = clip.sourceStart + frameRelTimeSec;
+            if (sourceTime > clip.sourceEnd + 0.01) break;
+
+            const frameX = clipX + frameRelTimeSec * Z;
+            if (frameX + thumbW < visX || frameX > visX + visW) continue;
+
+            const thumbKey = `${clip.assetId}:${sourceTime.toFixed(1)}`;
+            const bitmap = thumbnailCacheRef.current.get(thumbKey);
+
+            if (bitmap) {
+              ctx.globalAlpha = 0.92;
+              ctx.drawImage(bitmap, frameX, clipTop, thumbW, thumbH);
+              ctx.globalAlpha = 1;
+            } else {
+              requestThumbnail(clip.assetId, asset.proxyPath, sourceTime, thumbW, thumbH);
+            }
+          }
+
+          // Subtle tint overlay so the clip color is still identifiable
+          ctx.globalAlpha = isSelected ? 0.28 : 0.15;
+          ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
+          ctx.fillRect(visX, clipTop, visW, clipH);
+          ctx.globalAlpha = 1;
+
+          ctx.restore();
+        }
 
         if (isAudio) {
           const wf = waveforms.get(clip.assetId);
@@ -363,14 +503,20 @@ export default function Timeline({
         ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
         ctx.clip();
 
-        ctx.fillStyle = isText ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.85)';
         ctx.font = isText ? 'bold 11px sans-serif' : '11px sans-serif';
         ctx.textAlign = 'left';
-        const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
         const label = isText
           ? (clip.textContent ? `T "${clip.textContent}"` : 'T Text')
           : (asset?.name ?? clip.assetId);
+
+        // Text shadow for readability over thumbnails on video clips
+        if (!isAudio && !isText) {
+          ctx.shadowColor = 'rgba(0,0,0,0.9)';
+          ctx.shadowBlur = 4;
+        }
+        ctx.fillStyle = isText ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.95)';
         ctx.fillText(label, visX + 4, trackY + 14);
+        ctx.shadowBlur = 0;
 
         if (clip.effects.length > 0) {
           ctx.fillStyle = 'rgba(240,177,0,0.85)';
