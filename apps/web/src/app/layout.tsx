@@ -6,6 +6,9 @@ import VersionBanner from '@/components/VersionBanner';
 export const metadata: Metadata = {
   title: 'Video Editor',
   description: 'Local fast video editor for music shorts',
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
