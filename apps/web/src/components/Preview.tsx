@@ -107,7 +107,7 @@ function applyCartoonEffectToCtx(
   ctx: CanvasRenderingContext2D,
   videoEl: HTMLVideoElement,
   bounds: Bounds,
-  effect: CartoonEffect
+  effect: import('@video-editor/shared').EffectClipConfig
 ): void {
   const iw = Math.max(2, Math.round(bounds.w));
   const ih = Math.max(2, Math.round(bounds.h));
@@ -118,12 +118,15 @@ function applyCartoonEffectToCtx(
   if (!baseCtx || !edgeCtx) return;
 
   // ── 1. Color-simplified base: blur + saturation ───────────────────────────
-  const blurPx = effect.colorSimplification * 5;
+  const colorSimplification = effect.colorSimplification ?? 0.3;
+  const saturation = effect.saturation ?? 1.4;
+  const edgeStrengthVal = effect.edgeStrength ?? 0.5;
+  const blurPx = colorSimplification * 5;
   baseCtx.clearRect(0, 0, iw, ih);
   baseCtx.filter =
     blurPx > 0.1
-      ? `blur(${blurPx.toFixed(1)}px) saturate(${effect.saturation.toFixed(2)})`
-      : `saturate(${effect.saturation.toFixed(2)})`;
+      ? `blur(${blurPx.toFixed(1)}px) saturate(${saturation.toFixed(2)})`
+      : `saturate(${saturation.toFixed(2)})`;
   baseCtx.drawImage(videoEl, 0, 0, iw, ih);
   baseCtx.filter = 'none';
 
@@ -144,7 +147,7 @@ function applyCartoonEffectToCtx(
 
   // edgeStrength=0 → rawThreshold=200 (almost no edges)
   // edgeStrength=1 → rawThreshold=0   (all gradients become edges)
-  const rawThreshold = (1 - effect.edgeStrength) * 200;
+  const rawThreshold = (1 - edgeStrengthVal) * 200;
 
   for (let y = 0; y < eh; y++) {
     for (let x = 0; x < ew; x++) {
@@ -163,7 +166,7 @@ function applyCartoonEffectToCtx(
         const mag = Math.sqrt(gx * gx + gy * gy);
         if (mag > rawThreshold) {
           // Darker = stronger edge; scale by edgeStrength
-          edgeVal = Math.max(0, 255 - (mag - rawThreshold) * effect.edgeStrength * 4);
+          edgeVal = Math.max(0, 255 - (mag - rawThreshold) * edgeStrengthVal * 4);
         }
       }
       const idx = (y * ew + x) * 4;
@@ -604,24 +607,15 @@ export default function Preview({
             ctx.translate(-cx, -cy);
           }
 
-          // Cartoon effect — read from effect track (same pattern as beat zoom)
           const cartoonEffectTrack = project.tracks.find(
             (t) => t.type === 'effect' && t.effectType === 'cartoon' && t.parentTrackId === track.id
           );
-          const activeCartoonClip = cartoonEffectTrack?.clips.find(
-            (ec) => ec.effectConfig?.enabled &&
-              currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
-          );
-          const cartoonCfg = activeCartoonClip?.effectConfig;
+          const cartoonEff = cartoonEffectTrack?.clips.find(
+            (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
+          )?.effectConfig;
           try {
-            if (cartoonCfg?.enabled) {
-              applyCartoonEffectToCtx(ctx, videoEl, bounds, {
-                type: 'cartoon' as const,
-                enabled: true,
-                colorSimplification: cartoonCfg.colorSimplification ?? 0.5,
-                saturation: cartoonCfg.saturation ?? 1.5,
-                edgeStrength: cartoonCfg.edgeStrength ?? 0.6,
-              });
+            if (cartoonEff?.enabled) {
+              applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff);
             } else {
               ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
             }

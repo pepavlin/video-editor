@@ -79,6 +79,7 @@ export interface EffectClipConfig {
   // cutout params
   background?: BackgroundConfig;
   maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+  cutoutMode?: 'removeBg' | 'removePerson';  // removeBg=keep person, removePerson=keep background
   // headStabilization params
   smoothingX?: number;  // 0-1: stabilization strength on X axis
   smoothingY?: number;  // 0-1: stabilization strength on Y axis

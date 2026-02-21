@@ -1,6 +1,13 @@
 'use client';
 
-import type { HeadStabilizationEffect } from '@video-editor/shared';
+interface HeadStabilizationEffect {
+  type: 'headStabilization';
+  enabled: boolean;
+  smoothingX: number;
+  smoothingY: number;
+  smoothingZ: number;
+  status?: 'pending' | 'processing' | 'done' | 'error';
+}
 
 interface Props {
   clipId: string;
