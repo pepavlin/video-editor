@@ -5,10 +5,12 @@ export interface PlaybackControls {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
+  isLooping: boolean;
   play: () => void;
   pause: () => void;
   seek: (t: number) => void;
   toggle: () => void;
+  toggleLoop: () => void;
   setDuration: (d: number) => void;
 }
 
@@ -23,6 +25,7 @@ export function usePlayback(
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isLooping, setIsLooping] = useState(false);
 
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -31,6 +34,9 @@ export function usePlayback(
   const rafRef = useRef<number>(0);
   const currentTimeRef = useRef(0);
   const isPlayingRef = useRef(false);
+  const isLoopingRef = useRef(false);
+  const projectRef = useRef<Project | null>(null);
+  projectRef.current = project;
 
   const getCtx = useCallback((): AudioContext => {
     if (!ctxRef.current || ctxRef.current.state === 'closed') {
@@ -72,8 +78,35 @@ export function usePlayback(
       setCurrentTime(t);
     }
 
-    // Auto-stop at duration
+    // Auto-stop or loop at duration
     if (duration > 0 && t >= duration) {
+      if (isLoopingRef.current) {
+        // Restart audio from beginning using cached buffer
+        sourceNodeRef.current?.stop();
+        sourceNodeRef.current?.disconnect();
+        sourceNodeRef.current = null;
+
+        const masterTrack = projectRef.current?.tracks.find((tr) => tr.type === 'audio' && tr.isMaster);
+        const masterClip = masterTrack?.clips[0];
+        const buffer = masterClip ? audioCache.get(masterClip.assetId) : null;
+
+        if (buffer && masterClip) {
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(ctx.destination);
+          source.start(ctx.currentTime, masterClip.sourceStart ?? 0);
+          sourceNodeRef.current = source;
+        }
+
+        startAudioTimeRef.current = ctx.currentTime;
+        startProjectTimeRef.current = 0;
+        currentTimeRef.current = 0;
+        setCurrentTime(0);
+
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
       isPlayingRef.current = false;
       setIsPlaying(false);
       setCurrentTime(duration);
@@ -166,10 +199,23 @@ export function usePlayback(
     [pause, play, duration]
   );
 
+  const toggleLoop = useCallback(() => {
+    isLoopingRef.current = !isLoopingRef.current;
+    setIsLooping(isLoopingRef.current);
+  }, []);
+
   const toggle = useCallback(() => {
-    if (isPlayingRef.current) pause();
-    else play();
-  }, [play, pause]);
+    if (isPlayingRef.current) {
+      pause();
+    } else {
+      // If at end, restart from beginning
+      if (duration > 0 && currentTimeRef.current >= duration - 0.05) {
+        currentTimeRef.current = 0;
+        setCurrentTime(0);
+      }
+      play();
+    }
+  }, [play, pause, duration]);
 
   // Preload audio when project/assets change
   useEffect(() => {
@@ -198,10 +244,12 @@ export function usePlayback(
     isPlaying,
     currentTime,
     duration,
+    isLooping,
     play,
     pause,
     seek,
     toggle,
+    toggleLoop,
     setDuration,
   };
 }

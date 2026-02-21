@@ -493,7 +493,9 @@ export default function Editor() {
             isPlaying={playback.isPlaying}
             currentTime={playback.currentTime}
             duration={playback.duration || project?.duration || 0}
+            isLooping={playback.isLooping}
             onToggle={playback.toggle}
+            onLoopToggle={playback.toggleLoop}
             onSeek={playback.seek}
           />
 
