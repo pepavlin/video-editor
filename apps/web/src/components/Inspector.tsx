@@ -8,6 +8,7 @@ import type {
   BeatZoomEffect,
   CutoutEffect,
   LyricsStyle,
+  TextStyle,
 } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { formatTime } from '@/lib/utils';
@@ -143,7 +144,7 @@ export default function Inspector({
 
   // Find selected clip and its track
   let selectedClip: Clip | undefined;
-  let selectedTrackType: 'video' | 'audio' | undefined;
+  let selectedTrackType: 'video' | 'audio' | 'text' | undefined;
   if (selectedClipId && project) {
     for (const t of project.tracks) {
       const found = t.clips.find((c) => c.id === selectedClipId);
@@ -205,13 +206,14 @@ export default function Inspector({
             <Row label="Duration">{valueText(formatTime(selectedClip.timelineEnd - selectedClip.timelineStart))}</Row>
           </Section>
 
-          {selectedTrackType === 'video' && selectedClip.transform && (
+          {(selectedTrackType === 'video' || selectedTrackType === 'text') && selectedClip.transform && (
           <Section title="Transform">
             <Row label="Scale">
               <NumInput
                 value={selectedClip.transform.scale}
-                min={0.1}
-                max={5}
+                min={0.05}
+                max={10}
+                step={0.01}
                 onChange={(v) =>
                   onClipUpdate(selectedClip!.id, {
                     transform: { ...selectedClip!.transform!, scale: v },
@@ -221,7 +223,7 @@ export default function Inspector({
             </Row>
             <Row label="X">
               <NumInput
-                value={selectedClip.transform.x}
+                value={Math.round(selectedClip.transform.x)}
                 step={1}
                 onChange={(v) =>
                   onClipUpdate(selectedClip!.id, {
@@ -232,7 +234,7 @@ export default function Inspector({
             </Row>
             <Row label="Y">
               <NumInput
-                value={selectedClip.transform.y}
+                value={Math.round(selectedClip.transform.y)}
                 step={1}
                 onChange={(v) =>
                   onClipUpdate(selectedClip!.id, {
@@ -241,21 +243,209 @@ export default function Inspector({
                 }
               />
             </Row>
+            <Row label="Rotation">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <NumInput
+                  value={Math.round(selectedClip.transform.rotation)}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  onChange={(v) =>
+                    onClipUpdate(selectedClip!.id, {
+                      transform: { ...selectedClip!.transform!, rotation: v },
+                    })
+                  }
+                />
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>°</span>
+              </div>
+            </Row>
             <Row label="Opacity">
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={selectedClip.transform.opacity}
-                style={{ width: '100%' }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={selectedClip.transform.opacity}
+                  style={{ width: '100%' }}
+                  onChange={(e) =>
+                    onClipUpdate(selectedClip!.id, {
+                      transform: { ...selectedClip!.transform!, opacity: parseFloat(e.target.value) },
+                    })
+                  }
+                />
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                  {Math.round(selectedClip.transform.opacity * 100)}%
+                </span>
+              </div>
+            </Row>
+            <Row label="">
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: 11, border: '1px solid rgba(255,255,255,0.10)', padding: '4px 10px', color: 'rgba(255,255,255,0.40)' }}
+                onClick={() =>
+                  onClipUpdate(selectedClip!.id, {
+                    transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+                  })
+                }
+              >
+                Reset
+              </button>
+            </Row>
+          </Section>
+          )}
+
+          {selectedTrackType === 'text' && selectedClip && (
+          <Section title="Text">
+            <Row label="Content">
+              <textarea
+                value={selectedClip.textContent ?? 'Text'}
+                rows={2}
+                style={{ width: '100%', fontSize: 13, resize: 'none' }}
+                onChange={(e) =>
+                  onClipUpdate(selectedClip!.id, { textContent: e.target.value })
+                }
+              />
+            </Row>
+            <Row label="Font">
+              <select
+                value={selectedClip.textStyle?.fontFamily ?? 'Arial'}
+                style={{ fontSize: 13 }}
                 onChange={(e) =>
                   onClipUpdate(selectedClip!.id, {
-                    transform: { ...selectedClip!.transform!, opacity: parseFloat(e.target.value) },
+                    textStyle: { ...(selectedClip!.textStyle as TextStyle), fontFamily: e.target.value },
+                  })
+                }
+              >
+                <option value="Arial">Arial</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Impact">Impact</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Times New Roman">Times New Roman</option>
+              </select>
+            </Row>
+            <Row label="Size">
+              <NumInput
+                value={selectedClip.textStyle?.fontSize ?? 96}
+                min={8}
+                max={500}
+                step={4}
+                onChange={(v) =>
+                  onClipUpdate(selectedClip!.id, {
+                    textStyle: { ...(selectedClip!.textStyle as TextStyle), fontSize: v },
                   })
                 }
               />
             </Row>
+            <Row label="Color">
+              <input
+                type="color"
+                value={selectedClip.textStyle?.color ?? '#ffffff'}
+                style={{ width: '100%', height: 32, cursor: 'pointer' }}
+                onChange={(e) =>
+                  onClipUpdate(selectedClip!.id, {
+                    textStyle: { ...(selectedClip!.textStyle as TextStyle), color: e.target.value },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Align">
+              <select
+                value={selectedClip.textStyle?.align ?? 'center'}
+                style={{ fontSize: 13 }}
+                onChange={(e) =>
+                  onClipUpdate(selectedClip!.id, {
+                    textStyle: {
+                      ...(selectedClip!.textStyle as TextStyle),
+                      align: e.target.value as 'left' | 'center' | 'right',
+                    },
+                  })
+                }
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </Row>
+            <Row label="">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedClip.textStyle?.bold ?? true}
+                    onChange={(e) =>
+                      onClipUpdate(selectedClip!.id, {
+                        textStyle: { ...(selectedClip!.textStyle as TextStyle), bold: e.target.checked },
+                      })
+                    }
+                  />
+                  Bold
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedClip.textStyle?.italic ?? false}
+                    onChange={(e) =>
+                      onClipUpdate(selectedClip!.id, {
+                        textStyle: { ...(selectedClip!.textStyle as TextStyle), italic: e.target.checked },
+                      })
+                    }
+                  />
+                  Italic
+                </label>
+              </div>
+            </Row>
+            <Row label="BG Color">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="color"
+                  value={selectedClip.textStyle?.background ?? '#000000'}
+                  style={{ width: 56, height: 32, cursor: 'pointer', flexShrink: 0 }}
+                  onChange={(e) =>
+                    onClipUpdate(selectedClip!.id, {
+                      textStyle: { ...(selectedClip!.textStyle as TextStyle), background: e.target.value },
+                    })
+                  }
+                />
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: 11, padding: '4px 8px', border: '1px solid rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.35)' }}
+                  onClick={() =>
+                    onClipUpdate(selectedClip!.id, {
+                      textStyle: { ...(selectedClip!.textStyle as TextStyle), background: undefined },
+                    })
+                  }
+                >
+                  Clear
+                </button>
+              </div>
+            </Row>
+            {selectedClip.textStyle?.background && (
+              <Row label="BG Alpha">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={selectedClip.textStyle?.backgroundOpacity ?? 0.65}
+                    style={{ width: '100%' }}
+                    onChange={(e) =>
+                      onClipUpdate(selectedClip!.id, {
+                        textStyle: {
+                          ...(selectedClip!.textStyle as TextStyle),
+                          backgroundOpacity: parseFloat(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                    {Math.round((selectedClip.textStyle?.backgroundOpacity ?? 0.65) * 100)}%
+                  </span>
+                </div>
+              </Row>
+            )}
           </Section>
           )}
 

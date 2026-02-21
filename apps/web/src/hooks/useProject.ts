@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Effect, Transform } from '@video-editor/shared';
+import type { Project, Clip, Track, Effect, Transform, TextStyle } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 
@@ -97,6 +97,48 @@ export function useProject() {
         return { ...p, tracks: [...p.tracks, newTrack] };
       });
       return trackId;
+    },
+    [updateProject]
+  );
+
+  // Add a text track with one clip at timelineStart
+  const addTextTrack = useCallback(
+    (timelineStart: number, duration: number, text: string = 'Text') => {
+      const trackId = genId('track');
+      const clipId = genId('clip');
+      const defaultStyle: TextStyle = {
+        fontFamily: 'Arial',
+        fontSize: 96,
+        color: '#ffffff',
+        bold: true,
+        italic: false,
+        align: 'center',
+      };
+      updateProject((p) => {
+        const newTrack: Track = {
+          id: trackId,
+          type: 'text',
+          name: 'Text',
+          muted: false,
+          clips: [
+            {
+              id: clipId,
+              assetId: '',
+              trackId,
+              timelineStart,
+              timelineEnd: timelineStart + duration,
+              sourceStart: 0,
+              sourceEnd: duration,
+              effects: [],
+              textContent: text,
+              textStyle: defaultStyle,
+              transform: { ...DEFAULT_TRANSFORM },
+            },
+          ],
+        };
+        return { ...p, tracks: [...p.tracks, newTrack] };
+      });
+      return clipId;
     },
     [updateProject]
   );
@@ -271,6 +313,7 @@ export function useProject() {
     loadProject,
     updateProject,
     addTrack,
+    addTextTrack,
     addClip,
     updateClip,
     deleteClip,
