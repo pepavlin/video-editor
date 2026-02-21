@@ -21,11 +21,12 @@ export interface Project {
 
 export interface Track {
   id: string;
-  type: 'video' | 'audio' | 'text';
+  type: 'video' | 'audio' | 'text' | 'effect';
   isMaster?: boolean; // master audio track
   name: string;
   muted?: boolean;
   clips: Clip[];
+  effectType?: 'beatZoom' | 'cutout'; // only for 'effect' tracks
 }
 
 export interface TextStyle {
@@ -55,6 +56,21 @@ export interface Clip {
   // Text-clip-only fields:
   textContent?: string;      // text to display (text tracks only)
   textStyle?: TextStyle;     // text appearance (text tracks only)
+  // Effect track clip fields:
+  effectConfig?: EffectClipConfig; // only for clips on 'effect' tracks
+}
+
+// Configuration stored on each clip that lives on an 'effect' track
+export interface EffectClipConfig {
+  effectType: 'beatZoom' | 'cutout';
+  enabled: boolean;
+  // beatZoom params
+  intensity?: number;   // fraction e.g. 0.08 = +8%
+  durationMs?: number;  // pulse duration ms
+  easing?: 'linear' | 'easeOut' | 'easeIn' | 'easeInOut';
+  // cutout params
+  background?: BackgroundConfig;
+  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
 }
 
 export interface Transform {

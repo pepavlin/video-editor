@@ -5,6 +5,7 @@ import type { Project, Track, Clip, Asset, WaveformData, BeatsData } from '@vide
 import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
 
 const TRACK_HEIGHT = 56;
+const EFFECT_TRACK_HEIGHT = 26; // effect tracks are thin strips
 const HEADER_WIDTH = 80;
 const RULER_HEIGHT = 24;
 const WORK_BAR_H = 8; // top portion of ruler reserved for work area bar
@@ -12,6 +13,10 @@ const MIN_ZOOM = 20;   // px per second
 const MAX_ZOOM = 400;
 const SNAP_THRESHOLD_PX = 8;
 const WA_HANDLE_HIT = 8; // hit radius in px for work area handles
+
+function getTrackH(track: Track): number {
+  return track.type === 'effect' ? EFFECT_TRACK_HEIGHT : TRACK_HEIGHT;
+}
 
 // Ghost clip state during drag-over
 interface GhostClip {
@@ -41,6 +46,7 @@ interface Props {
   onDropAssetNewTrack: (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => void;
   onWorkAreaChange: (start: number, end: number) => void;
   onTrackReorder: (fromIdx: number, toIdx: number) => void;
+  onAddEffectTrack: (effectType: 'beatZoom' | 'cutout', timelineStart: number, duration: number) => void;
 }
 
 type DragMode =
@@ -73,6 +79,7 @@ export default function Timeline({
   onDropAssetNewTrack,
   onWorkAreaChange,
   onTrackReorder,
+  onAddEffectTrack,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,6 +88,7 @@ export default function Timeline({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [drag, setDrag] = useState<DragMode>({ type: 'none' });
   const [snapMode, setSnapMode] = useState<SnapMode>('clips');
+  const [showEffectMenu, setShowEffectMenu] = useState(false);
 
   // Track reorder drag state
   const [trackDragFromIdx, setTrackDragFromIdx] = useState<number | null>(null);
@@ -236,19 +244,33 @@ export default function Timeline({
   );
 
   // Compute total track rows height for sizing
-  const getTotalTracksHeight = useCallback((numTracks: number) => numTracks * TRACK_HEIGHT, []);
+  const getTotalTracksHeight = useCallback(
+    (tracks: Track[]) => tracks.reduce((sum, t) => sum + getTrackH(t), 0),
+    []
+  );
 
-  // Get the canvas-Y for track at a given index
-  const trackYForIndex = useCallback((idx: number) => RULER_HEIGHT + idx * TRACK_HEIGHT, []);
+  // Get the canvas-Y for track at a given index (variable heights)
+  const trackYForIndex = useCallback(
+    (idx: number) => {
+      if (!project) return RULER_HEIGHT + idx * TRACK_HEIGHT;
+      let y = RULER_HEIGHT;
+      for (let i = 0; i < idx && i < project.tracks.length; i++) {
+        y += getTrackH(project.tracks[i]);
+      }
+      return y;
+    },
+    [project]
+  );
 
-  // Get track at canvas Y (returns track and its Y position)
+  // Get track at canvas Y (returns track and its Y position), variable heights
   const getTrackAtY = useCallback(
-    (y: number): { track: Track; trackY: number } | null => {
+    (y: number): { track: Track; trackY: number; trackH: number } | null => {
       if (!project) return null;
       let ty = RULER_HEIGHT;
       for (const track of project.tracks) {
-        if (y >= ty && y < ty + TRACK_HEIGHT) return { track, trackY: ty };
-        ty += TRACK_HEIGHT;
+        const th = getTrackH(track);
+        if (y >= ty && y < ty + th) return { track, trackY: ty, trackH: th };
+        ty += th;
       }
       return null;
     },
@@ -378,33 +400,50 @@ export default function Timeline({
       }
     }
 
+    // ─── Determine which video clips are "covered" by the selected effect clip ──
+    let selectedEffectClipRange: { start: number; end: number } | null = null;
+    if (selectedClipId) {
+      for (const t of tracks) {
+        if (t.type !== 'effect') continue;
+        const ec = t.clips.find((c) => c.id === selectedClipId);
+        if (ec) { selectedEffectClipRange = { start: ec.timelineStart, end: ec.timelineEnd }; break; }
+      }
+    }
+
     // ─── Tracks ───────────────────────────────────────────────────────────
     let trackY = RULER_HEIGHT;
     for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
       const track = tracks[trackIdx];
+      const trackH = getTrackH(track);
       const isAudio = track.type === 'audio';
       const isGhostTrack = ghost?.trackId === track.id;
       const isTextTrack = track.type === 'text';
+      const isEffectTrack = track.type === 'effect';
 
       // Highlight if being reordered over
       const isReorderTarget = trackDragOverIdx === trackIdx && trackDragFromIdx !== null && trackDragFromIdx !== trackIdx;
       const isReorderSource = trackDragFromIdx === trackIdx;
 
       // Track header
-      ctx.fillStyle = isReorderTarget
+      const headerBg = isEffectTrack
+        ? 'rgba(30,15,5,0.95)'
+        : isReorderTarget
         ? 'rgba(0,212,160,0.25)'
         : isGhostTrack
         ? 'rgba(0,212,160,0.15)'
         : '#101f33';
+      ctx.fillStyle = headerBg;
       ctx.globalAlpha = isReorderSource ? 0.4 : 1;
-      ctx.fillRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = isReorderTarget
+      ctx.fillRect(0, trackY, HEADER_WIDTH, trackH);
+      ctx.strokeStyle = isEffectTrack
+        ? 'rgba(251,146,60,0.45)'
+        : isReorderTarget
         ? 'rgba(0,212,160,0.85)'
         : isGhostTrack
         ? 'rgba(0,212,160,0.50)'
         : 'rgba(0,212,160,0.18)';
-      ctx.lineWidth = isReorderTarget ? 2 : isGhostTrack ? 2 : 1;
-      ctx.strokeRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
+      ctx.lineWidth = isEffectTrack || isReorderTarget || isGhostTrack ? 1 : 1;
+      ctx.strokeRect(0, trackY, HEADER_WIDTH, trackH);
       ctx.globalAlpha = 1;
 
       // Draw reorder indicator line above target row
@@ -413,31 +452,49 @@ export default function Timeline({
         ctx.fillRect(0, trackY - 2, W, 3);
       }
 
-      ctx.fillStyle = isAudio
+      const labelColor = isEffectTrack
+        ? 'rgba(251,146,60,0.90)'
+        : isAudio
         ? 'rgba(0,212,160,0.65)'
         : isTextTrack
         ? 'rgba(167,139,250,0.80)'
         : 'rgba(56,189,248,0.65)';
-      ctx.font = 'bold 10px sans-serif';
+      ctx.fillStyle = labelColor;
+      ctx.font = isEffectTrack ? 'bold 8px sans-serif' : 'bold 10px sans-serif';
       ctx.textAlign = 'center';
       ctx.lineWidth = 1;
       ctx.globalAlpha = isReorderSource ? 0.4 : 1;
-      ctx.fillText(track.name.toUpperCase(), HEADER_WIDTH / 2, trackY + TRACK_HEIGHT / 2 + 4);
+      ctx.fillText(
+        track.name.toUpperCase(),
+        HEADER_WIDTH / 2,
+        trackY + trackH / 2 + (isEffectTrack ? 3 : 4)
+      );
       ctx.globalAlpha = 1;
 
+      // Effect type icon (small "fx" label)
+      if (isEffectTrack) {
+        ctx.fillStyle = 'rgba(251,146,60,0.55)';
+        ctx.font = 'bold 7px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('FX', HEADER_WIDTH / 2, trackY + trackH / 2 - 6);
+      }
+
       // Track body background
-      ctx.fillStyle = isAudio
+      const bodyBg = isEffectTrack
+        ? 'rgba(251,146,60,0.04)'
+        : isAudio
         ? 'rgba(0,212,160,0.05)'
         : isTextTrack
         ? 'rgba(167,139,250,0.04)'
         : 'rgba(56,189,248,0.04)';
+      ctx.fillStyle = bodyBg;
       ctx.globalAlpha = isReorderSource ? 0.3 : 1;
-      ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, TRACK_HEIGHT);
+      ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, trackH);
       ctx.globalAlpha = 1;
 
       // Track separator
-      ctx.fillStyle = 'rgba(0,212,160,0.14)';
-      ctx.fillRect(HEADER_WIDTH, trackY + TRACK_HEIGHT - 1, timeWidth, 1);
+      ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.20)' : 'rgba(0,212,160,0.14)';
+      ctx.fillRect(HEADER_WIDTH, trackY + trackH - 1, timeWidth, 1);
 
       // Grid lines
       for (let s = startSec; s <= endSec; s += tickInterval) {
@@ -446,7 +503,7 @@ export default function Timeline({
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, trackY);
-        ctx.lineTo(x, trackY + TRACK_HEIGHT);
+        ctx.lineTo(x, trackY + trackH);
         ctx.stroke();
       }
 
@@ -454,11 +511,11 @@ export default function Timeline({
       if (masterClip) {
         const beats = beatsData.get(masterClip.assetId);
         if (beats) {
-          ctx.fillStyle = 'rgba(0, 212, 160, 0.15)';
+          ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.20)' : 'rgba(0, 212, 160, 0.15)';
           for (const beat of beats.beats) {
             const x = beat * Z - SL + HEADER_WIDTH;
             if (x < HEADER_WIDTH || x > W) continue;
-            ctx.fillRect(x - 0.5, trackY, 1, TRACK_HEIGHT);
+            ctx.fillRect(x - 0.5, trackY, 1, trackH);
           }
         }
       }
@@ -471,132 +528,216 @@ export default function Timeline({
         if (clipX + clipW < HEADER_WIDTH || clipX > W) continue;
 
         const isSelected = clip.id === selectedClipId;
-        // Text clips get a distinct violet color; others use asset-based color
-        const color = isText ? '#a78bfa' : getClipColor(clip.assetId);
 
-        const visX = Math.max(clipX, HEADER_WIDTH);
-        const visW = Math.min(clipX + clipW, W) - visX;
-        const clipTop = trackY + 2;
-        const clipH = TRACK_HEIGHT - 4;
+        if (isEffectTrack) {
+          // ─── Effect clip rendering (thin strip style) ───────────────────
+          const cfg = clip.effectConfig;
+          const isBeatZoom = cfg?.effectType === 'beatZoom';
+          const effectColor = isBeatZoom ? 'rgba(251,146,60,0.85)' : 'rgba(217,70,239,0.85)';
+          const effectColorFill = isBeatZoom ? 'rgba(251,146,60,0.25)' : 'rgba(217,70,239,0.22)';
+          const effectColorBorder = isBeatZoom ? 'rgba(251,146,60,0.90)' : 'rgba(217,70,239,0.90)';
 
-        // Base fill (lower opacity for video so thumbnails show through)
-        ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
-        ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.5;
-        ctx.globalAlpha *= isReorderSource ? 0.4 : 1;
-        ctx.fillRect(visX, clipTop, visW, clipH);
-        ctx.globalAlpha = 1;
+          const visX = Math.max(clipX, HEADER_WIDTH);
+          const visW = Math.min(clipX + clipW, W) - visX;
+          const clipTop = trackY + 2;
+          const clipH = trackH - 4;
 
-        const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
+          ctx.globalAlpha = (cfg?.enabled === false ? 0.4 : 1) * (isReorderSource ? 0.4 : 1);
+          ctx.fillStyle = isSelected ? (isBeatZoom ? 'rgba(251,146,60,0.40)' : 'rgba(217,70,239,0.38)') : effectColorFill;
+          ctx.fillRect(visX, clipTop, visW, clipH);
 
-        // ─── Video thumbnails (filmstrip) ──────────────────────────────────
-        if (!isAudio && asset?.proxyPath) {
-          const ar = asset.width && asset.height ? asset.width / asset.height : 9 / 16;
-          const thumbH = clipH;
-          const thumbW = Math.max(1, Math.round(thumbH * ar));
-          const frameInterval = thumbW / Z;
-          const firstSourceTime = Math.floor(clip.sourceStart / frameInterval) * frameInterval;
-          const maxFrames = Math.ceil(clipW / thumbW) + 3;
-
+          // Striped pattern for effect clips
           ctx.save();
           ctx.beginPath();
           ctx.rect(visX, clipTop, visW, clipH);
           ctx.clip();
+          ctx.strokeStyle = isBeatZoom ? 'rgba(251,146,60,0.18)' : 'rgba(217,70,239,0.18)';
+          ctx.lineWidth = 1;
+          for (let px = visX - clipH; px < visX + visW + clipH; px += 8) {
+            ctx.beginPath();
+            ctx.moveTo(px, clipTop + clipH);
+            ctx.lineTo(px + clipH, clipTop);
+            ctx.stroke();
+          }
+          ctx.restore();
 
-          for (let fi = 0; fi <= maxFrames; fi++) {
-            const sourceTime = firstSourceTime + fi * frameInterval;
-            if (sourceTime > clip.sourceEnd + 0.01) break;
+          ctx.strokeStyle = isSelected ? effectColorBorder : (isBeatZoom ? 'rgba(251,146,60,0.65)' : 'rgba(217,70,239,0.65)');
+          ctx.lineWidth = isSelected ? 2 : 1;
+          ctx.strokeRect(visX + 0.5, clipTop + 0.5, visW - 1, clipH - 1);
 
-            const timeFromClipStart = sourceTime - clip.sourceStart;
-            const frameX = clipX + timeFromClipStart * Z;
-            if (frameX + thumbW < visX) continue;
-            if (frameX > visX + visW) break;
+          // Label
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(visX, clipTop, visW, clipH);
+          ctx.clip();
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillStyle = effectColor;
+          const effectLabel = isBeatZoom ? 'BeatZoom' : 'Cutout';
+          ctx.fillText(effectLabel, visX + 4, clipTop + clipH / 2 + 3);
+          ctx.restore();
 
-            const thumbKey = `${clip.assetId}:${sourceTime.toFixed(1)}`;
-            const bitmap = thumbnailCacheRef.current.get(thumbKey);
-
-            if (bitmap) {
-              ctx.globalAlpha = isReorderSource ? 0.35 : 0.92;
-              ctx.drawImage(bitmap, frameX, clipTop, thumbW, thumbH);
-              ctx.globalAlpha = 1;
-            } else {
-              requestThumbnail(clip.assetId, asset.proxyPath, sourceTime, thumbW, thumbH);
-            }
+          // Selection handles
+          if (isSelected) {
+            ctx.fillStyle = effectColorBorder;
+            ctx.fillRect(visX, clipTop, 3, clipH);
+            ctx.fillRect(Math.min(clipX + clipW, W) - 3, clipTop, 3, clipH);
           }
 
-          // Subtle tint overlay so the clip color is still identifiable
-          ctx.globalAlpha = isSelected ? 0.28 : 0.15;
+          ctx.globalAlpha = 1;
+        } else {
+          // ─── Regular clip rendering (video / audio / text) ────────────────
+          // Highlight video clips covered by selected effect clip
+          const isCoveredByEffect = !isEffectTrack &&
+            track.type === 'video' &&
+            selectedEffectClipRange !== null &&
+            clip.timelineStart < selectedEffectClipRange.end &&
+            clip.timelineEnd > selectedEffectClipRange.start;
+
+          // Text clips get a distinct violet color; others use asset-based color
+          const color = isText ? '#a78bfa' : getClipColor(clip.assetId);
+
+          const visX = Math.max(clipX, HEADER_WIDTH);
+          const visW = Math.min(clipX + clipW, W) - visX;
+          const clipTop = trackY + 2;
+          const clipH = TRACK_HEIGHT - 4;
+
+          // Base fill (lower opacity for video so thumbnails show through)
           ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
+          ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.5;
+          ctx.globalAlpha *= isReorderSource ? 0.4 : 1;
           ctx.fillRect(visX, clipTop, visW, clipH);
           ctx.globalAlpha = 1;
 
-          ctx.restore();
-        }
+          const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
 
-        if (isAudio) {
-          const wf = waveforms.get(clip.assetId);
-          if (wf && wf.samples.length > 0) {
-            drawWaveformOnClip(ctx, wf, clip, Z, SL, trackY, TRACK_HEIGHT, HEADER_WIDTH, W);
+          // ─── Video thumbnails (filmstrip) ────────────────────────────────
+          if (!isAudio && !isText && asset?.proxyPath) {
+            const ar = asset.width && asset.height ? asset.width / asset.height : 9 / 16;
+            const thumbH = clipH;
+            const thumbW = Math.max(1, Math.round(thumbH * ar));
+            const frameInterval = thumbW / Z;
+            const firstSourceTime = Math.floor(clip.sourceStart / frameInterval) * frameInterval;
+            const maxFrames = Math.ceil(clipW / thumbW) + 3;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(visX, clipTop, visW, clipH);
+            ctx.clip();
+
+            for (let fi = 0; fi <= maxFrames; fi++) {
+              const sourceTime = firstSourceTime + fi * frameInterval;
+              if (sourceTime > clip.sourceEnd + 0.01) break;
+
+              const timeFromClipStart = sourceTime - clip.sourceStart;
+              const frameX = clipX + timeFromClipStart * Z;
+              if (frameX + thumbW < visX) continue;
+              if (frameX > visX + visW) break;
+
+              const thumbKey = `${clip.assetId}:${sourceTime.toFixed(1)}`;
+              const bitmap = thumbnailCacheRef.current.get(thumbKey);
+
+              if (bitmap) {
+                ctx.globalAlpha = isReorderSource ? 0.35 : 0.92;
+                ctx.drawImage(bitmap, frameX, clipTop, thumbW, thumbH);
+                ctx.globalAlpha = 1;
+              } else {
+                requestThumbnail(clip.assetId, asset.proxyPath, sourceTime, thumbW, thumbH);
+              }
+            }
+
+            // Subtle tint overlay so the clip color is still identifiable
+            ctx.globalAlpha = isSelected ? 0.28 : 0.15;
+            ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
+            ctx.fillRect(visX, clipTop, visW, clipH);
+            ctx.globalAlpha = 1;
+
+            ctx.restore();
           }
-        }
 
-        ctx.strokeStyle = isSelected
-          ? 'rgba(0,212,160,0.9)'
-          : isAudio
-          ? 'rgba(0,212,160,0.35)'
-          : lightenColor(color, 40);
-        ctx.lineWidth = isSelected ? 2 : 1;
-        ctx.strokeRect(visX + 0.5, clipTop + 0.5, visW - 1, clipH - 1);
+          if (isAudio) {
+            const wf = waveforms.get(clip.assetId);
+            if (wf && wf.samples.length > 0) {
+              drawWaveformOnClip(ctx, wf, clip, Z, SL, trackY, TRACK_HEIGHT, HEADER_WIDTH, W);
+            }
+          }
 
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
-        ctx.clip();
+          // Effect coverage highlight on video clips
+          if (isCoveredByEffect) {
+            ctx.save();
+            const covStart = Math.max(clip.timelineStart, selectedEffectClipRange!.start);
+            const covEnd = Math.min(clip.timelineEnd, selectedEffectClipRange!.end);
+            const covX = Math.max(covStart * Z - SL + HEADER_WIDTH, HEADER_WIDTH);
+            const covW = Math.min(covEnd * Z - SL + HEADER_WIDTH, W) - covX;
+            if (covW > 0) {
+              ctx.globalAlpha = 0.35;
+              ctx.fillStyle = 'rgba(251,146,60,0.6)';
+              ctx.fillRect(covX, clipTop, covW, clipH);
+            }
+            ctx.restore();
+          }
 
-        ctx.font = isText ? 'bold 11px sans-serif' : '11px sans-serif';
-        ctx.textAlign = 'left';
-        const label = isText
-          ? (clip.textContent ? `T "${clip.textContent}"` : 'T Text')
-          : (asset?.name ?? clip.assetId);
+          ctx.strokeStyle = isSelected
+            ? 'rgba(0,212,160,0.9)'
+            : isCoveredByEffect
+            ? 'rgba(251,146,60,0.70)'
+            : isAudio
+            ? 'rgba(0,212,160,0.35)'
+            : lightenColor(color, 40);
+          ctx.lineWidth = isSelected || isCoveredByEffect ? 2 : 1;
+          ctx.strokeRect(visX + 0.5, clipTop + 0.5, visW - 1, clipH - 1);
 
-        // Text shadow for readability over thumbnails on video clips
-        if (!isAudio && !isText) {
-          ctx.shadowColor = 'rgba(0,0,0,0.9)';
-          ctx.shadowBlur = 4;
-        }
-        ctx.fillStyle = isText ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.95)';
-        ctx.fillText(label, visX + 4, trackY + 14);
-        ctx.shadowBlur = 0;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
+          ctx.clip();
 
-        if (clip.effects.length > 0) {
-          ctx.fillStyle = 'rgba(240,177,0,0.85)';
-          ctx.font = 'bold 9px sans-serif';
-          ctx.fillText(
-            clip.effects.map((e) => (e.type === 'beatZoom' ? 'BZ' : 'CUT')).join(' '),
-            visX + 4,
-            trackY + TRACK_HEIGHT - 8
-          );
-        }
+          ctx.font = isText ? 'bold 11px sans-serif' : '11px sans-serif';
+          ctx.textAlign = 'left';
+          const label = isText
+            ? (clip.textContent ? `T "${clip.textContent}"` : 'T Text')
+            : (asset?.name ?? clip.assetId);
 
-        ctx.restore();
+          // Text shadow for readability over thumbnails on video clips
+          if (!isAudio && !isText) {
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = 4;
+          }
+          ctx.fillStyle = isText ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.95)';
+          ctx.fillText(label, visX + 4, trackY + 14);
+          ctx.shadowBlur = 0;
 
-        if (isSelected) {
-          ctx.fillStyle = 'rgba(0,212,160,0.9)';
-          ctx.fillRect(visX, clipTop, 4, clipH);
-          ctx.fillRect(Math.min(clipX + clipW, W) - 4, clipTop, 4, clipH);
+          if (clip.effects.length > 0) {
+            ctx.fillStyle = 'rgba(240,177,0,0.85)';
+            ctx.font = 'bold 9px sans-serif';
+            ctx.fillText(
+              clip.effects.map((e) => (e.type === 'beatZoom' ? 'BZ' : 'CUT')).join(' '),
+              visX + 4,
+              trackY + TRACK_HEIGHT - 8
+            );
+          }
+
+          ctx.restore();
+
+          if (isSelected) {
+            ctx.fillStyle = 'rgba(0,212,160,0.9)';
+            ctx.fillRect(visX, clipTop, 4, clipH);
+            ctx.fillRect(Math.min(clipX + clipW, W) - 4, clipTop, 4, clipH);
+          }
         }
       }
 
       // ─── Ghost clip on existing track ──────────────────────────────────
       if (ghost && ghost.trackId === track.id) {
-        drawGhostClip(ctx, ghost, Z, SL, trackY, TRACK_HEIGHT, HEADER_WIDTH, W);
+        drawGhostClip(ctx, ghost, Z, SL, trackY, trackH, HEADER_WIDTH, W);
       }
 
-      trackY += TRACK_HEIGHT;
+      trackY += trackH;
     }
 
     // ─── Ghost clip on new track zone (below all existing tracks) ─────────
     if (ghost && ghost.trackId === null) {
-      const newTrackY = trackY;
+      const newTrackY = RULER_HEIGHT + getTotalTracksHeight(tracks);
       const isAudioGhost = ghost.assetType === 'audio';
 
       // Draw new track header
@@ -632,7 +773,7 @@ export default function Timeline({
     if (workArea) {
       const waS = workArea.start * Z - SL + HEADER_WIDTH;
       const waE = workArea.end * Z - SL + HEADER_WIDTH;
-      const totalTrackH = tracks.length * TRACK_HEIGHT;
+      const totalTrackH = getTotalTracksHeight(tracks);
 
       ctx.fillStyle = 'rgba(0,0,0,0.38)';
 
@@ -697,7 +838,8 @@ export default function Timeline({
 
       let trackY = RULER_HEIGHT;
       for (const track of project.tracks) {
-        if (y >= trackY && y < trackY + TRACK_HEIGHT) {
+        const th = getTrackH(track);
+        if (y >= trackY && y < trackY + th) {
           const t = (x + SL - HEADER_WIDTH) / Z;
           for (const clip of track.clips) {
             if (t >= clip.timelineStart && t <= clip.timelineEnd) {
@@ -705,7 +847,7 @@ export default function Timeline({
             }
           }
         }
-        trackY += TRACK_HEIGHT;
+        trackY += th;
       }
       return null;
     },
@@ -1051,14 +1193,14 @@ export default function Timeline({
     setTrackDragOverIdx(null);
   }, [trackDragFromIdx, onTrackReorder]);
 
-  // Compute canvas height based on track count (+ extra row for new-track ghost zone)
-  const numTracks = project?.tracks.length ?? 1;
+  // Compute canvas height based on track heights (variable) + extra row for new-track ghost zone
+  const totalTracksH = project ? getTotalTracksHeight(project.tracks) : TRACK_HEIGHT;
   const extraRow = ghostRef.current?.trackId === null ? 1 : 0;
-  const canvasHeight = RULER_HEIGHT + (numTracks + extraRow) * TRACK_HEIGHT + 8;
+  const canvasHeight = RULER_HEIGHT + totalTracksH + (extraRow ? TRACK_HEIGHT : 0) + 8;
 
   return (
     <div style={{ background: '#0e1a2e', display: 'flex', flexDirection: 'column' }}>
-      {/* Snap mode toolbar */}
+      {/* Toolbar */}
       <div
         style={{
           height: 28,
@@ -1066,6 +1208,7 @@ export default function Timeline({
           alignItems: 'center',
           gap: 4,
           paddingLeft: 8,
+          paddingRight: 8,
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           flexShrink: 0,
         }}
@@ -1098,6 +1241,85 @@ export default function Timeline({
             {label}
           </button>
         ))}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Add Effect Track dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowEffectMenu((v) => !v)}
+            title="Add a new effect track to the timeline"
+            style={{
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 4,
+              border: showEffectMenu
+                ? '1px solid rgba(251,146,60,0.70)'
+                : '1px solid rgba(251,146,60,0.38)',
+              background: showEffectMenu
+                ? 'rgba(251,146,60,0.22)'
+                : 'rgba(251,146,60,0.10)',
+              color: 'rgba(251,146,60,0.95)',
+              cursor: 'pointer',
+              userSelect: 'none',
+              lineHeight: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span style={{ fontSize: 11 }}>✦</span> Add Effect
+          </button>
+
+          {showEffectMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 3,
+                background: '#0e1a2e',
+                border: '1px solid rgba(251,146,60,0.40)',
+                borderRadius: 6,
+                padding: '4px 0',
+                zIndex: 100,
+                minWidth: 148,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+              }}
+            >
+              {[
+                { type: 'beatZoom' as const, label: '⚡ Beat Zoom', desc: 'Zoom pulse on beats' },
+                { type: 'cutout' as const, label: '✂ Cutout', desc: 'Background removal' },
+              ].map(({ type, label, desc }) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    setShowEffectMenu(false);
+                    const start = propsRef.current.currentTime;
+                    onAddEffectTrack(type, start, 3);
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '6px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'rgba(251,146,60,0.90)',
+                    fontSize: 11,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(251,146,60,0.12)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <div>{label}</div>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{desc}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Canvas */}
@@ -1144,7 +1366,7 @@ export default function Timeline({
                 onDragEnd={handleTrackDragEnd}
                 onDrop={(e) => handleTrackDrop(e, idx)}
                 style={{
-                  height: TRACK_HEIGHT,
+                  height: getTrackH(track),
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1155,13 +1377,29 @@ export default function Timeline({
                 title={`Drag to reorder "${track.name}"`}
               >
                 {/* Grip dots icon */}
-                <svg width="12" height="16" viewBox="0 0 12 16" fill="rgba(0,212,160,0.45)">
-                  <circle cx="4" cy="4"  r="1.5" />
-                  <circle cx="8" cy="4"  r="1.5" />
-                  <circle cx="4" cy="8"  r="1.5" />
-                  <circle cx="8" cy="8"  r="1.5" />
-                  <circle cx="4" cy="12" r="1.5" />
-                  <circle cx="8" cy="12" r="1.5" />
+                <svg
+                  width="10"
+                  height={track.type === 'effect' ? 10 : 16}
+                  viewBox={track.type === 'effect' ? '0 0 10 10' : '0 0 12 16'}
+                  fill={track.type === 'effect' ? 'rgba(251,146,60,0.55)' : 'rgba(0,212,160,0.45)'}
+                >
+                  {track.type === 'effect' ? (
+                    <>
+                      <circle cx="3" cy="3" r="1.2" />
+                      <circle cx="7" cy="3" r="1.2" />
+                      <circle cx="3" cy="7" r="1.2" />
+                      <circle cx="7" cy="7" r="1.2" />
+                    </>
+                  ) : (
+                    <>
+                      <circle cx="4" cy="4"  r="1.5" />
+                      <circle cx="8" cy="4"  r="1.5" />
+                      <circle cx="4" cy="8"  r="1.5" />
+                      <circle cx="8" cy="8"  r="1.5" />
+                      <circle cx="4" cy="12" r="1.5" />
+                      <circle cx="8" cy="12" r="1.5" />
+                    </>
+                  )}
                 </svg>
               </div>
             ))}

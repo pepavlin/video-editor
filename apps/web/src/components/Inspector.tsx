@@ -11,6 +11,7 @@ import type {
   CartoonEffect,
   LyricsStyle,
   TextStyle,
+  EffectClipConfig,
 } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { formatTime } from '@/lib/utils';
@@ -23,6 +24,7 @@ interface Props {
   onAddEffect: (clipId: string, effect: any) => void;
   onRemoveEffect: (clipId: string, type: string) => void;
   onUpdateEffect: (clipId: string, type: string, updates: any) => void;
+  onUpdateEffectClipConfig: (clipId: string, updates: Partial<EffectClipConfig>) => void;
   onUpdateProject: (updater: (p: Project) => Project) => void;
   masterAssetId?: string;
   onAlignLyrics: (text: string) => Promise<void>;
@@ -132,6 +134,7 @@ export default function Inspector({
   onAddEffect,
   onRemoveEffect,
   onUpdateEffect,
+  onUpdateEffectClipConfig,
   onUpdateProject,
   masterAssetId,
   onAlignLyrics,
@@ -148,7 +151,7 @@ export default function Inspector({
 
   // Find selected clip and its track
   let selectedClip: Clip | undefined;
-  let selectedTrackType: 'video' | 'audio' | 'text' | undefined;
+  let selectedTrackType: 'video' | 'audio' | 'text' | 'effect' | undefined;
   if (selectedClipId && project) {
     for (const t of project.tracks) {
       const found = t.clips.find((c) => c.id === selectedClipId);
@@ -201,16 +204,132 @@ export default function Inspector({
       {/* Clip properties */}
       {selectedClip ? (
         <>
-          <Section title="Clip Info">
-            <Row label="Asset">
-              <span style={{ fontSize: 13, color: '#8ab8b0', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {selectedAsset?.name ?? selectedClip.assetId}
-              </span>
-            </Row>
+          <Section title={selectedTrackType === 'effect' ? 'Effect Info' : 'Clip Info'}>
+            {selectedTrackType !== 'effect' && (
+              <Row label="Asset">
+                <span style={{ fontSize: 13, color: '#8ab8b0', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selectedAsset?.name ?? selectedClip.assetId}
+                </span>
+              </Row>
+            )}
+            {selectedTrackType === 'effect' && selectedClip.effectConfig && (
+              <Row label="Type">
+                <span style={{ fontSize: 13, color: 'rgba(251,146,60,0.90)', fontWeight: 600 }}>
+                  {selectedClip.effectConfig.effectType === 'beatZoom' ? '⚡ Beat Zoom' : '✂ Cutout'}
+                </span>
+              </Row>
+            )}
             <Row label="Start">{valueText(formatTime(selectedClip.timelineStart))}</Row>
             <Row label="End">{valueText(formatTime(selectedClip.timelineEnd))}</Row>
             <Row label="Duration">{valueText(formatTime(selectedClip.timelineEnd - selectedClip.timelineStart))}</Row>
           </Section>
+
+          {/* ─── Effect Clip Config ─────────────────────────────────────── */}
+          {selectedTrackType === 'effect' && selectedClip.effectConfig && (() => {
+            const cfg = selectedClip.effectConfig;
+            const update = (u: Partial<EffectClipConfig>) => onUpdateEffectClipConfig(selectedClip!.id, u);
+            return (
+              <Section title="Effect Settings">
+                <Row label="Enabled">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={cfg.enabled}
+                      onChange={(e) => update({ enabled: e.target.checked })}
+                    />
+                    <span style={{ fontSize: 13, color: cfg.enabled ? 'rgba(251,146,60,0.90)' : 'rgba(255,255,255,0.35)' }}>
+                      {cfg.enabled ? 'Active' : 'Disabled'}
+                    </span>
+                  </label>
+                </Row>
+
+                {cfg.effectType === 'beatZoom' && (
+                  <>
+                    <Row label="Intensity">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0.01}
+                          max={0.5}
+                          step={0.01}
+                          value={cfg.intensity ?? 0.08}
+                          style={{ width: '100%' }}
+                          onChange={(e) => update({ intensity: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 38, flexShrink: 0 }}>
+                          {Math.round((cfg.intensity ?? 0.08) * 100)}%
+                        </span>
+                      </div>
+                    </Row>
+                    <Row label="Duration">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={50}
+                          max={500}
+                          step={10}
+                          value={cfg.durationMs ?? 150}
+                          style={{ width: '100%' }}
+                          onChange={(e) => update({ durationMs: parseInt(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 38, flexShrink: 0 }}>
+                          {cfg.durationMs ?? 150}ms
+                        </span>
+                      </div>
+                    </Row>
+                    <Row label="Easing">
+                      <select
+                        value={cfg.easing ?? 'easeOut'}
+                        style={{ fontSize: 13 }}
+                        onChange={(e) => update({ easing: e.target.value as EffectClipConfig['easing'] })}
+                      >
+                        <option value="linear">Linear</option>
+                        <option value="easeOut">Ease Out</option>
+                        <option value="easeIn">Ease In</option>
+                        <option value="easeInOut">Ease In/Out</option>
+                      </select>
+                    </Row>
+                  </>
+                )}
+
+                {cfg.effectType === 'cutout' && (
+                  <>
+                    <Row label="BG Type">
+                      <select
+                        value={cfg.background?.type ?? 'solid'}
+                        style={{ fontSize: 13 }}
+                        onChange={(e) =>
+                          update({
+                            background: {
+                              ...(cfg.background ?? { type: 'solid' }),
+                              type: e.target.value as 'solid' | 'video',
+                            },
+                          })
+                        }
+                      >
+                        <option value="solid">Solid Color</option>
+                        <option value="video">Video</option>
+                      </select>
+                    </Row>
+                    {cfg.background?.type === 'solid' && (
+                      <Row label="Color">
+                        <input
+                          type="color"
+                          value={cfg.background?.color ?? '#000000'}
+                          style={{ width: '100%', height: 32, cursor: 'pointer' }}
+                          onChange={(e) =>
+                            update({
+                              background: { ...(cfg.background ?? { type: 'solid' }), color: e.target.value },
+                            })
+                          }
+                        />
+                      </Row>
+                    )}
+                  </>
+                )}
+              </Section>
+            );
+          })()}
 
           {(selectedTrackType === 'video' || selectedTrackType === 'text') && selectedClip.transform && (
           <Section title="Transform">
