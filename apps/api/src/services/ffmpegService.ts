@@ -303,33 +303,95 @@ export function buildExportCommand(
       // no-op (iw × ih). This approach uses a single-input filter and avoids the
       // overlay+enable pattern which is unreliable for multi-input filters in ffmpeg 8.x
       // (causes "stays zoomed" or OOM).
+      //
+      // Beat zoom sources: clip.effects (clip-level) AND effect tracks (track-level).
+      // Both are collected and merged into a unified set of beat windows.
       let beatZoomCropFilter = '';
       const beatZoomEffect = clip.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
       const masterAudioClip = masterAudioTrack?.clips[0];
       const masterBeats = masterAudioClip ? beatsMap.get(masterAudioClip.assetId) : undefined;
 
-      if (beatZoomEffect?.enabled && masterBeats && masterAudioClip) {
+      if (masterBeats && masterAudioClip) {
         const timelineBeats = masterBeats.beats.map(
           (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
         );
-        const beatsInClip = timelineBeats.filter(
-          (b) => b >= clip.timelineStart && b < clip.timelineEnd
-        );
-        if (beatsInClip.length > 0) {
-          const pulseDur = beatZoomEffect.durationMs / 1000;
-          const zf = (1 + beatZoomEffect.intensity).toFixed(6);
-          const beatSumExpr = beatsInClip
-            .map((b) => {
-              const beatEnd = Math.min(b + pulseDur, clip.timelineEnd);
-              return `between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})`;
-            })
-            .join('+');
-          // crop to center region iw/ZF × ih/ZF during beat windows; full frame otherwise.
-          // ffmpeg evaluates expressions containing `t` per-frame automatically.
-          beatZoomCropFilter =
-            `,crop=w='if(gt(${beatSumExpr},0),iw/${zf},iw)'` +
-            `:h='if(gt(${beatSumExpr},0),ih/${zf},ih)'` +
-            `:x='(iw-ow)/2':y='(ih-oh)/2'`;
+
+        // Collect all beat windows from clip-level and track-level beat zoom effects.
+        // Each window: { start, end, zoomFactor }. If the same beat is covered by
+        // multiple sources, their zoom factors are multiplied (matching preview).
+        interface BeatZoomWindow { start: number; end: number; zoomFactor: number }
+        const beatZoomWindows: BeatZoomWindow[] = [];
+
+        const addBeatWindows = (intensity: number, durationMs: number, rangeStart: number, rangeEnd: number) => {
+          const pulseDur = durationMs / 1000;
+          const zf = 1 + intensity;
+          const beatsInRange = timelineBeats.filter((b) => b >= rangeStart && b < rangeEnd);
+          for (const b of beatsInRange) {
+            const windowEnd = Math.min(b + pulseDur, rangeEnd);
+            const existing = beatZoomWindows.find((w) => Math.abs(w.start - b) < 0.001);
+            if (existing) {
+              // Multiply zoom factors when multiple sources fire on the same beat
+              existing.zoomFactor *= zf;
+              existing.end = Math.max(existing.end, windowEnd);
+            } else {
+              beatZoomWindows.push({ start: b, end: windowEnd, zoomFactor: zf });
+            }
+          }
+        };
+
+        // 1. Clip-level beat zoom (stored in clip.effects)
+        if (beatZoomEffect?.enabled) {
+          addBeatWindows(beatZoomEffect.intensity, beatZoomEffect.durationMs, clip.timelineStart, clip.timelineEnd);
+        }
+
+        // 2. Track-level beat zoom (stored in effectConfig on 'effect' track clips)
+        for (const et of project.tracks) {
+          if (et.type !== 'effect' || et.effectType !== 'beatZoom') continue;
+          for (const ec of et.clips) {
+            const cfg = ec.effectConfig;
+            if (!cfg?.enabled || cfg.effectType !== 'beatZoom') continue;
+            if (cfg.intensity == null || cfg.durationMs == null) continue;
+            const overlapStart = Math.max(clip.timelineStart, ec.timelineStart);
+            const overlapEnd = Math.min(clip.timelineEnd, ec.timelineEnd);
+            if (overlapStart >= overlapEnd) continue;
+            addBeatWindows(cfg.intensity, cfg.durationMs, overlapStart, overlapEnd);
+          }
+        }
+
+        if (beatZoomWindows.length > 0) {
+          // If all windows share the same zoom factor, use a simple sum expression.
+          // Otherwise use nested if() to apply per-window zoom factors.
+          const allSameZF = beatZoomWindows.every(
+            (w) => Math.abs(w.zoomFactor - beatZoomWindows[0].zoomFactor) < 0.0001
+          );
+
+          if (allSameZF) {
+            const zf = beatZoomWindows[0].zoomFactor.toFixed(6);
+            const beatSumExpr = beatZoomWindows
+              .map((w) => `between(t,${w.start.toFixed(4)},${w.end.toFixed(4)})`)
+              .join('+');
+            beatZoomCropFilter =
+              `,crop=w='if(gt(${beatSumExpr},0),iw/${zf},iw)'` +
+              `:h='if(gt(${beatSumExpr},0),ih/${zf},ih)'` +
+              `:x='(iw-ow)/2':y='(ih-oh)/2'`;
+          } else {
+            // Different zoom factors: build nested if() expressions, highest ZF first
+            const sorted = [...beatZoomWindows].sort((a, b) => b.zoomFactor - a.zoomFactor);
+            let wExpr = 'iw';
+            let hExpr = 'ih';
+            for (let i = sorted.length - 1; i >= 0; i--) {
+              const w = sorted[i];
+              const zf = w.zoomFactor.toFixed(6);
+              const activeExpr = `between(t,${w.start.toFixed(4)},${w.end.toFixed(4)})`;
+              wExpr = `if(gt(${activeExpr},0),iw/${zf},${wExpr})`;
+              hExpr = `if(gt(${activeExpr},0),ih/${zf},${hExpr})`;
+            }
+            // crop to center region with dynamic zoom factor per beat window
+            beatZoomCropFilter =
+              `,crop=w='${wExpr}'` +
+              `:h='${hExpr}'` +
+              `:x='(iw-ow)/2':y='(ih-oh)/2'`;
+          }
         }
       }
 

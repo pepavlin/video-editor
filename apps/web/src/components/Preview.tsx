@@ -417,6 +417,32 @@ export default function Preview({
       ? masterBeatData.beats.map((b) => masterClip.timelineStart + (b - masterClip.sourceStart))
       : undefined;
 
+    // Active beat zoom config from effect tracks at currentTime
+    // (track-like beat zoom: stored in effectConfig on clips of 'effect' tracks)
+    let trackBeatZoomConfig: { intensity: number; durationMs: number; easing: string } | null = null;
+    for (const et of project.tracks) {
+      if (et.type !== 'effect' || et.effectType !== 'beatZoom') continue;
+      for (const ec of et.clips) {
+        if (
+          currentTime >= ec.timelineStart &&
+          currentTime < ec.timelineEnd &&
+          ec.effectConfig?.enabled &&
+          ec.effectConfig.effectType === 'beatZoom' &&
+          ec.effectConfig.intensity != null &&
+          ec.effectConfig.durationMs != null &&
+          ec.effectConfig.easing != null
+        ) {
+          trackBeatZoomConfig = {
+            intensity: ec.effectConfig.intensity,
+            durationMs: ec.effectConfig.durationMs,
+            easing: ec.effectConfig.easing,
+          };
+          break;
+        }
+      }
+      if (trackBeatZoomConfig) break;
+    }
+
     // ── Render all non-audio tracks in order (respects z-index from track order) ──
     for (const track of project.tracks) {
       if (track.type === 'audio' || track.muted) continue;
@@ -458,11 +484,21 @@ export default function Preview({
 
           let scale = transform.scale;
 
-          // Beat zoom effect
+          // Beat zoom — clip-level effect (stored in clip.effects)
           const beatZoom = clip.effects.find((e) => e.type === 'beatZoom');
           if (beatZoom && beatZoom.type === 'beatZoom' && beatZoom.enabled && masterBeats) {
             scale *= getBeatZoomScale(
               currentTime, masterBeats, beatZoom.intensity, beatZoom.durationMs, beatZoom.easing
+            );
+          }
+
+          // Beat zoom — track-level effect (stored in effectConfig on 'effect' track clips)
+          if (trackBeatZoomConfig && masterBeats) {
+            scale *= getBeatZoomScale(
+              currentTime, masterBeats,
+              trackBeatZoomConfig.intensity,
+              trackBeatZoomConfig.durationMs,
+              trackBeatZoomConfig.easing
             );
           }
 
