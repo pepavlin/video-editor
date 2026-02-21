@@ -70,6 +70,7 @@ export interface EffectClipConfig {
   intensity?: number;   // fraction e.g. 0.08 = +8%
   durationMs?: number;  // pulse duration ms
   easing?: 'linear' | 'easeOut' | 'easeIn' | 'easeInOut';
+  beatDivision?: number; // how often to zoom relative to beats: 1=every beat (1/1), 2=every 2nd (1/2), 4=every 4th (1/4); 0.5=twice per beat (2/1)
   // cutout params
   background?: BackgroundConfig;
   maskStatus?: 'pending' | 'processing' | 'done' | 'error';
@@ -124,6 +125,32 @@ export interface BackgroundConfig {
   type: 'solid' | 'video';
   color?: string;    // hex, for solid
   assetId?: string;  // for video background
+}
+
+// ─── Standalone effect types (used by effect panels) ─────────────────────────
+
+export interface CartoonEffect {
+  type: 'cartoon';
+  enabled: boolean;
+  edgeStrength: number;        // 0-1
+  colorSimplification: number; // 0-1
+  saturation: number;          // 0-2
+}
+
+export interface CutoutEffect {
+  type: 'cutout';
+  enabled: boolean;
+  background: BackgroundConfig;
+  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+}
+
+export interface HeadStabilizationEffect {
+  type: 'headStabilization';
+  enabled: boolean;
+  smoothingX: number;  // 0-1
+  smoothingY: number;  // 0-1
+  smoothingZ: number;  // 0-1
+  status?: 'pending' | 'processing' | 'done' | 'error';
 }
 
 // ─── Assets ─────────────────────────────────────────────────────────────────

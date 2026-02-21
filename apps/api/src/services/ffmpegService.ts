@@ -150,6 +150,31 @@ export interface ExportOptions {
   endTime?: number;   // work area end (seconds)
 }
 
+// ─── Beat division helper ─────────────────────────────────────────────────────
+// Mirrors the client-side filterBeatsByDivision from utils.ts.
+// beatDivision >= 1: keep every Nth beat. < 1: interpolate sub-beat triggers.
+function applyBeatDivision(beats: number[], beatDivision: number): number[] {
+  if (beatDivision <= 0) return beats;
+
+  if (beatDivision >= 1) {
+    const step = Math.round(beatDivision);
+    return beats.filter((_, i) => i % step === 0);
+  }
+
+  const subdivisions = Math.round(1 / beatDivision);
+  const result: number[] = [];
+  for (let i = 0; i < beats.length; i++) {
+    result.push(beats[i]);
+    if (i < beats.length - 1) {
+      const interval = beats[i + 1] - beats[i];
+      for (let j = 1; j < subdivisions; j++) {
+        result.push(beats[i] + (j / subdivisions) * interval);
+      }
+    }
+  }
+  return result;
+}
+
 export function buildExportCommand(
   project: Project,
   opts: ExportOptions,
@@ -329,7 +354,12 @@ export function buildExportCommand(
         const timelineBeats = masterBeats.beats.map(
           (b) => masterAudioClip.timelineStart + (b - masterAudioClip.sourceStart)
         );
-        const beatsInClip = timelineBeats.filter(
+        // Apply beat division: filter (or interpolate) beats according to beatDivision setting.
+        // beatDivision=1 → every beat; 2 → every 2nd; 4 → every 4th;
+        // 0.5 → twice per beat (interpolated midpoints); 0.25 → 4× per beat.
+        const beatDivision = beatZoomCfg.beatDivision ?? 1;
+        const dividedBeats = applyBeatDivision(timelineBeats, beatDivision);
+        const beatsInClip = dividedBeats.filter(
           (b) => b >= clip.timelineStart && b < clip.timelineEnd
         );
         if (beatsInClip.length > 0) {
