@@ -790,13 +790,16 @@ export default function Timeline({
         }
         if (!clip) return;
 
+        // Earliest possible timelineStart is when sourceStart would reach 0
+        const minTimelineStart = Math.max(0, clip.timelineStart - clip.sourceStart);
+
         const snapTargets = getSnapTargets(d.clipId);
         const snapThreshold = SNAP_THRESHOLD_PX / Z;
         t = snap(t, snapTargets, snapThreshold);
-        t = clamp(t, 0, clip.timelineEnd - 0.1);
+        t = clamp(t, minTimelineStart, clip.timelineEnd - 0.1);
 
         const dt = t - clip.timelineStart;
-        onClipUpdate(d.clipId, { timelineStart: t, sourceStart: clip.sourceStart + dt });
+        onClipUpdate(d.clipId, { timelineStart: t, sourceStart: Math.max(0, clip.sourceStart + dt) });
         return;
       }
 
