@@ -82,6 +82,7 @@ export default function Editor() {
     createProject,
     updateProject,
     addTrack,
+    addTextTrack,
     addClip,
     updateClip,
     deleteClip,
@@ -557,6 +558,25 @@ export default function Editor() {
         >
           ↻
         </button>
+
+        <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
+
+        <button
+          className="btn btn-ghost"
+          style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
+          disabled={!project}
+          title="Add a text element to the timeline"
+          onClick={() => {
+            if (!project) return;
+            const start = playback.currentTime;
+            const duration = 3;
+            const clipId = addTextTrack(start, duration, 'Text');
+            setSelectedClipId(clipId);
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 700 }}>T</span>
+          Add Text
+        </button>
       </div>
 
       {/* ── Main area ───────────────────────────────────────────────────── */}
@@ -614,6 +634,9 @@ export default function Editor() {
             currentTime={playback.currentTime}
             isPlaying={playback.isPlaying}
             beatsData={beatsData}
+            selectedClipId={selectedClipId}
+            onClipSelect={setSelectedClipId}
+            onClipUpdate={updateClip}
           />
 
           {/* Timeline resize handle */}

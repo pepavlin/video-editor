@@ -267,6 +267,8 @@ export default function Timeline({
       const isAudio = track.type === 'audio';
       const isGhostTrack = ghost?.trackId === track.id;
 
+      const isTextTrack = track.type === 'text';
+
       // Track header
       ctx.fillStyle = isGhostTrack ? 'rgba(0,212,160,0.15)' : '#101f33';
       ctx.fillRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
@@ -274,14 +276,22 @@ export default function Timeline({
       ctx.lineWidth = isGhostTrack ? 2 : 1;
       ctx.strokeRect(0, trackY, HEADER_WIDTH, TRACK_HEIGHT);
 
-      ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.65)' : 'rgba(56,189,248,0.65)';
+      ctx.fillStyle = isAudio
+        ? 'rgba(0,212,160,0.65)'
+        : isTextTrack
+        ? 'rgba(167,139,250,0.80)'
+        : 'rgba(56,189,248,0.65)';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
       ctx.lineWidth = 1;
       ctx.fillText(track.name.toUpperCase(), HEADER_WIDTH / 2, trackY + TRACK_HEIGHT / 2 + 4);
 
       // Track body background
-      ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.05)' : 'rgba(56,189,248,0.04)';
+      ctx.fillStyle = isAudio
+        ? 'rgba(0,212,160,0.05)'
+        : isTextTrack
+        ? 'rgba(167,139,250,0.04)'
+        : 'rgba(56,189,248,0.04)';
       ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, TRACK_HEIGHT);
 
       // Track separator
@@ -313,13 +323,15 @@ export default function Timeline({
       }
 
       // ─── Clips ──────────────────────────────────────────────────────────
+      const isText = track.type === 'text';
       for (const clip of track.clips) {
         const clipX = clip.timelineStart * Z - SL + HEADER_WIDTH;
         const clipW = (clip.timelineEnd - clip.timelineStart) * Z;
         if (clipX + clipW < HEADER_WIDTH || clipX > W) continue;
 
         const isSelected = clip.id === selectedClipId;
-        const color = getClipColor(clip.assetId);
+        // Text clips get a distinct violet color; others use asset-based color
+        const color = isText ? '#a78bfa' : getClipColor(clip.assetId);
 
         const visX = Math.max(clipX, HEADER_WIDTH);
         const visW = Math.min(clipX + clipW, W) - visX;
@@ -327,7 +339,7 @@ export default function Timeline({
         const clipH = TRACK_HEIGHT - 4;
 
         ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
-        ctx.globalAlpha = isAudio ? 0.45 : 0.88;
+        ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.88;
         ctx.fillRect(visX, clipTop, visW, clipH);
         ctx.globalAlpha = 1;
 
@@ -351,11 +363,13 @@ export default function Timeline({
         ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
         ctx.clip();
 
-        ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.85)';
-        ctx.font = '11px sans-serif';
+        ctx.fillStyle = isText ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.85)';
+        ctx.font = isText ? 'bold 11px sans-serif' : '11px sans-serif';
         ctx.textAlign = 'left';
         const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
-        const label = asset?.name ?? clip.assetId;
+        const label = isText
+          ? (clip.textContent ? `T "${clip.textContent}"` : 'T Text')
+          : (asset?.name ?? clip.assetId);
         ctx.fillText(label, visX + 4, trackY + 14);
 
         if (clip.effects.length > 0) {

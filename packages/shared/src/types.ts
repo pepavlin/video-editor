@@ -21,11 +21,22 @@ export interface Project {
 
 export interface Track {
   id: string;
-  type: 'video' | 'audio';
+  type: 'video' | 'audio' | 'text';
   isMaster?: boolean; // master audio track
   name: string;
   muted?: boolean;
   clips: Clip[];
+}
+
+export interface TextStyle {
+  fontFamily: string;
+  fontSize: number;       // design pixels relative to 1920px height reference
+  color: string;          // hex
+  bold?: boolean;
+  italic?: boolean;
+  align?: 'left' | 'center' | 'right';
+  background?: string;    // optional background box color (hex)
+  backgroundOpacity?: number; // 0..1
 }
 
 export interface Clip {
@@ -39,8 +50,11 @@ export interface Clip {
   // Video-clip-only fields (absent on audio clips):
   useClipAudio?: boolean;    // use embedded audio from video clip
   clipAudioVolume?: number;  // 0..2, defaults to 1
-  transform?: Transform;     // position/scale/opacity (video tracks only)
+  transform?: Transform;     // position/scale/rotation/opacity (video + text tracks)
   effects: Effect[];
+  // Text-clip-only fields:
+  textContent?: string;      // text to display (text tracks only)
+  textStyle?: TextStyle;     // text appearance (text tracks only)
 }
 
 export interface Transform {
