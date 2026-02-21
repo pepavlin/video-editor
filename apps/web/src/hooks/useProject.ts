@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Effect, Transform, TextStyle } from '@video-editor/shared';
+import type { Project, Clip, Track, Effect, Transform, TextStyle, EffectClipConfig } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 
@@ -78,6 +78,65 @@ export function useProject() {
       return recomputeDuration(updated);
     });
   }, [setProject, recomputeDuration]);
+
+  // Add an effect track with one default clip at timelineStart
+  const addEffectTrack = useCallback(
+    (effectType: 'beatZoom' | 'cutout', timelineStart: number, duration: number): string => {
+      const trackId = genId('track');
+      const clipId = genId('clip');
+
+      const defaultConfig: EffectClipConfig =
+        effectType === 'beatZoom'
+          ? { effectType: 'beatZoom', enabled: true, intensity: 0.08, durationMs: 150, easing: 'easeOut' }
+          : { effectType: 'cutout', enabled: true, background: { type: 'solid', color: '#000000' } };
+
+      updateProject((p) => {
+        const count = p.tracks.filter((t) => t.type === 'effect' && t.effectType === effectType).length;
+        const name = effectType === 'beatZoom' ? `Beat Zoom ${count + 1}` : `Cutout ${count + 1}`;
+        const newTrack: Track = {
+          id: trackId,
+          type: 'effect',
+          effectType,
+          name,
+          muted: false,
+          clips: [
+            {
+              id: clipId,
+              assetId: '',
+              trackId,
+              timelineStart,
+              timelineEnd: timelineStart + duration,
+              sourceStart: 0,
+              sourceEnd: duration,
+              effects: [],
+              effectConfig: defaultConfig,
+            },
+          ],
+        };
+        return { ...p, tracks: [...p.tracks, newTrack] };
+      });
+      return clipId;
+    },
+    [updateProject]
+  );
+
+  // Update effectConfig on an effect clip
+  const updateEffectClipConfig = useCallback(
+    (clipId: string, updates: Partial<EffectClipConfig>) => {
+      updateProject((p) => ({
+        ...p,
+        tracks: p.tracks.map((t) => ({
+          ...t,
+          clips: t.clips.map((c) =>
+            c.id === clipId && c.effectConfig
+              ? { ...c, effectConfig: { ...c.effectConfig, ...updates } as EffectClipConfig }
+              : c
+          ),
+        })),
+      }));
+    },
+    [updateProject]
+  );
 
   // Add track to project
   const addTrack = useCallback(
@@ -327,6 +386,8 @@ export function useProject() {
     updateProject,
     addTrack,
     addTextTrack,
+    addEffectTrack,
+    updateEffectClipConfig,
     addClip,
     updateClip,
     deleteClip,

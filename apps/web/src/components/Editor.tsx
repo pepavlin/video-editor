@@ -41,6 +41,8 @@ export default function Editor() {
     updateProject,
     addTrack,
     addTextTrack,
+    addEffectTrack,
+    updateEffectClipConfig,
     addClip,
     updateClip,
     deleteClip,
@@ -515,6 +517,10 @@ export default function Editor() {
           onDropAssetNewTrack={handleDropAssetNewTrack}
           onWorkAreaChange={handleWorkAreaChange}
           onTrackReorder={(fromIdx, toIdx) => reorderTrack(fromIdx, toIdx)}
+          onAddEffectTrack={(effectType, start, dur) => {
+            const clipId = addEffectTrack(effectType, start, dur);
+            setSelectedClipId(clipId);
+          }}
         />
       </div>
     ),
@@ -529,6 +535,7 @@ export default function Editor() {
           onAddEffect={addEffect}
           onRemoveEffect={removeEffect}
           onUpdateEffect={updateEffect}
+          onUpdateEffectClipConfig={updateEffectClipConfig}
           onUpdateProject={updateProject}
           masterAssetId={masterAssetId}
           onAlignLyrics={handleAlignLyrics}
