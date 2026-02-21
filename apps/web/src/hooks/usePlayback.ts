@@ -12,6 +12,9 @@ export interface PlaybackControls {
   toggle: () => void;
   toggleLoop: () => void;
   setDuration: (d: number) => void;
+  /** Returns the real-time playback position in seconds using performance.now(),
+   *  bypassing React render latency for UI components that need smooth updates. */
+  getTime: () => number;
 }
 
 // Map assetId -> AudioBuffer (cached)
@@ -32,6 +35,7 @@ export function usePlayback(
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const startAudioTimeRef = useRef<number>(0); // ctx.currentTime when play started
   const startProjectTimeRef = useRef<number>(0); // project time when play started
+  const startWallTimeRef = useRef<number>(0);   // performance.now() (ms) when play started
   const rafRef = useRef<number>(0);
   const currentTimeRef = useRef(0);
   const isPlayingRef = useRef(false);
@@ -46,6 +50,17 @@ export function usePlayback(
       ctxRef.current = new AudioContext();
     }
     return ctxRef.current;
+  }, []);
+
+  /**
+   * Returns the live playback position in seconds.
+   * Uses performance.now() so it always advances and never stalls due to
+   * AudioContext suspension or React render scheduling.
+   */
+  const getTime = useCallback((): number => {
+    if (!isPlayingRef.current) return currentTimeRef.current;
+    const wallElapsed = (performance.now() - startWallTimeRef.current) / 1000;
+    return startProjectTimeRef.current + wallElapsed;
   }, []);
 
   // Load audio buffer for an asset
@@ -67,19 +82,17 @@ export function usePlayback(
     }
   }, [getCtx]);
 
-  // RAF loop: update currentTime from audio context
+  // RAF loop: update currentTime state from wall-clock time
   const tick = useCallback(() => {
     if (!isPlayingRef.current) return;
-    const ctx = ctxRef.current;
-    if (!ctx) return;
 
-    const elapsed = ctx.currentTime - startAudioTimeRef.current;
-    const t = startProjectTimeRef.current + elapsed;
+    // Use performance.now() for reliable timing — AudioContext.currentTime can
+    // stall if the context is suspended by the browser (e.g. autoplay policy).
+    const wallElapsed = (performance.now() - startWallTimeRef.current) / 1000;
+    const t = startProjectTimeRef.current + wallElapsed;
 
-    if (t >= currentTimeRef.current + 0.001 || t < currentTimeRef.current) {
-      currentTimeRef.current = t;
-      setCurrentTime(t);
-    }
+    currentTimeRef.current = t;
+    setCurrentTime(t);
 
     // Auto-stop or loop at work area end (or duration if no work area)
     const stopAt = workAreaRef.current?.end ?? duration;
@@ -88,28 +101,33 @@ export function usePlayback(
     if (stopAt > 0 && t >= stopAt) {
       if (isLoopingRef.current) {
         // Restart audio from loop start using cached buffer
-        sourceNodeRef.current?.stop();
-        sourceNodeRef.current?.disconnect();
-        sourceNodeRef.current = null;
+        const ctx = ctxRef.current;
+        if (ctx) {
+          sourceNodeRef.current?.stop();
+          sourceNodeRef.current?.disconnect();
+          sourceNodeRef.current = null;
 
-        const masterTrack = projectRef.current?.tracks.find((tr) => tr.type === 'audio' && tr.isMaster);
-        const masterClip = masterTrack?.clips[0];
-        const buffer = masterClip ? audioCache.get(masterClip.assetId) : null;
+          const masterTrack = projectRef.current?.tracks.find((tr) => tr.type === 'audio' && tr.isMaster);
+          const masterClip = masterTrack?.clips[0];
+          const buffer = masterClip ? audioCache.get(masterClip.assetId) : null;
 
-        if (buffer && masterClip) {
-          const source = ctx.createBufferSource();
-          source.buffer = buffer;
-          source.connect(ctx.destination);
-          // Offset into audio = sourceStart + (loopStart - timelineStart)
-          const audioOffset = Math.max(
-            masterClip.sourceStart ?? 0,
-            (masterClip.sourceStart ?? 0) + (loopStart - (masterClip.timelineStart ?? 0))
-          );
-          source.start(ctx.currentTime, audioOffset);
-          sourceNodeRef.current = source;
+          if (buffer && masterClip) {
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            // Offset into audio = sourceStart + (loopStart - timelineStart)
+            const audioOffset = Math.max(
+              masterClip.sourceStart ?? 0,
+              (masterClip.sourceStart ?? 0) + (loopStart - (masterClip.timelineStart ?? 0))
+            );
+            source.start(ctx.currentTime, audioOffset);
+            sourceNodeRef.current = source;
+          }
+
+          startAudioTimeRef.current = ctx.currentTime;
         }
 
-        startAudioTimeRef.current = ctx.currentTime;
+        startWallTimeRef.current = performance.now();
         startProjectTimeRef.current = loopStart;
         currentTimeRef.current = loopStart;
         setCurrentTime(loopStart);
@@ -120,6 +138,7 @@ export function usePlayback(
 
       isPlayingRef.current = false;
       setIsPlaying(false);
+      currentTimeRef.current = stopAt;
       setCurrentTime(stopAt);
       sourceNodeRef.current?.stop();
       return;
@@ -170,6 +189,7 @@ export function usePlayback(
     }
 
     startAudioTimeRef.current = ctx.currentTime;
+    startWallTimeRef.current = performance.now();
     startProjectTimeRef.current = currentTimeRef.current;
     isPlayingRef.current = true;
     setIsPlaying(true);
@@ -184,12 +204,10 @@ export function usePlayback(
 
     cancelAnimationFrame(rafRef.current);
 
-    // Update current time from audio context before stopping
-    if (ctxRef.current && sourceNodeRef.current) {
-      const elapsed = ctxRef.current.currentTime - startAudioTimeRef.current;
-      currentTimeRef.current = startProjectTimeRef.current + elapsed;
-      setCurrentTime(currentTimeRef.current);
-    }
+    // Capture final position from wall clock before stopping
+    const wallElapsed = (performance.now() - startWallTimeRef.current) / 1000;
+    currentTimeRef.current = startProjectTimeRef.current + wallElapsed;
+    setCurrentTime(currentTimeRef.current);
 
     sourceNodeRef.current?.stop();
     sourceNodeRef.current?.disconnect();
@@ -264,5 +282,6 @@ export function usePlayback(
     toggle,
     toggleLoop,
     setDuration,
+    getTime,
   };
 }
