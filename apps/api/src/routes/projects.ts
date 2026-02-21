@@ -245,7 +245,7 @@ export async function projectsRoutes(app: FastifyInstance) {
           const updateProgress = (line: string) => {
             ws.appendJobLog(job.id, line);
             // Collect recent stderr lines for error reporting
-            if (errorLines.length >= 10) errorLines.shift();
+            if (errorLines.length >= 20) errorLines.shift();
             errorLines.push(line);
             const timeMatch = line.match(/time=(\d+):(\d+):(\d+\.\d+)/);
             if (timeMatch) {
@@ -257,15 +257,20 @@ export async function projectsRoutes(app: FastifyInstance) {
 
           child.stdout.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(updateProgress));
           child.stderr.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(updateProgress));
-          child.on('close', (code: number | null) => {
+          child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
             if (code === 0) {
               resolve();
             } else {
-              // Include last ffmpeg error lines in the rejection so UI can show them
-              const detail = errorLines.filter((l) => /error|invalid|unknown|not found/i.test(l)).pop()
+              const exitInfo = code !== null ? `code ${code}` : `signal ${signal ?? 'unknown'}`;
+              // Prefer lines that look like actual errors; skip ffmpeg startup noise
+              const startupNoise = /press \[q\]|ffmpeg version|built with|configuration:|lib[a-z]+\s+\d/i;
+              const errorDetail = errorLines
+                .filter((l) => !startupNoise.test(l) && /error|invalid|unknown|not found|failed|abort/i.test(l))
+                .pop()
+                ?? errorLines.filter((l) => !startupNoise.test(l)).pop()
                 ?? errorLines[errorLines.length - 1]
                 ?? '';
-              reject(new Error(`ffmpeg exited with code ${code}${detail ? `: ${detail.slice(0, 200)}` : ''}`));
+              reject(new Error(`ffmpeg exited with ${exitInfo}${errorDetail ? `: ${errorDetail.slice(0, 300)}` : ''}`));
             }
           });
           child.on('error', reject);

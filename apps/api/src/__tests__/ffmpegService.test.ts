@@ -385,10 +385,14 @@ describe('buildExportCommand', () => {
 
     const fcIdx = args.indexOf('-filter_complex');
     const fc = args[fcIdx + 1];
-    // Beat zoom uses per-beat-segment filter chains: one zoomed clip per beat window,
-    // each with its own trim+setpts (PTS aligned to timeline beat time) and eof_action=pass.
-    expect(fc).toContain('beat0_0]'); // first beat segment output pad
-    expect(fc).toContain("enable='between(t"); // beat-window overlay enable expression
-    expect(fc).toContain('eof_action=pass'); // ensures main stream passes through after beat ends
+    // Beat zoom: baked into the clip chain via crop=eval=frame.
+    // During beat windows the crop reduces the source area (iw/ZF × ih/ZF), which
+    // scale then upscales to fill the canvas — producing the zoom pulse.
+    // No separate zoomed chain, no overlay+enable for zoom (unreliable in ffmpeg 8.x).
+    expect(fc).toContain('crop=w='); // beat zoom crop filter is in the chain
+    expect(fc).toContain('between(t,1'); // beat at 1.0s appears in crop expression
+    expect(fc).not.toContain('clip0z]'); // no separate zoomed chain
+    // All clips use timeline-aligned setpts so crop filter's `t` equals timeline time
+    expect(fc).toContain('/TB'); // setpts=PTS-STARTPTS+timelineStart/TB
   });
 });

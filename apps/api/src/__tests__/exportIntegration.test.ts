@@ -96,7 +96,7 @@ describe('export integration (real ffmpeg)', () => {
     expect(fs.statSync(outputPath).size).toBeGreaterThan(1000);
   });
 
-  it.skipIf(!ffmpegAvailable())('beat zoom export: per-beat-segment approach (fixed PTS, eof_action=pass)', () => {
+  it.skipIf(!ffmpegAvailable())('beat zoom export: crop=eval=frame baked into clip chain (no separate zoomed chain)', () => {
     const testVideoPath = path.join(tmpDir, 'test_video_bz.mp4');
     execFileSync(FF, [
       '-y',
@@ -117,50 +117,35 @@ describe('export integration (real ffmpeg)', () => {
     const W = 1080;
     const H = 1920;
     const outputPath = path.join(tmpDir, 'output_beatzoom.mp4');
-    const zoomFactor = 1.08;
+    const zf = (1.08).toFixed(6);
     const pulseDur = 0.2;
-    const zoomedW = Math.round(W * zoomFactor);
-    const zoomedH = Math.round(H * zoomFactor);
 
-    // Two beats at 1.0s and 2.0s — per-beat-segment approach.
-    // Each beat gets its own trimmed+PTS-offset zoomed clip so PTS aligns with timeline time,
-    // preventing the eof_action=repeat "stays zoomed" bug of the old single-chain approach.
-    const beats = [1.0, 2.0];
-    const beatSegments = beats.map((b, ki) => {
-      const beatEnd = b + pulseDur;
-      // trim source to only the frames for this beat, set PTS to absolute timeline time
-      return (
-        `[1:v]trim=start=${b.toFixed(4)}:end=${beatEnd.toFixed(4)},` +
-        `setpts=PTS-STARTPTS+${b.toFixed(4)}/TB,` +
-        `scale=${zoomedW}:${zoomedH}:force_original_aspect_ratio=increase,` +
-        `crop=${W}:${H},format=yuv420p[beat0_${ki}]`
-      );
-    });
-    const beatOverlays = beats.map((b, ki) => {
-      const beatEnd = b + pulseDur;
-      const inPad = ki === 0 ? 'ov0' : `ov0b${ki - 1}`;
-      return `[${inPad}][beat0_${ki}]overlay=0:0:eof_action=pass:enable='between(t,${b.toFixed(4)},${beatEnd.toFixed(4)})'[ov0b${ki}]`;
-    });
+    // Clip: timelineStart=0, sourceStart=0, duration=3s. Two beats at 1.0s and 2.0s.
+    // Beat zoom is baked into the single clip chain via a crop filter with eval=frame.
+    // During beat windows, crop takes center region iw/ZF × ih/ZF; outside beats it's
+    // a no-op (full frame). The following scale upscales the cropped region to canvas
+    // size, producing the zoom pulse. No separate zoomed chain, no overlay+enable for
+    // zoom (which is unreliable in ffmpeg 8.x and caused "stays zoomed" permanently).
+    const beatSumExpr =
+      `between(t,1.0000,${(1.0 + pulseDur).toFixed(4)})+between(t,2.0000,${(2.0 + pulseDur).toFixed(4)})`;
 
     const filterComplex = [
       `color=c=black:s=${W}x${H}:r=30[base]`,
-      `[1:v]trim=start=0:end=3,setpts=PTS-STARTPTS,` +
+      // Single clip chain: timeline-aligned setpts → beat-zoom crop → scale → format
+      `[1:v]trim=start=0:end=3,setpts=PTS-STARTPTS+0.0000/TB,` +
+        `crop=w='if(gt(${beatSumExpr},0),iw/${zf},iw)':h='if(gt(${beatSumExpr},0),ih/${zf},ih)':x='(iw-ow)/2':y='(ih-oh)/2',` +
         `scale=${W}:${H}:force_original_aspect_ratio=increase,` +
         `crop=${W}:${H},format=yuv420p[clip0]`,
-      `[base][clip0]overlay=0:0:enable='between(t,0,3)'[ov0]`,
-      ...beatSegments,
-      ...beatOverlays,
+      `[base][clip0]overlay=0:0:enable='between(t,0.0000,3.0000)'[ov0]`,
       `[0:a]atrim=start=0:end=3,asetpts=PTS-STARTPTS,adelay=0:all=1[maudio]`,
     ].join('; ');
-
-    const finalVideoOut = `[ov0b${beats.length - 1}]`;
 
     const result = spawnSync(FF, [
       '-y',
       '-i', testAudioPath,
       '-i', testVideoPath,
       '-filter_complex', filterComplex,
-      '-map', finalVideoOut,
+      '-map', '[ov0]',
       '-map', '[maudio]',
       '-t', '3',
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
