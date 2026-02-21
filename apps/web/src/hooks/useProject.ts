@@ -49,7 +49,7 @@ export function useProject() {
     return p;
   }, [setProject]);
 
-  // Compute duration from tracks
+  // Compute duration from tracks; auto-stretch work area if not manual
   const recomputeDuration = useCallback((p: Project): Project => {
     let maxEnd = 0;
     for (const track of p.tracks) {
@@ -57,7 +57,15 @@ export function useProject() {
         if (clip.timelineEnd > maxEnd) maxEnd = clip.timelineEnd;
       }
     }
-    return { ...p, duration: Math.max(maxEnd, 0.1) };
+    const newDuration = Math.max(maxEnd, 0.1);
+    const result: Project = { ...p, duration: newDuration };
+
+    // Auto-stretch work area end to match project duration when not manually set
+    if (!p.workArea || !p.workArea.isManual) {
+      result.workArea = { start: p.workArea?.start ?? 0, end: newDuration, isManual: false };
+    }
+
+    return result;
   }, []);
 
   // Update project (generic)

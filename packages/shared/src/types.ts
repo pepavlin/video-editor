@@ -1,5 +1,11 @@
 // ─── Project / EDL ──────────────────────────────────────────────────────────
 
+export interface WorkArea {
+  start: number;    // seconds – start of work area
+  end: number;      // seconds – end of work area
+  isManual: boolean; // false = auto-stretch to project duration
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -8,6 +14,7 @@ export interface Project {
   outputResolution: { w: number; h: number };
   tracks: Track[];
   lyrics?: LyricsData;
+  workArea?: WorkArea;
   createdAt: string;
   updatedAt: string;
 }

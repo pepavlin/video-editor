@@ -128,7 +128,21 @@ export default function Editor() {
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
 
-  const playback = usePlayback(project, assets, beatsData);
+  // Derive effective work area from project (fallback to full duration when absent)
+  const workArea = project?.workArea
+    ? { start: project.workArea.start, end: project.workArea.end }
+    : project
+    ? { start: 0, end: project.duration }
+    : null;
+
+  const handleWorkAreaChange = useCallback(
+    (start: number, end: number) => {
+      updateProject((p) => ({ ...p, workArea: { start, end, isManual: true } }));
+    },
+    [updateProject]
+  );
+
+  const playback = usePlayback(project, assets, beatsData, workArea);
   const history = useHistory(project, setProject);
 
   const refreshAssets = useCallback(async () => {
@@ -304,7 +318,11 @@ export default function Editor() {
     setExportLogLine(null);
     setCompletedExportJobId(null);
     try {
-      const { jobId } = await api.exportProject(project.id);
+      const wa = project.workArea;
+      const exportOpts = wa
+        ? { startTime: wa.start, endTime: wa.end }
+        : {};
+      const { jobId } = await api.exportProject(project.id, exportOpts);
       api.pollJob(jobId, (j) => {
         setExportProgress(j.progress);
         const line = pickLogLine(j.lastLogLines);
@@ -546,12 +564,14 @@ export default function Editor() {
               waveforms={waveforms}
               beatsData={beatsData}
               selectedClipId={selectedClipId}
+              workArea={workArea}
               onSeek={playback.seek}
               onClipSelect={setSelectedClipId}
               onClipUpdate={(clipId, updates) => updateClip(clipId, updates)}
               onClipDelete={(clipId) => { deleteClip(clipId); setSelectedClipId(null); }}
               onSplit={(clipId, time) => splitClip(clipId, time)}
               onDropAsset={(trackId, assetId, start, dur) => addClip(trackId, assetId, start, dur)}
+              onWorkAreaChange={handleWorkAreaChange}
             />
           </div>
         </div>

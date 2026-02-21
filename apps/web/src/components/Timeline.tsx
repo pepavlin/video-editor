@@ -7,9 +7,11 @@ import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
 const TRACK_HEIGHT = 56;
 const HEADER_WIDTH = 80;
 const RULER_HEIGHT = 24;
+const WORK_BAR_H = 8; // top portion of ruler reserved for work area bar
 const MIN_ZOOM = 20;   // px per second
 const MAX_ZOOM = 400;
 const SNAP_THRESHOLD_PX = 8;
+const WA_HANDLE_HIT = 8; // hit radius in px for work area handles
 
 interface Props {
   project: Project | null;
@@ -18,17 +20,21 @@ interface Props {
   waveforms: Map<string, WaveformData>;
   beatsData: Map<string, BeatsData>;
   selectedClipId: string | null;
+  workArea: { start: number; end: number } | null;
   onSeek: (t: number) => void;
   onClipSelect: (clipId: string | null) => void;
   onClipUpdate: (clipId: string, updates: Partial<Clip>) => void;
   onClipDelete: (clipId: string) => void;
   onSplit: (clipId: string, time: number) => void;
   onDropAsset: (trackId: string, assetId: string, timelineStart: number, duration: number) => void;
+  onWorkAreaChange: (start: number, end: number) => void;
 }
 
 type DragMode =
   | { type: 'none' }
   | { type: 'seek' }
+  | { type: 'workAreaStart' }
+  | { type: 'workAreaEnd' }
   | { type: 'moveClip'; clipId: string; trackId: string; offsetSeconds: number }
   | { type: 'trimLeft'; clipId: string }
   | { type: 'trimRight'; clipId: string };
@@ -40,12 +46,14 @@ export default function Timeline({
   waveforms,
   beatsData,
   selectedClipId,
+  workArea,
   onSeek,
   onClipSelect,
   onClipUpdate,
   onClipDelete,
   onSplit,
   onDropAsset,
+  onWorkAreaChange,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -65,9 +73,12 @@ export default function Timeline({
   const scrollLeftRef = useRef(scrollLeft);
   scrollLeftRef.current = scrollLeft;
 
-  const propsRef = useRef({ project, currentTime, assets, waveforms, beatsData, selectedClipId });
+  const workAreaRef = useRef(workArea);
+  workAreaRef.current = workArea;
+
+  const propsRef = useRef({ project, currentTime, assets, waveforms, beatsData, selectedClipId, workArea });
   useEffect(() => {
-    propsRef.current = { project, currentTime, assets, waveforms, beatsData, selectedClipId };
+    propsRef.current = { project, currentTime, assets, waveforms, beatsData, selectedClipId, workArea };
   });
 
   // Get snap targets from clip edges + beat markers
@@ -103,7 +114,7 @@ export default function Timeline({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const { project, currentTime, waveforms, beatsData, selectedClipId } = propsRef.current;
+    const { project, currentTime, waveforms, beatsData, selectedClipId, workArea } = propsRef.current;
     const W = canvas.width;
     const H = canvas.height;
     const Z = zoomRef.current;
@@ -124,9 +135,53 @@ export default function Timeline({
     const timeWidth = W - HEADER_WIDTH;
     const tracks = project.tracks;
 
+    // ─── Work area bar (top WORK_BAR_H px of ruler) ───────────────────────
+    if (workArea) {
+      const waS = workArea.start * Z - SL + HEADER_WIDTH;
+      const waE = workArea.end * Z - SL + HEADER_WIDTH;
+
+      // Dark background for full work bar
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(HEADER_WIDTH, 0, timeWidth, WORK_BAR_H);
+
+      // Teal highlight for work area range
+      const wsX = Math.max(HEADER_WIDTH, waS);
+      const weX = Math.min(W, waE);
+      if (weX > wsX) {
+        ctx.fillStyle = 'rgba(0,212,160,0.45)';
+        ctx.fillRect(wsX, 0, weX - wsX, WORK_BAR_H);
+      }
+
+      // Start handle — vertical line + triangle marker
+      if (waS >= HEADER_WIDTH - 8 && waS <= W + 8) {
+        ctx.fillStyle = '#00d4a0';
+        // Vertical line across full ruler height
+        ctx.fillRect(Math.round(waS) - 1, 0, 2, RULER_HEIGHT);
+        // Triangle at top pointing down
+        ctx.beginPath();
+        ctx.moveTo(waS - 5, 0);
+        ctx.lineTo(waS + 5, 0);
+        ctx.lineTo(waS, WORK_BAR_H);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // End handle
+      if (waE >= HEADER_WIDTH - 8 && waE <= W + 8) {
+        ctx.fillStyle = '#00d4a0';
+        ctx.fillRect(Math.round(waE) - 1, 0, 2, RULER_HEIGHT);
+        ctx.beginPath();
+        ctx.moveTo(waE - 5, 0);
+        ctx.lineTo(waE + 5, 0);
+        ctx.lineTo(waE, WORK_BAR_H);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
     // ─── Ruler ────────────────────────────────────────────────────────────
     ctx.fillStyle = '#0b1826';
-    ctx.fillRect(HEADER_WIDTH, 0, timeWidth, RULER_HEIGHT);
+    ctx.fillRect(HEADER_WIDTH, WORK_BAR_H, timeWidth, RULER_HEIGHT - WORK_BAR_H);
 
     // Determine tick interval
     const secondsVisible = timeWidth / Z;
@@ -145,7 +200,7 @@ export default function Timeline({
     for (let s = startSec; s <= endSec; s += tickInterval) {
       const x = s * Z - SL + HEADER_WIDTH;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
+      ctx.moveTo(x, WORK_BAR_H);
       ctx.lineTo(x, RULER_HEIGHT);
       ctx.strokeStyle = 'rgba(0,212,160,0.22)';
       ctx.lineWidth = 1;
@@ -176,7 +231,7 @@ export default function Timeline({
         for (const beat of beats.beats) {
           const x = beat * Z - SL + HEADER_WIDTH;
           if (x < HEADER_WIDTH || x > W) continue;
-          ctx.fillRect(x - 0.5, 0, 1, RULER_HEIGHT);
+          ctx.fillRect(x - 0.5, WORK_BAR_H, 1, RULER_HEIGHT - WORK_BAR_H);
         }
       }
     }
@@ -304,6 +359,27 @@ export default function Timeline({
       trackY += TRACK_HEIGHT;
     }
 
+    // ─── Work area dim overlay on tracks (outside work area) ───────────────
+    if (workArea) {
+      const waS = workArea.start * Z - SL + HEADER_WIDTH;
+      const waE = workArea.end * Z - SL + HEADER_WIDTH;
+      const totalTrackH = tracks.length * TRACK_HEIGHT;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+
+      // Left dim (before work area start)
+      const leftEnd = Math.min(Math.max(waS, HEADER_WIDTH), W);
+      if (leftEnd > HEADER_WIDTH) {
+        ctx.fillRect(HEADER_WIDTH, RULER_HEIGHT, leftEnd - HEADER_WIDTH, totalTrackH);
+      }
+
+      // Right dim (after work area end)
+      const rightStart = Math.max(Math.min(waE, W), HEADER_WIDTH);
+      if (rightStart < W) {
+        ctx.fillRect(rightStart, RULER_HEIGHT, W - rightStart, totalTrackH);
+      }
+    }
+
     // ─── Playhead ──────────────────────────────────────────────────────────
     const playX = currentTime * Z - SL + HEADER_WIDTH;
     if (playX >= HEADER_WIDTH && playX <= W) {
@@ -393,6 +469,20 @@ export default function Timeline({
       const SL = scrollLeftRef.current;
 
       if (y < RULER_HEIGHT) {
+        // Check work area handles first (priority over seek)
+        const wa = workAreaRef.current;
+        if (wa) {
+          const waS = wa.start * Z - SL + HEADER_WIDTH;
+          const waE = wa.end * Z - SL + HEADER_WIDTH;
+          if (Math.abs(x - waS) < WA_HANDLE_HIT) {
+            setDrag({ type: 'workAreaStart' });
+            return;
+          }
+          if (Math.abs(x - waE) < WA_HANDLE_HIT) {
+            setDrag({ type: 'workAreaEnd' });
+            return;
+          }
+        }
         const t = (x + SL - HEADER_WIDTH) / Z;
         onSeek(Math.max(0, t));
         setDrag({ type: 'seek' });
@@ -439,6 +529,24 @@ export default function Timeline({
       if (d.type === 'seek') {
         const t = Math.max(0, (x + SL - HEADER_WIDTH) / Z);
         onSeek(t);
+        return;
+      }
+
+      if (d.type === 'workAreaStart') {
+        const wa = workAreaRef.current;
+        if (!wa) return;
+        const t = Math.max(0, (x + SL - HEADER_WIDTH) / Z);
+        const newStart = Math.min(t, wa.end - 0.1);
+        onWorkAreaChange(newStart, wa.end);
+        return;
+      }
+
+      if (d.type === 'workAreaEnd') {
+        const wa = workAreaRef.current;
+        if (!wa) return;
+        const t = Math.max(0, (x + SL - HEADER_WIDTH) / Z);
+        const newEnd = Math.max(t, wa.start + 0.1);
+        onWorkAreaChange(wa.start, newEnd);
         return;
       }
 
@@ -509,7 +617,7 @@ export default function Timeline({
         return;
       }
     },
-    [project, assets, getSnapTargets, onClipUpdate, onSeek]
+    [project, assets, getSnapTargets, onClipUpdate, onSeek, onWorkAreaChange]
   );
 
   const handleMouseUp = useCallback(() => { setDrag({ type: 'none' }); }, []);
@@ -583,7 +691,24 @@ export default function Timeline({
       const rect = canvasRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      if (y < RULER_HEIGHT) { setCursor('col-resize'); return; }
+
+      if (y < RULER_HEIGHT) {
+        // Check if hovering over work area handles
+        const wa = workAreaRef.current;
+        if (wa) {
+          const Z = zoomRef.current;
+          const SL = scrollLeftRef.current;
+          const waS = wa.start * Z - SL + HEADER_WIDTH;
+          const waE = wa.end * Z - SL + HEADER_WIDTH;
+          if (Math.abs(x - waS) < WA_HANDLE_HIT || Math.abs(x - waE) < WA_HANDLE_HIT) {
+            setCursor('ew-resize');
+            return;
+          }
+        }
+        setCursor('col-resize');
+        return;
+      }
+
       const hit = getClipAtPosition(x, y);
       if (!hit) { setCursor('default'); return; }
       const Z = zoomRef.current;

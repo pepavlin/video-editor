@@ -20,7 +20,8 @@ const audioCache = new Map<string, AudioBuffer>();
 export function usePlayback(
   project: Project | null,
   assets: Asset[],
-  beatsData: Map<string, BeatsData>
+  beatsData: Map<string, BeatsData>,
+  workArea?: { start: number; end: number } | null
 ): PlaybackControls {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -37,6 +38,8 @@ export function usePlayback(
   const isLoopingRef = useRef(false);
   const projectRef = useRef<Project | null>(null);
   projectRef.current = project;
+  const workAreaRef = useRef(workArea);
+  workAreaRef.current = workArea;
 
   const getCtx = useCallback((): AudioContext => {
     if (!ctxRef.current || ctxRef.current.state === 'closed') {
@@ -78,10 +81,13 @@ export function usePlayback(
       setCurrentTime(t);
     }
 
-    // Auto-stop or loop at duration
-    if (duration > 0 && t >= duration) {
+    // Auto-stop or loop at work area end (or duration if no work area)
+    const stopAt = workAreaRef.current?.end ?? duration;
+    const loopStart = workAreaRef.current?.start ?? 0;
+
+    if (stopAt > 0 && t >= stopAt) {
       if (isLoopingRef.current) {
-        // Restart audio from beginning using cached buffer
+        // Restart audio from loop start using cached buffer
         sourceNodeRef.current?.stop();
         sourceNodeRef.current?.disconnect();
         sourceNodeRef.current = null;
@@ -94,14 +100,19 @@ export function usePlayback(
           const source = ctx.createBufferSource();
           source.buffer = buffer;
           source.connect(ctx.destination);
-          source.start(ctx.currentTime, masterClip.sourceStart ?? 0);
+          // Offset into audio = sourceStart + (loopStart - timelineStart)
+          const audioOffset = Math.max(
+            masterClip.sourceStart ?? 0,
+            (masterClip.sourceStart ?? 0) + (loopStart - (masterClip.timelineStart ?? 0))
+          );
+          source.start(ctx.currentTime, audioOffset);
           sourceNodeRef.current = source;
         }
 
         startAudioTimeRef.current = ctx.currentTime;
-        startProjectTimeRef.current = 0;
-        currentTimeRef.current = 0;
-        setCurrentTime(0);
+        startProjectTimeRef.current = loopStart;
+        currentTimeRef.current = loopStart;
+        setCurrentTime(loopStart);
 
         rafRef.current = requestAnimationFrame(tick);
         return;
@@ -109,7 +120,7 @@ export function usePlayback(
 
       isPlayingRef.current = false;
       setIsPlaying(false);
-      setCurrentTime(duration);
+      setCurrentTime(stopAt);
       sourceNodeRef.current?.stop();
       return;
     }
@@ -208,10 +219,12 @@ export function usePlayback(
     if (isPlayingRef.current) {
       pause();
     } else {
-      // If at end, restart from beginning
-      if (duration > 0 && currentTimeRef.current >= duration - 0.05) {
-        currentTimeRef.current = 0;
-        setCurrentTime(0);
+      // If at or past the work area end, restart from work area start
+      const stopAt = workAreaRef.current?.end ?? duration;
+      const restartFrom = workAreaRef.current?.start ?? 0;
+      if (stopAt > 0 && currentTimeRef.current >= stopAt - 0.05) {
+        currentTimeRef.current = restartFrom;
+        setCurrentTime(restartFrom);
       }
       play();
     }
