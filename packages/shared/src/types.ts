@@ -23,7 +23,7 @@ export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon'
 
 export interface Track {
   id: string;
-  type: 'video' | 'audio' | 'text' | 'effect';
+  type: 'video' | 'audio' | 'text' | 'lyrics' | 'effect';
   isMaster?: boolean; // master audio track
   name: string;
   muted?: boolean;
@@ -58,6 +58,11 @@ export interface Clip {
   // Text-clip-only fields:
   textContent?: string;      // text to display (text tracks only)
   textStyle?: TextStyle;     // text appearance (text tracks only)
+  // Lyrics-clip-only fields:
+  lyricsContent?: string;    // full lyrics text (lyrics tracks only)
+  lyricsWords?: WordTimestamp[];  // word-level timestamps from Whisper (lyrics tracks only)
+  lyricsStyle?: LyricsStyle; // lyrics appearance (lyrics tracks only)
+  lyricsAlignStatus?: 'idle' | 'aligning' | 'done' | 'error'; // alignment job status
   // Effect track clip fields:
   effectConfig?: EffectClipConfig; // only for clips on 'effect' tracks
 }

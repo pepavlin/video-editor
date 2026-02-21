@@ -8,6 +8,7 @@ import type {
   LyricsStyle,
   TextStyle,
   EffectClipConfig,
+  WordTimestamp,
 } from '@video-editor/shared';
 import { formatTime } from '@/lib/utils';
 
@@ -19,10 +20,9 @@ interface Props {
   onUpdateEffectClipConfig: (clipId: string, updates: Partial<EffectClipConfig>) => void;
   onUpdateProject: (updater: (p: Project) => Project) => void;
   masterAssetId?: string;
-  onAlignLyrics: (text: string) => Promise<void>;
+  onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
   onStartCutout: (clipId: string) => Promise<void>;
   onStartHeadStabilization: (clipId: string) => Promise<void>;
-  onExport: () => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
 }
 
@@ -126,21 +126,16 @@ export default function Inspector({
   onUpdateEffectClipConfig,
   onUpdateProject,
   masterAssetId,
-  onAlignLyrics,
+  onAlignLyricsClip,
   onStartCutout,
   onStartHeadStabilization,
-  onExport,
   onSyncAudio,
 }: Props) {
-  const [lyricsText, setLyricsText] = useState('');
-  const [aligningLyrics, setAligningLyrics] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportDone, setExportDone] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   // Find selected clip and its track
   let selectedClip: Clip | undefined;
-  let selectedTrackType: 'video' | 'audio' | 'text' | 'effect' | undefined;
+  let selectedTrackType: 'video' | 'audio' | 'text' | 'lyrics' | 'effect' | undefined;
   if (selectedClipId && project) {
     for (const t of project.tracks) {
       const found = t.clips.find((c) => c.id === selectedClipId);
@@ -157,27 +152,6 @@ export default function Inspector({
     : undefined;
 
   const assetHasAudio = !!(selectedAsset?.audioPath);
-
-  const handleAlignLyrics = async () => {
-    if (!lyricsText.trim()) return;
-    setAligningLyrics(true);
-    try {
-      await onAlignLyrics(lyricsText);
-    } finally {
-      setAligningLyrics(false);
-    }
-  };
-
-  const handleExport = async () => {
-    setExporting(true);
-    setExportDone(false);
-    try {
-      await onExport();
-      setExportDone(true);
-    } finally {
-      setExporting(false);
-    }
-  };
 
   const valueText = (v: number | string) => (
     <span style={{ fontSize: 13, color: '#b8ddd6', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
@@ -434,7 +408,7 @@ export default function Inspector({
             );
           })()}
 
-          {(selectedTrackType === 'video' || selectedTrackType === 'text') && selectedClip.transform && (
+          {(selectedTrackType === 'video' || selectedTrackType === 'text' || selectedTrackType === 'lyrics') && selectedClip.transform && (
           <Section title="Transform">
             <Row label="Scale">
               <NumInput
@@ -677,6 +651,14 @@ export default function Inspector({
           </Section>
           )}
 
+          {selectedTrackType === 'lyrics' && selectedClip && (
+            <LyricsClipInspector
+              clip={selectedClip}
+              onClipUpdate={onClipUpdate}
+              onAlignLyricsClip={onAlignLyricsClip}
+            />
+          )}
+
           {selectedTrackType === 'video' && (
           <Section title="Audio">
             <Row label="Use audio">
@@ -752,116 +734,129 @@ export default function Inspector({
         </div>
       )}
 
-      {/* Lyrics */}
-      <Section title="Lyrics / Text">
+    </div>
+  );
+}
+
+// ─── LyricsClipInspector ──────────────────────────────────────────────────────
+
+function LyricsClipInspector({
+  clip,
+  onClipUpdate,
+  onAlignLyricsClip,
+}: {
+  clip: Clip;
+  onClipUpdate: (clipId: string, updates: Partial<Clip>) => void;
+  onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
+}) {
+  const [aligning, setAligning] = useState(false);
+  const style = clip.lyricsStyle ?? {
+    fontSize: 48,
+    color: '#ffffff',
+    highlightColor: '#FFE600',
+    position: 'bottom' as const,
+    wordsPerChunk: 3,
+  };
+
+  const updateStyle = (updates: Partial<LyricsStyle>) =>
+    onClipUpdate(clip.id, { lyricsStyle: { ...style, ...updates } as LyricsStyle });
+
+  const handleAlign = async () => {
+    const text = clip.lyricsContent ?? '';
+    if (!text.trim()) return;
+    setAligning(true);
+    onClipUpdate(clip.id, { lyricsAlignStatus: 'aligning' });
+    try {
+      await onAlignLyricsClip(clip.id, text);
+      onClipUpdate(clip.id, { lyricsAlignStatus: 'done' });
+    } catch {
+      onClipUpdate(clip.id, { lyricsAlignStatus: 'error' });
+    } finally {
+      setAligning(false);
+    }
+  };
+
+  return (
+    <>
+      <Section title="Lyrics">
         <textarea
-          placeholder="Paste lyrics here..."
-          value={lyricsText || project?.lyrics?.text || ''}
-          onChange={(e) => setLyricsText(e.target.value)}
-          style={{ width: '100%', height: 100, resize: 'none', fontSize: 13 }}
+          placeholder="Paste lyrics text here..."
+          value={clip.lyricsContent ?? ''}
+          rows={5}
+          style={{ width: '100%', resize: 'none', fontSize: 13 }}
+          onChange={(e) => onClipUpdate(clip.id, { lyricsContent: e.target.value, lyricsAlignStatus: 'idle' })}
         />
         <button
           className="btn btn-ghost"
-          style={{ border: '1px solid rgba(255,255,255,0.12)', width: '100%', fontSize: 13 }}
-          onClick={handleAlignLyrics}
-          disabled={aligningLyrics || !lyricsText.trim()}
+          style={{
+            border: '1px solid rgba(0,212,160,0.30)',
+            width: '100%',
+            fontSize: 13,
+            color: aligning ? 'rgba(255,255,255,0.40)' : '#00d4a0',
+            opacity: aligning || !clip.lyricsContent?.trim() ? 0.6 : 1,
+          }}
+          disabled={aligning || !clip.lyricsContent?.trim()}
+          onClick={handleAlign}
         >
-          {aligningLyrics ? 'Aligning...' : 'Align Lyrics'}
+          {aligning ? 'Aligning with Whisper...' : 'Align with Whisper'}
         </button>
-        {project?.lyrics?.words && (
-          <div style={{ marginTop: 4 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={project.lyrics.enabled ?? false}
-                onChange={(e) =>
-                  onUpdateProject((p) => ({
-                    ...p,
-                    lyrics: { ...p.lyrics!, enabled: e.target.checked },
-                  }))
-                }
-              />
-              Show lyrics overlay
-            </label>
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', marginTop: 6 }}>
-              {project.lyrics.words.length} words aligned
-            </p>
-          </div>
+        {clip.lyricsWords && clip.lyricsWords.length > 0 && (
+          <p style={{ fontSize: 12, color: '#4ade80', marginTop: 2 }}>
+            {clip.lyricsWords.length} words aligned
+          </p>
         )}
-        {project?.lyrics?.words && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Row label="Font size">
-              <NumInput
-                value={project.lyrics.style?.fontSize ?? 48}
-                min={12}
-                max={120}
-                step={2}
-                onChange={(v) =>
-                  onUpdateProject((p) => ({
-                    ...p,
-                    lyrics: { ...p.lyrics!, style: { ...(p.lyrics?.style as LyricsStyle), fontSize: v } },
-                  }))
-                }
-              />
-            </Row>
-            <Row label="Position">
-              <select
-                value={project.lyrics?.style?.position ?? 'bottom'}
-                style={{ fontSize: 13 }}
-                onChange={(e) =>
-                  onUpdateProject((p) => ({
-                    ...p,
-                    lyrics: {
-                      ...p.lyrics!,
-                      style: {
-                        ...(p.lyrics?.style as LyricsStyle),
-                        position: e.target.value as 'top' | 'center' | 'bottom',
-                      },
-                    },
-                  }))
-                }
-              >
-                <option value="top">Top</option>
-                <option value="center">Center</option>
-                <option value="bottom">Bottom</option>
-              </select>
-            </Row>
-            <Row label="Words/chunk">
-              <NumInput
-                value={project.lyrics?.style?.wordsPerChunk ?? 3}
-                min={1}
-                max={8}
-                step={1}
-                onChange={(v) =>
-                  onUpdateProject((p) => ({
-                    ...p,
-                    lyrics: {
-                      ...p.lyrics!,
-                      style: { ...(p.lyrics?.style as LyricsStyle), wordsPerChunk: v },
-                    },
-                  }))
-                }
-              />
-            </Row>
-          </div>
+        {clip.lyricsAlignStatus === 'error' && (
+          <p style={{ fontSize: 12, color: '#f87171', marginTop: 2 }}>Alignment failed – try again</p>
         )}
       </Section>
 
-      {/* Export */}
-      <Section title="Export">
-        <button
-          className="btn btn-primary"
-          style={{ width: '100%', fontSize: 14, padding: '12px 16px' }}
-          onClick={handleExport}
-          disabled={exporting}
-        >
-          {exporting ? 'Exporting...' : 'Export MP4'}
-        </button>
-        {exportDone && (
-          <p style={{ fontSize: 13, color: '#4ade80', marginTop: 6 }}>Export started! Check jobs panel.</p>
-        )}
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', marginTop: 4 }}>Output: 1080×1920, H.264</p>
+      <Section title="Lyrics Style">
+        <Row label="Font size">
+          <NumInput
+            value={style.fontSize}
+            min={12}
+            max={200}
+            step={2}
+            onChange={(v) => updateStyle({ fontSize: v })}
+          />
+        </Row>
+        <Row label="Color">
+          <input
+            type="color"
+            value={style.color}
+            style={{ width: '100%', height: 32, cursor: 'pointer' }}
+            onChange={(e) => updateStyle({ color: e.target.value })}
+          />
+        </Row>
+        <Row label="Highlight">
+          <input
+            type="color"
+            value={style.highlightColor}
+            style={{ width: '100%', height: 32, cursor: 'pointer' }}
+            onChange={(e) => updateStyle({ highlightColor: e.target.value })}
+          />
+        </Row>
+        <Row label="Position">
+          <select
+            value={style.position}
+            style={{ fontSize: 13 }}
+            onChange={(e) => updateStyle({ position: e.target.value as 'top' | 'center' | 'bottom' })}
+          >
+            <option value="top">Top</option>
+            <option value="center">Center</option>
+            <option value="bottom">Bottom</option>
+          </select>
+        </Row>
+        <Row label="Words/chunk">
+          <NumInput
+            value={style.wordsPerChunk}
+            min={1}
+            max={8}
+            step={1}
+            onChange={(v) => updateStyle({ wordsPerChunk: v })}
+          />
+        </Row>
       </Section>
-    </div>
+    </>
   );
 }

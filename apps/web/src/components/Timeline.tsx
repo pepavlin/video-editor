@@ -425,6 +425,7 @@ export default function Timeline({
       const isAudio = track.type === 'audio';
       const isGhostTrack = ghost?.trackId === track.id;
       const isTextTrack = track.type === 'text';
+      const isLyricsTrack = track.type === 'lyrics';
       const isEffectTrack = track.type === 'effect';
 
       // Highlight if being reordered over
@@ -465,6 +466,8 @@ export default function Timeline({
         ? 'rgba(0,212,160,0.65)'
         : isTextTrack
         ? 'rgba(167,139,250,0.80)'
+        : isLyricsTrack
+        ? 'rgba(192,132,252,0.85)'
         : 'rgba(56,189,248,0.65)';
       ctx.fillStyle = labelColor;
       ctx.font = isEffectTrack ? 'bold 8px sans-serif' : 'bold 10px sans-serif';
@@ -493,6 +496,8 @@ export default function Timeline({
         ? 'rgba(0,212,160,0.05)'
         : isTextTrack
         ? 'rgba(167,139,250,0.04)'
+        : isLyricsTrack
+        ? 'rgba(192,132,252,0.06)'
         : 'rgba(56,189,248,0.04)';
       ctx.fillStyle = bodyBg;
       ctx.globalAlpha = isReorderSource ? 0.3 : 1;
@@ -529,6 +534,7 @@ export default function Timeline({
 
       // ─── Clips ──────────────────────────────────────────────────────────
       const isText = track.type === 'text';
+      const isLyrics = track.type === 'lyrics';
       for (const clip of track.clips) {
         const clipX = clip.timelineStart * Z - SL + HEADER_WIDTH;
         const clipW = (clip.timelineEnd - clip.timelineStart) * Z;
@@ -613,8 +619,8 @@ export default function Timeline({
             clip.timelineStart < selectedEffectClipRange.end &&
             clip.timelineEnd > selectedEffectClipRange.start;
 
-          // Text clips get a distinct violet color; others use asset-based color
-          const color = isText ? '#a78bfa' : getClipColor(clip.assetId);
+          // Text and lyrics clips get distinct colors; others use asset-based color
+          const color = isText ? '#a78bfa' : isLyrics ? '#c084fc' : getClipColor(clip.assetId);
 
           const visX = Math.max(clipX, HEADER_WIDTH);
           const visW = Math.min(clipX + clipW, W) - visX;
@@ -623,7 +629,7 @@ export default function Timeline({
 
           // Base fill (lower opacity for video so thumbnails show through)
           ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
-          ctx.globalAlpha = isAudio ? 0.45 : isText ? 0.75 : 0.5;
+          ctx.globalAlpha = isAudio ? 0.45 : (isText || isLyrics) ? 0.75 : 0.5;
           ctx.globalAlpha *= isReorderSource ? 0.4 : 1;
           ctx.fillRect(visX, clipTop, visW, clipH);
           ctx.globalAlpha = 1;
@@ -711,9 +717,11 @@ export default function Timeline({
           ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
           ctx.clip();
 
-          ctx.font = isText ? 'bold 11px sans-serif' : '11px sans-serif';
+          ctx.font = (isText || isLyrics) ? 'bold 11px sans-serif' : '11px sans-serif';
           ctx.textAlign = 'left';
-          const label = isText
+          const label = isLyrics
+            ? (clip.lyricsContent ? `♪ "${clip.lyricsContent.slice(0, 30)}${clip.lyricsContent.length > 30 ? '…' : ''}"` : '♪ Lyrics')
+            : isText
             ? (clip.textContent ? `T "${clip.textContent}"` : 'T Text')
             : (asset?.name ?? clip.assetId);
 
@@ -722,7 +730,7 @@ export default function Timeline({
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 4;
           }
-          ctx.fillStyle = isText ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.95)';
+          ctx.fillStyle = (isText || isLyrics) ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.95)';
           ctx.fillText(label, visX + 4, trackY + 14);
           ctx.shadowBlur = 0;
 
