@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import FeedbackButton from '@/components/FeedbackButton';
 
 export const metadata: Metadata = {
   title: 'Video Editor',
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ height: '100vh', overflow: 'hidden' }}>{children}</body>
+      <body style={{ height: '100vh', overflow: 'hidden' }}>
+        {children}
+        <FeedbackButton />
+      </body>
     </html>
   );
 }
