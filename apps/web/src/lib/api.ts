@@ -50,6 +50,17 @@ export async function startCutout(assetId: string): Promise<{ jobId: string }> {
   return apiFetch(`/assets/${assetId}/cutout`, { method: 'POST' });
 }
 
+export async function startHeadStabilization(
+  assetId: string,
+  opts: { smoothingX: number; smoothingY: number; smoothingZ: number }
+): Promise<{ jobId: string }> {
+  return apiFetch(`/assets/${assetId}/head-stabilize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  });
+}
+
 export async function listMediaFiles(): Promise<{ files: Array<{ name: string; size: number }> }> {
   return apiFetch('/media');
 }

@@ -67,7 +67,7 @@ export interface Transform {
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
-export type Effect = BeatZoomEffect | CutoutEffect;
+export type Effect = BeatZoomEffect | CutoutEffect | HeadStabilizationEffect | CartoonEffect;
 
 export interface BeatZoomEffect {
   type: 'beatZoom';
@@ -90,6 +90,23 @@ export interface BackgroundConfig {
   assetId?: string;  // for video background
 }
 
+export interface HeadStabilizationEffect {
+  type: 'headStabilization';
+  enabled: boolean;
+  smoothingX: number;  // 0-1: stabilization strength on X axis (0=off, 1=full)
+  smoothingY: number;  // 0-1: stabilization strength on Y axis
+  smoothingZ: number;  // 0-1: stabilization strength on Z/zoom axis
+  status?: 'pending' | 'processing' | 'done' | 'error';
+}
+
+export interface CartoonEffect {
+  type: 'cartoon';
+  enabled: boolean;
+  edgeStrength: number;        // 0-1: prominence of cartoon edges
+  colorSimplification: number; // 0-1: how much to simplify/flatten colors
+  saturation: number;          // 0-2: color saturation (1=normal, 1.5=vivid)
+}
+
 // ─── Assets ─────────────────────────────────────────────────────────────────
 
 export interface Asset {
@@ -102,6 +119,7 @@ export interface Asset {
   waveformPath?: string;
   beatsPath?: string;
   maskPath?: string;
+  headStabilizedPath?: string;  // stabilized proxy video (from head-stabilize job)
   duration: number;       // seconds
   width?: number;
   height?: number;
@@ -146,7 +164,7 @@ export interface LyricsStyle {
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'ERROR';
-export type JobType = 'import' | 'beats' | 'lyrics' | 'export' | 'cutout';
+export type JobType = 'import' | 'beats' | 'lyrics' | 'export' | 'cutout' | 'headStabilization';
 
 export interface Job {
   id: string;
