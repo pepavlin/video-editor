@@ -347,6 +347,11 @@ export async function assetsRoutes(app: FastifyInstance) {
       config.pythonBin,
       [scriptPath, proxyPath, maskOutputPath, mode],
       {
+        onProgress: (line: string) => {
+          const m = line.match(/\[cutout\]\s+(\d+)%/);
+          if (m) return parseInt(m[1], 10);
+          return undefined;
+        },
         onDone: () => {
           const latestAsset = ws.getAsset(asset.id);
           if (latestAsset) {

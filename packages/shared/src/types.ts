@@ -101,29 +101,30 @@ export interface Transform {
 
 // ─── Typed effect descriptors (used by effect panel components) ─────────────
 
-export interface CartoonEffect {
-  type: 'cartoon';
-  enabled: boolean;
-  edgeStrength: number;
-  colorSimplification: number;
-  saturation: number;
-}
-
 export interface CutoutEffect {
-  type: 'cutout';
-  enabled: boolean;
-  background: BackgroundConfig;
+  type?: 'cutout';
+  enabled?: boolean;
   maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+  background: BackgroundConfig;
 }
 
 export interface HeadStabilizationEffect {
-  type: 'headStabilization';
-  enabled: boolean;
-  smoothingX: number;
-  smoothingY: number;
-  smoothingZ: number;
+  type?: 'headStabilization';
+  enabled?: boolean;
+  smoothingX: number;   // 0-1: stabilization strength on X axis
+  smoothingY: number;   // 0-1: stabilization strength on Y axis
+  smoothingZ: number;   // 0-1: stabilization strength on Z/zoom axis
   status?: 'pending' | 'processing' | 'done' | 'error';
 }
+
+export interface CartoonEffect {
+  type?: 'cartoon';
+  enabled?: boolean;
+  edgeStrength: number;        // 0-1: prominence of cartoon edges
+  colorSimplification: number; // 0-1: how much to simplify/flatten colors
+  saturation: number;          // 0-2: color saturation (1=normal)
+}
+
 
 // ─── Background config (used by cutout effect in EffectClipConfig) ──────────
 

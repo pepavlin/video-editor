@@ -249,6 +249,31 @@ export function buildExportCommand(
     inputs.push(assetPath);
   }
 
+  // Cutout mask inputs — collect mask paths per video track's assets
+  // Maps assetId → { maskInputIdx, bgColor }
+  interface CutoutInfo { maskInputIdx: number; bgColor: string }
+  const cutoutAssetMap = new Map<string, CutoutInfo>();
+  for (const track of videoTracks) {
+    const cutoutEffectTrack = project.tracks.find(
+      (t) => t.type === 'effect' && t.effectType === 'cutout' && t.parentTrackId === track.id
+    );
+    const cutoutEffectClip = cutoutEffectTrack?.clips.find(
+      (ec) => ec.effectConfig?.enabled && ec.effectConfig?.maskStatus === 'done'
+    );
+    if (!cutoutEffectClip?.effectConfig) continue;
+    const bg = cutoutEffectClip.effectConfig.background;
+    const bgColor = bg?.type === 'solid' ? (bg.color ?? '#000000') : '#000000';
+    for (const clip of track.clips) {
+      if (cutoutAssetMap.has(clip.assetId)) continue;
+      const asset = ws.getAsset(clip.assetId);
+      if (!asset?.maskPath) continue;
+      const maskAbsPath = path.join(ws.getWorkspaceDir(), asset.maskPath);
+      if (!fs.existsSync(maskAbsPath)) continue;
+      cutoutAssetMap.set(clip.assetId, { maskInputIdx: inputs.length, bgColor });
+      inputs.push(maskAbsPath);
+    }
+  }
+
   // Clip audio WAV inputs — use extracted WAV (not proxy) for useClipAudio clips
   // This is more reliable: the WAV is guaranteed to exist and have proper audio
   const clipAudioWavMap = new Map<string, number>(); // assetId → ffmpeg input index
@@ -382,9 +407,35 @@ export function buildExportCommand(
 
       // Single clip chain with optional beat-zoom crop baked in
       const baseClipPad = `clip${filterIdx}`;
-      filterParts.push(
-        `[${inputIdx}:v]${trimFilter}${beatZoomCropFilter},${scaleFilter},format=yuv420p[${baseClipPad}]`
-      );
+      const cutoutInfo = cutoutAssetMap.get(clip.assetId);
+      if (cutoutInfo) {
+        // ─── Cutout effect ────────────────────────────────────────────────────
+        // Apply grayscale mask as alpha channel, composite on solid background.
+        // The mask was generated from the proxy (same fps/duration); trimFilter
+        // is applied to both to keep PTS in sync. alphamerge uses the luma of a
+        // yuv (no-alpha) second input as the alpha for the first input.
+        const yuvaPad = `clip${filterIdx}_yuva`;
+        const maskPad = `clip${filterIdx}_mask`;
+        const alphaPad = `clip${filterIdx}_alpha`;
+        const bgPad    = `clip${filterIdx}_bg`;
+        const onBgPad  = `clip${filterIdx}_onbg`;
+        filterParts.push(
+          `[${inputIdx}:v]${trimFilter}${beatZoomCropFilter},${scaleFilter},format=yuva420p[${yuvaPad}]`
+        );
+        filterParts.push(
+          `[${cutoutInfo.maskInputIdx}:v]${trimFilter},scale=${scaledW}:${scaledH}[${maskPad}]`
+        );
+        filterParts.push(`[${yuvaPad}][${maskPad}]alphamerge[${alphaPad}]`);
+        filterParts.push(
+          `color=c=${cutoutInfo.bgColor}:s=${scaledW}x${scaledH}:r=30[${bgPad}]`
+        );
+        filterParts.push(`[${bgPad}][${alphaPad}]overlay=0:0[${onBgPad}]`);
+        filterParts.push(`[${onBgPad}]format=yuv420p[${baseClipPad}]`);
+      } else {
+        filterParts.push(
+          `[${inputIdx}:v]${trimFilter}${beatZoomCropFilter},${scaleFilter},format=yuv420p[${baseClipPad}]`
+        );
+      }
 
       // ─── Cartoon effect ────────────────────────────────────────────────────
       // Uses hqdn3d for color simplification + edgedetect for cartoon outlines +

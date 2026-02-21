@@ -614,15 +614,21 @@ export default function Preview({
             ctx.translate(-cx, -cy);
           }
 
+          // Cartoon effect — read from effect track (type='effect', effectType='cartoon')
           const cartoonEffectTrack = project.tracks.find(
             (t) => t.type === 'effect' && t.effectType === 'cartoon' && t.parentTrackId === track.id
           );
-          const cartoonEff = cartoonEffectTrack?.clips.find(
+          const activeCartoonClip = cartoonEffectTrack?.clips.find(
             (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
-          )?.effectConfig;
+          );
+          const cartoonCfg = activeCartoonClip?.effectConfig?.enabled ? activeCartoonClip.effectConfig : undefined;
           try {
-            if (cartoonEff?.enabled) {
-              applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff);
+            if (cartoonCfg) {
+              applyCartoonEffectToCtx(ctx, videoEl, bounds, {
+                edgeStrength: cartoonCfg.edgeStrength ?? 0.6,
+                colorSimplification: cartoonCfg.colorSimplification ?? 0.5,
+                saturation: cartoonCfg.saturation ?? 1.5,
+              });
             } else {
               ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
             }
