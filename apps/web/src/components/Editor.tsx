@@ -12,95 +12,18 @@ import Timeline from './Timeline';
 import Inspector from './Inspector';
 import TransportControls from './TransportControls';
 import ProjectBar from './ProjectBar';
-
-// ─── Draggable panel types ────────────────────────────────────────────────────
-
-type PanelId = 'project-bar' | 'preview' | 'transport';
-const DEFAULT_PANEL_ORDER: PanelId[] = ['project-bar', 'preview', 'transport'];
-
-function loadPanelOrder(): PanelId[] {
-  try {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('ve-panel-order') : null;
-    if (stored) {
-      const parsed = JSON.parse(stored) as PanelId[];
-      if (
-        parsed.length === DEFAULT_PANEL_ORDER.length &&
-        DEFAULT_PANEL_ORDER.every((id) => parsed.includes(id))
-      ) {
-        return parsed;
-      }
-    }
-  } catch {}
-  return DEFAULT_PANEL_ORDER;
-}
-
-/** Grip icon rendered in each draggable panel's handle */
-function GripIcon() {
-  return (
-    <svg width="20" height="8" viewBox="0 0 20 8" fill="rgba(255,255,255,0.25)">
-      <circle cx="4" cy="2" r="1.5" />
-      <circle cx="10" cy="2" r="1.5" />
-      <circle cx="16" cy="2" r="1.5" />
-      <circle cx="4" cy="6" r="1.5" />
-      <circle cx="10" cy="6" r="1.5" />
-      <circle cx="16" cy="6" r="1.5" />
-    </svg>
-  );
-}
-
-// ─── Resize handle ───────────────────────────────────────────────────────────
-
-function useResizeHandle(
-  sizeRef: React.MutableRefObject<number>,
-  setSize: (s: number) => void,
-  direction: 'horizontal' | 'vertical',
-  min: number,
-  max: number,
-  storageKey: string
-) {
-  return useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startPos = direction === 'horizontal' ? e.clientX : e.clientY;
-      const startSize = sizeRef.current;
-
-      const onMove = (ev: MouseEvent) => {
-        const delta = (direction === 'horizontal' ? ev.clientX : ev.clientY) - startPos;
-        const sign = direction === 'horizontal' ? 1 : -1;
-        const next = Math.max(min, Math.min(max, startSize + sign * delta));
-        setSize(next);
-        localStorage.setItem(storageKey, String(next));
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-      document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [direction, min, max, storageKey]
-  );
-}
+import { DockLayout } from './DockLayout';
 
 // ─── Log line picker ─────────────────────────────────────────────────────────
 
 function pickLogLine(lines: string[]): string | null {
   if (!lines || lines.length === 0) return null;
-  // Walk from most recent backward to find something meaningful
   for (let i = lines.length - 1; i >= 0; i--) {
     const raw = lines[i].trim();
     if (!raw) continue;
-    // ffmpeg encoding line: extract short summary
     const frameMatch = raw.match(/frame=\s*(\d+).*fps=\s*([\d.]+).*time=([\d:]+)/);
     if (frameMatch) return `frame ${frameMatch[1]} · ${frameMatch[2]} fps · ${frameMatch[3]}`;
-    // Skip very long codec/header dumps
     if (raw.length > 120) continue;
-    // Strip leading [tag] prefix
     return raw.replace(/^\[[\w_]+\]\s*/, '').slice(0, 80);
   }
   return null;
@@ -143,52 +66,6 @@ export default function Editor() {
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportLogLine, setExportLogLine] = useState<string | null>(null);
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
-
-  // ── Panel order (draggable sections, persisted) ────────────────────────────
-  const [panelOrder, setPanelOrder] = useState<PanelId[]>(loadPanelOrder);
-  const [draggingPanel, setDraggingPanel] = useState<PanelId | null>(null);
-  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
-
-  const handlePanelDragStart = useCallback((id: PanelId) => setDraggingPanel(id), []);
-  const handlePanelDragEnd = useCallback(() => {
-    setDraggingPanel(null);
-    setDropTargetIdx(null);
-  }, []);
-  const handleDropZoneOver = useCallback((idx: number) => setDropTargetIdx(idx), []);
-  const handleDropZoneDrop = useCallback(
-    (idx: number) => {
-      if (!draggingPanel) return;
-      const without = panelOrder.filter((id) => id !== draggingPanel);
-      const fromIdx = panelOrder.indexOf(draggingPanel);
-      const insertIdx = idx > fromIdx ? idx - 1 : idx;
-      without.splice(Math.max(0, Math.min(insertIdx, without.length)), 0, draggingPanel);
-      setPanelOrder(without);
-      localStorage.setItem('ve-panel-order', JSON.stringify(without));
-      setDraggingPanel(null);
-      setDropTargetIdx(null);
-    },
-    [draggingPanel, panelOrder]
-  );
-
-  // ── Panel sizes (persisted) ────────────────────────────────────────────────
-  const storedLeft = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-left-width') || '300', 10) : 300;
-  const storedRight = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-right-width') || '360', 10) : 360;
-  const storedTimeline = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-timeline-h') || '260', 10) : 260;
-
-  const [leftWidth, setLeftWidth] = useState(storedLeft);
-  const [rightWidth, setRightWidth] = useState(storedRight);
-  const [timelineHeight, setTimelineHeight] = useState(storedTimeline);
-
-  const leftWidthRef = useRef(leftWidth);
-  leftWidthRef.current = leftWidth;
-  const rightWidthRef = useRef(rightWidth);
-  rightWidthRef.current = rightWidth;
-  const timelineHeightRef = useRef(timelineHeight);
-  timelineHeightRef.current = timelineHeight;
-
-  const onLeftResize = useResizeHandle(leftWidthRef, setLeftWidth, 'horizontal', 200, 520, 've-left-width');
-  const onRightResize = useResizeHandle(rightWidthRef, setRightWidth, 'horizontal', 240, 560, 've-right-width');
-  const onTimelineResize = useResizeHandle(timelineHeightRef, setTimelineHeight, 'vertical', 120, 520, 've-timeline-h');
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -243,7 +120,6 @@ export default function Editor() {
   const refreshAssetsRef = useRef(refreshAssets);
   useEffect(() => { refreshAssetsRef.current = refreshAssets; }, [refreshAssets]);
 
-  // Persist open project ID to URL and restore on page load
   const setUrlProject = (id: string | null) => {
     const url = id ? `?p=${id}` : window.location.pathname;
     window.history.replaceState(null, '', url);
@@ -261,7 +137,6 @@ export default function Editor() {
           setShowProjectPicker(false);
         })
         .catch(() => {
-          // Project not found — clear stale URL param and show picker
           setUrlProject(null);
           refreshAssetsRef.current();
         });
@@ -457,9 +332,7 @@ export default function Editor() {
     setCompletedExportJobId(null);
     try {
       const wa = project.workArea;
-      const exportOpts = wa
-        ? { startTime: wa.start, endTime: wa.end }
-        : {};
+      const exportOpts = wa ? { startTime: wa.start, endTime: wa.end } : {};
       const { jobId } = await api.exportProject(project.id, exportOpts);
       api.pollJob(jobId, (j) => {
         setExportProgress(j.progress);
@@ -492,13 +365,11 @@ export default function Editor() {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: 'inherit' }}>
         <div className="glass rounded-2xl p-10 w-[480px] space-y-8 shadow-panel">
-          {/* Logo / Title */}
           <div>
             <h1 className="text-3xl font-bold text-gradient">Video Editor</h1>
             <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.38)' }}>Craft your story, frame by frame</p>
           </div>
 
-          {/* New project */}
           <div className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.65)', letterSpacing: '0.1em' }}>New Project</p>
             <input
@@ -531,7 +402,6 @@ export default function Editor() {
             </button>
           </div>
 
-          {/* Recent */}
           {projects.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.65)', letterSpacing: '0.1em' }}>Recent</p>
@@ -571,6 +441,104 @@ export default function Editor() {
       </div>
     );
   }
+
+  // ── Panel renderers for DockLayout ─────────────────────────────────────────
+  const panelRenderers = {
+    media: () => (
+      <MediaBin
+        assets={assets}
+        onAssetsChange={refreshAssets}
+        onDragAsset={setDraggedAssetId}
+      />
+    ),
+
+    'project-bar': () => (
+      <ProjectBar
+        masterAsset={masterAsset}
+        beatsData={beatsData}
+        onAnalyzeBeats={handleAnalyzeBeats}
+        onExport={handleExport}
+        beatsProgress={beatsProgress}
+        beatsLogLine={beatsLogLine}
+        exportProgress={exportProgress}
+        exportLogLine={exportLogLine}
+        completedExportJobId={completedExportJobId}
+        onDownload={handleDownload}
+      />
+    ),
+
+    preview: () => (
+      <Preview
+        project={project}
+        assets={assets}
+        currentTime={playback.currentTime}
+        isPlaying={playback.isPlaying}
+        beatsData={beatsData}
+        selectedClipId={selectedClipId}
+        onClipSelect={setSelectedClipId}
+        onClipUpdate={updateClip}
+      />
+    ),
+
+    transport: () => (
+      <TransportControls
+        isPlaying={playback.isPlaying}
+        currentTime={playback.currentTime}
+        duration={playback.duration || project?.duration || 0}
+        isLooping={playback.isLooping}
+        workArea={workArea}
+        onToggle={playback.toggle}
+        onLoopToggle={playback.toggleLoop}
+        onSeek={playback.seek}
+        getTime={playback.getTime}
+        onWorkAreaChange={handleWorkAreaChange}
+      />
+    ),
+
+    timeline: () => (
+      <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <Timeline
+          project={project}
+          currentTime={playback.currentTime}
+          assets={assets}
+          waveforms={waveforms}
+          beatsData={beatsData}
+          selectedClipId={selectedClipId}
+          workArea={workArea}
+          draggedAsset={draggedAsset}
+          onSeek={playback.seek}
+          onClipSelect={setSelectedClipId}
+          onClipUpdate={(clipId, updates) => updateClip(clipId, updates)}
+          onClipDelete={(clipId) => { deleteClip(clipId); setSelectedClipId(null); }}
+          onSplit={(clipId, time) => splitClip(clipId, time)}
+          onDropAsset={(trackId, assetId, start, dur) => addClip(trackId, assetId, start, dur)}
+          onDropAssetNewTrack={handleDropAssetNewTrack}
+          onWorkAreaChange={handleWorkAreaChange}
+        />
+      </div>
+    ),
+
+    inspector: () => (
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
+        <Inspector
+          project={project}
+          selectedClipId={selectedClipId}
+          assets={assets}
+          onClipUpdate={updateClip}
+          onAddEffect={addEffect}
+          onRemoveEffect={removeEffect}
+          onUpdateEffect={updateEffect}
+          onUpdateProject={updateProject}
+          masterAssetId={masterAssetId}
+          onAlignLyrics={handleAlignLyrics}
+          onStartCutout={handleStartCutout}
+          onStartHeadStabilization={handleStartHeadStabilization}
+          onExport={handleExport}
+          onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
+        />
+      </div>
+    ),
+  };
 
   // ── Main editor layout ─────────────────────────────────────────────────────
   return (
@@ -668,224 +636,9 @@ export default function Editor() {
         </button>
       </div>
 
-      {/* ── Main area ───────────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0">
-
-        {/* Left: Media Bin */}
-        <div
-          className="flex-shrink-0 border-r panel flex flex-col"
-          style={{ width: leftWidth, borderColor: 'rgba(255,255,255,0.07)' }}
-        >
-          <MediaBin assets={assets} onAssetsChange={refreshAssets} onDragAsset={setDraggedAssetId} />
-        </div>
-
-        {/* Left resize handle */}
-        <div
-          className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 5, background: 'rgba(255,255,255,0.04)' }}
-          onMouseDown={onLeftResize}
-        />
-
-        {/* Center: draggable panels + Timeline */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-
-          {/* ── Draggable panel area (project-bar, preview, transport) ────── */}
-          {panelOrder.map((panelId, idx) => (
-            <div
-              key={panelId}
-              style={{ display: 'contents' }}
-            >
-              {/* Drop zone before this panel */}
-              <div
-                onDragOver={(e) => { e.preventDefault(); handleDropZoneOver(idx); }}
-                onDragLeave={() => setDropTargetIdx(null)}
-                onDrop={() => handleDropZoneDrop(idx)}
-                style={{
-                  flexShrink: 0,
-                  height: draggingPanel && draggingPanel !== panelId ? 4 : 0,
-                  background: dropTargetIdx === idx && draggingPanel !== panelId
-                    ? 'rgba(0,212,160,0.8)'
-                    : 'transparent',
-                  transition: 'background 0.1s, height 0.1s',
-                  boxShadow: dropTargetIdx === idx && draggingPanel !== panelId
-                    ? '0 0 8px rgba(0,212,160,0.6)'
-                    : 'none',
-                }}
-              />
-
-              {/* Panel content */}
-              {panelId === 'project-bar' && (
-                <div
-                  className="flex-shrink-0"
-                  style={{ opacity: draggingPanel === 'project-bar' ? 0.45 : 1, transition: 'opacity 0.15s' }}
-                >
-                  {/* Drag handle */}
-                  <div
-                    draggable
-                    onDragStart={() => handlePanelDragStart('project-bar')}
-                    onDragEnd={handlePanelDragEnd}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: 10,
-                      cursor: 'grab',
-                      background: 'rgba(255,255,255,0.02)',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    }}
-                    title="Drag to reorder panel"
-                  >
-                    <GripIcon />
-                  </div>
-                  <ProjectBar
-                    masterAsset={masterAsset}
-                    beatsData={beatsData}
-                    onAnalyzeBeats={handleAnalyzeBeats}
-                    onExport={handleExport}
-                    beatsProgress={beatsProgress}
-                    beatsLogLine={beatsLogLine}
-                    exportProgress={exportProgress}
-                    exportLogLine={exportLogLine}
-                    completedExportJobId={completedExportJobId}
-                    onDownload={handleDownload}
-                  />
-                </div>
-              )}
-
-              {panelId === 'preview' && (
-                <Preview
-                  project={project}
-                  assets={assets}
-                  currentTime={playback.currentTime}
-                  isPlaying={playback.isPlaying}
-                  beatsData={beatsData}
-                  selectedClipId={selectedClipId}
-                  onClipSelect={setSelectedClipId}
-                  onClipUpdate={updateClip}
-                />
-              )}
-
-              {panelId === 'transport' && (
-                <div
-                  className="flex-shrink-0"
-                  style={{ opacity: draggingPanel === 'transport' ? 0.45 : 1, transition: 'opacity 0.15s' }}
-                >
-                  {/* Drag handle */}
-                  <div
-                    draggable
-                    onDragStart={() => handlePanelDragStart('transport')}
-                    onDragEnd={handlePanelDragEnd}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: 10,
-                      cursor: 'grab',
-                      background: 'rgba(255,255,255,0.02)',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    }}
-                    title="Drag to reorder panel"
-                  >
-                    <GripIcon />
-                  </div>
-                  <TransportControls
-                    isPlaying={playback.isPlaying}
-                    currentTime={playback.currentTime}
-                    duration={playback.duration || project?.duration || 0}
-                    isLooping={playback.isLooping}
-                    workArea={workArea}
-                    onToggle={playback.toggle}
-                    onLoopToggle={playback.toggleLoop}
-                    onSeek={playback.seek}
-                    getTime={playback.getTime}
-                    onWorkAreaChange={handleWorkAreaChange}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Final drop zone (after last panel, before timeline) */}
-          <div
-            onDragOver={(e) => { e.preventDefault(); handleDropZoneOver(panelOrder.length); }}
-            onDragLeave={() => setDropTargetIdx(null)}
-            onDrop={() => handleDropZoneDrop(panelOrder.length)}
-            style={{
-              flexShrink: 0,
-              height: draggingPanel ? 4 : 0,
-              background: dropTargetIdx === panelOrder.length
-                ? 'rgba(0,212,160,0.8)'
-                : 'transparent',
-              transition: 'background 0.1s, height 0.1s',
-              boxShadow: dropTargetIdx === panelOrder.length
-                ? '0 0 8px rgba(0,212,160,0.6)'
-                : 'none',
-            }}
-          />
-
-          {/* Timeline resize handle */}
-          <div
-            className="resize-handle-v flex-shrink-0 transition-colors duration-100"
-            style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(255,255,255,0.07)' }}
-            onMouseDown={onTimelineResize}
-          />
-
-          {/* Timeline */}
-          <div
-            className="flex-shrink-0 overflow-x-auto"
-            style={{ height: timelineHeight, borderTop: '1px solid rgba(255,255,255,0.07)' }}
-          >
-            <Timeline
-              project={project}
-              currentTime={playback.currentTime}
-              assets={assets}
-              waveforms={waveforms}
-              beatsData={beatsData}
-              selectedClipId={selectedClipId}
-              workArea={workArea}
-              draggedAsset={draggedAsset}
-              onSeek={playback.seek}
-              onClipSelect={setSelectedClipId}
-              onClipUpdate={(clipId, updates) => updateClip(clipId, updates)}
-              onClipDelete={(clipId) => { deleteClip(clipId); setSelectedClipId(null); }}
-              onSplit={(clipId, time) => splitClip(clipId, time)}
-              onDropAsset={(trackId, assetId, start, dur) => addClip(trackId, assetId, start, dur)}
-              onDropAssetNewTrack={handleDropAssetNewTrack}
-              onWorkAreaChange={handleWorkAreaChange}
-              onTrackReorder={reorderTrack}
-            />
-          </div>
-        </div>
-
-        {/* Right resize handle */}
-        <div
-          className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 5, background: 'rgba(255,255,255,0.04)' }}
-          onMouseDown={onRightResize}
-        />
-
-        {/* Right: Inspector */}
-        <div
-          className="flex-shrink-0 border-l panel flex flex-col overflow-y-auto"
-          style={{ width: rightWidth, borderColor: 'rgba(255,255,255,0.07)' }}
-        >
-          <Inspector
-            project={project}
-            selectedClipId={selectedClipId}
-            assets={assets}
-            onClipUpdate={updateClip}
-            onAddEffect={addEffect}
-            onRemoveEffect={removeEffect}
-            onUpdateEffect={updateEffect}
-            onUpdateProject={updateProject}
-            masterAssetId={masterAssetId}
-            onAlignLyrics={handleAlignLyrics}
-            onStartCutout={handleStartCutout}
-            onStartHeadStabilization={handleStartHeadStabilization}
-            onExport={handleExport}
-            onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
-          />
-        </div>
+      {/* ── Main area (DockLayout fills all remaining space) ────────────── */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <DockLayout panelRenderers={panelRenderers} />
       </div>
 
       {/* ── Notifications ───────────────────────────────────────────────── */}
