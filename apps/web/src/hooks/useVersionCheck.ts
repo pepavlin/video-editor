@@ -60,6 +60,12 @@ export function useVersionCheck(): { status: VersionStatus; dismiss: () => void 
     localStorage.setItem(VERSION_KEY, currentBuildId);
 
     // ── New-deploy polling ─────────────────────────────────────────────────────
+    // In Next.js dev mode (`next dev`), buildId is always the string
+    // 'development'. NEXT_BUILD_ID is also forced to 'development' via
+    // next.config.mjs, but we guard here too so dev builds never show
+    // a false-positive "update available" banner.
+    if (currentBuildId === 'development') return;
+
     const checkServerVersion = async () => {
       try {
         const res = await fetch('/app-version', { cache: 'no-store' });

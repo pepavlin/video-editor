@@ -2,7 +2,13 @@
 
 // Generate a unique build ID at build time — changes automatically on every
 // `next build` so clients can detect when a new deploy is available.
-const buildId = Date.now().toString();
+//
+// In `next dev` mode Next.js always sets __NEXT_DATA__.buildId to the fixed
+// string "development" (it ignores generateBuildId entirely). If we used a
+// timestamp here, NEXT_BUILD_ID and __NEXT_DATA__.buildId would never match,
+// causing a perpetual false-positive "update available" banner in dev mode.
+const buildId =
+  process.env.NODE_ENV === 'development' ? 'development' : Date.now().toString();
 
 const nextConfig = {
   reactStrictMode: false, // disabled to avoid double-mount issues with WebAudio
