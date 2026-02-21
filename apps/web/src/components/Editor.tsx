@@ -392,65 +392,135 @@ export default function Editor() {
   // ── Project picker ─────────────────────────────────────────────────────────
   if (showProjectPicker) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: 'inherit' }}>
-        <div className="glass rounded-2xl p-10 w-[480px] space-y-8 shadow-panel">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient">Video Editor</h1>
-            <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.38)' }}>Craft your story, frame by frame</p>
+      <div className="h-screen flex items-center justify-center" style={{ background: 'inherit', position: 'relative', overflow: 'hidden' }}>
+        {/* Animated background orbs */}
+        <div className="bg-orb bg-orb-1" />
+        <div className="bg-orb bg-orb-2" />
+        <div className="bg-orb bg-orb-3" />
+
+        {/* Subtle grid pattern */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: 'radial-gradient(circle, rgba(0,212,160,0.06) 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+          pointerEvents: 'none',
+          animation: 'fadeIn 1.2s ease forwards',
+        }} />
+
+        <div
+          className="glass rounded-2xl w-[480px] shadow-panel scale-in"
+          style={{ padding: '40px 40px 44px', position: 'relative', overflow: 'hidden' }}
+        >
+          {/* Card inner glow accent */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+            background: 'linear-gradient(90deg, transparent, rgba(0,212,160,0.6), rgba(56,189,248,0.5), transparent)',
+            borderRadius: '16px 16px 0 0',
+          }} />
+
+          {/* Header */}
+          <div className="stagger-item" style={{ animationDelay: '0.05s', marginBottom: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              {/* Animated logo mark */}
+              <div style={{
+                width: 36, height: 36,
+                background: 'linear-gradient(135deg, rgba(0,212,160,0.2), rgba(56,189,248,0.2))',
+                border: '1px solid rgba(0,212,160,0.35)',
+                borderRadius: 10,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'breathe 3s ease-in-out infinite',
+                flexShrink: 0,
+              }}>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <polygon points="5,3 15,9 5,15" fill="url(#logoGrad)" />
+                  <defs>
+                    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#00d4a0" />
+                      <stop offset="100%" stopColor="#38bdf8" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              <h1 className="text-3xl font-bold text-gradient">Video Editor</h1>
+            </div>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.38)', paddingLeft: 48 }}>Craft your story, frame by frame</p>
           </div>
 
-          <div className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.65)', letterSpacing: '0.1em' }}>New Project</p>
-            <input
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              placeholder="Project name"
-              style={{ fontSize: 15 }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  createProject(newProjectName).then((proj) => {
-                    if (proj?.id) setUrlProject(proj.id);
-                    refreshAssets();
-                    setShowProjectPicker(false);
-                  });
-                }
-              }}
-            />
-            <button
-              className="btn btn-primary w-full"
-              style={{ padding: '12px 16px', fontSize: 15 }}
-              onClick={async () => {
-                const proj = await createProject(newProjectName);
-                if (proj?.id) setUrlProject(proj.id);
-                await refreshAssets();
-                setShowProjectPicker(false);
-              }}
-            >
-              Create Project
-            </button>
+          {/* New project */}
+          <div className="stagger-item" style={{ animationDelay: '0.12s', marginBottom: 28 }}>
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.7)', letterSpacing: '0.12em', marginBottom: 12 }}>New Project</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input
+                type="text"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name"
+                style={{ fontSize: 15 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    createProject(newProjectName).then((proj) => {
+                      if (proj?.id) setUrlProject(proj.id);
+                      refreshAssets();
+                      setShowProjectPicker(false);
+                    });
+                  }
+                }}
+              />
+              <button
+                className="btn btn-primary w-full"
+                style={{ padding: '12px 16px', fontSize: 15 }}
+                onClick={async () => {
+                  const proj = await createProject(newProjectName);
+                  if (proj?.id) setUrlProject(proj.id);
+                  await refreshAssets();
+                  setShowProjectPicker(false);
+                }}
+              >
+                Create Project
+              </button>
+            </div>
           </div>
 
           {projects.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.65)', letterSpacing: '0.1em' }}>Recent</p>
-              <div className="space-y-2 max-h-56 overflow-y-auto">
-                {projects.map((p) => (
+            <div className="stagger-item" style={{ animationDelay: '0.2s' }}>
+              {/* Divider */}
+              <div style={{
+                height: 1,
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)',
+                marginBottom: 20,
+              }} />
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.7)', letterSpacing: '0.12em', marginBottom: 12 }}>Recent</p>
+              <div className="space-y-2 max-h-56 overflow-y-auto" style={{ paddingRight: 2 }}>
+                {projects.map((p, idx) => (
                   <button
                     key={p.id}
-                    className="w-full text-left rounded-xl p-4 transition-all duration-150"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                    className="w-full text-left rounded-xl stagger-item"
+                    style={{
+                      padding: '12px 14px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                      transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      animationDelay: `${0.24 + idx * 0.06}s`,
+                    }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLElement;
                       el.style.background = 'rgba(0,212,160,0.09)';
-                      el.style.borderColor = 'rgba(0,212,160,0.28)';
-                      el.style.transform = 'translateY(-1px)';
+                      el.style.borderColor = 'rgba(0,212,160,0.30)';
+                      el.style.transform = 'translateX(3px)';
+                      el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(0,212,160,0.1)';
                     }}
                     onMouseLeave={(e) => {
                       const el = e.currentTarget as HTMLElement;
                       el.style.background = 'rgba(255,255,255,0.04)';
                       el.style.borderColor = 'rgba(255,255,255,0.07)';
                       el.style.transform = '';
+                      el.style.boxShadow = '';
+                    }}
+                    onMouseDown={(e) => {
+                      (e.currentTarget as HTMLElement).style.transform = 'scale(0.98)';
+                    }}
+                    onMouseUp={(e) => {
+                      (e.currentTarget as HTMLElement).style.transform = 'translateX(3px)';
                     }}
                     onClick={async () => {
                       await projectHook.loadProject(p.id);
@@ -459,8 +529,13 @@ export default function Editor() {
                       setShowProjectPicker(false);
                     }}
                   >
-                    <div className="text-sm font-semibold" style={{ color: '#d0ece6' }}>{p.name}</div>
-                    <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.28)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="text-sm font-semibold" style={{ color: '#d0ece6' }}>{p.name}</div>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.35, flexShrink: 0 }}>
+                        <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.28)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
                   </button>
                 ))}
               </div>
@@ -578,38 +653,85 @@ export default function Editor() {
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center px-5 flex-shrink-0 gap-4 border-b"
+        className="flex items-center px-5 flex-shrink-0 gap-4 border-b animate-slide-down"
         style={{
           height: 56,
           background: 'rgba(8,16,30,0.97)',
           backdropFilter: 'blur(24px)',
           borderColor: 'rgba(255,255,255,0.07)',
-          boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.08)',
+          boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.08), 0 2px 16px rgba(0,0,0,0.3)',
         }}
       >
-        <span className="font-bold text-gradient" style={{ fontSize: 16 }}>
-          {project?.name ?? 'Video Editor'}
-        </span>
+        {/* Logo mark + title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 24, height: 24,
+            background: 'linear-gradient(135deg, rgba(0,212,160,0.18), rgba(56,189,248,0.18))',
+            border: '1px solid rgba(0,212,160,0.28)',
+            borderRadius: 6,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <polygon points="3,2 9,5.5 3,9" fill="url(#topLogoGrad)" />
+              <defs>
+                <linearGradient id="topLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#00d4a0" />
+                  <stop offset="100%" stopColor="#38bdf8" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <span className="font-bold text-gradient" style={{ fontSize: 15 }}>
+            {project?.name ?? 'Video Editor'}
+          </span>
+        </div>
+
         {project && (
           <span
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1"
             style={{
               fontSize: 12,
-              color: saving ? 'rgba(255,255,255,0.45)' : 'rgba(0,212,160,0.80)',
+              color: saving ? 'rgba(255,255,255,0.45)' : 'rgba(0,212,160,0.85)',
               background: saving ? 'rgba(255,255,255,0.05)' : 'rgba(0,212,160,0.08)',
-              border: `1px solid ${saving ? 'rgba(255,255,255,0.08)' : 'rgba(0,212,160,0.20)'}`,
+              border: `1px solid ${saving ? 'rgba(255,255,255,0.08)' : 'rgba(0,212,160,0.22)'}`,
               letterSpacing: '0.01em',
+              transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
+              boxShadow: saving ? 'none' : '0 0 8px rgba(0,212,160,0.12)',
             }}
           >
             {saving ? (
               <>
-                <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.40)' }} />
+                {/* Three pulsing dots */}
+                <span style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      style={{
+                        display: 'inline-block', width: 3, height: 3,
+                        borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.45)',
+                        animation: `dotBlink 1.2s ease-in-out infinite`,
+                        animationDelay: `${i * 0.2}s`,
+                      }}
+                    />
+                  ))}
+                </span>
                 Ukládání...
               </>
             ) : (
               <>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ overflow: 'visible' }}>
+                  <path
+                    d="M1.5 5L4 7.5L8.5 2.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray="20"
+                    strokeDashoffset="0"
+                    style={{ animation: 'saveCheck 0.4s ease forwards' }}
+                  />
                 </svg>
                 Uloženo
               </>
@@ -663,7 +785,12 @@ export default function Editor() {
             setSelectedClipId(clipId);
           }}
         >
-          <span style={{ fontSize: 15, fontWeight: 700 }}>T</span>
+          <span style={{
+            fontSize: 14, fontWeight: 700,
+            background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>T</span>
           Add Text
         </button>
       </div>
@@ -675,18 +802,44 @@ export default function Editor() {
 
       {/* ── Notifications ───────────────────────────────────────────────── */}
       {jobNotifications.length > 0 && (
-        <div className="fixed bottom-5 right-5 space-y-2 z-50">
+        <div className="fixed bottom-5 right-5 space-y-2 z-50" style={{ pointerEvents: 'none' }}>
           {jobNotifications.map((msg, i) => (
             <div
               key={i}
-              className="glass rounded-xl px-5 py-4 shadow-panel flex items-center gap-3 toast-enter"
-              style={{ minWidth: 280, color: '#c8e8e0', fontSize: 13 }}
+              className="glass rounded-xl shadow-panel toast-enter"
+              style={{
+                minWidth: 296,
+                color: '#c8e8e0',
+                fontSize: 13,
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                borderLeft: '2px solid rgba(0,212,160,0.50)',
+                pointerEvents: 'auto',
+              }}
             >
-              <span
-                className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #00d4a0, #38bdf8)' }}
-              />
-              {msg}
+              {/* Animated indicator */}
+              <span style={{ position: 'relative', flexShrink: 0 }}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 8, height: 8,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    inset: -3,
+                    borderRadius: '50%',
+                    border: '1.5px solid rgba(0,212,160,0.5)',
+                    animation: 'ripple 1.6s ease-out infinite',
+                  }}
+                />
+              </span>
+              <span style={{ flex: 1 }}>{msg}</span>
             </div>
           ))}
         </div>

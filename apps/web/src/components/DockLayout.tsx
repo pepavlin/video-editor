@@ -596,8 +596,9 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
         minHeight: 0,
         position: 'relative',
         overflow: 'hidden',
-        opacity: isBeingDragged ? 0.35 : 1,
-        transition: 'opacity 0.12s',
+        opacity: isBeingDragged ? 0.30 : 1,
+        transition: 'opacity 0.18s ease, transform 0.18s ease',
+        transform: isBeingDragged ? 'scale(0.99)' : 'scale(1)',
       }}
     >
       {/* Hover-reveal drag handle – small centered pill at top, does not block content */}
@@ -650,15 +651,16 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
       {/* Live drop-zone overlay – visible only when this panel is the current drop target */}
       {isDropTarget && dropZone && (
         <div
+          className="drop-zone-overlay"
           style={{
             position: 'absolute',
             pointerEvents: 'none',
             zIndex: 200,
-            background: 'rgba(0,212,160,0.18)',
+            background: 'rgba(0,212,160,0.16)',
             border: '2px solid rgba(0,212,160,0.90)',
-            borderRadius: 4,
-            transition: 'all 0.08s ease',
-            boxShadow: '0 0 20px rgba(0,212,160,0.25)',
+            borderRadius: 6,
+            boxShadow: '0 0 24px rgba(0,212,160,0.30), inset 0 0 20px rgba(0,212,160,0.08)',
+            backdropFilter: 'blur(2px)',
             ...ZONE_STYLE[dropZone],
           }}
         />
@@ -784,8 +786,16 @@ function ResizeHandle({
         transition: 'background 0.12s',
         zIndex: 10,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,160,0.30)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget as HTMLElement;
+        el.style.background = 'rgba(0,212,160,0.35)';
+        el.style.boxShadow = isH ? '0 0 10px rgba(0,212,160,0.4)' : '0 0 10px rgba(0,212,160,0.4)';
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget as HTMLElement;
+        el.style.background = 'rgba(255,255,255,0.04)';
+        el.style.boxShadow = '';
+      }}
     />
   );
 }
