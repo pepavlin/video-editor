@@ -6,11 +6,13 @@ interface Props {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
+  isLooping: boolean;
   onToggle: () => void;
+  onLoopToggle: () => void;
   onSeek: (t: number) => void;
 }
 
-export default function TransportControls({ isPlaying, currentTime, duration, onToggle, onSeek }: Props) {
+export default function TransportControls({ isPlaying, currentTime, duration, isLooping, onToggle, onLoopToggle, onSeek }: Props) {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -71,6 +73,48 @@ export default function TransportControls({ isPlaying, currentTime, duration, on
             <polygon points="3,1 13,7 3,13" />
           </svg>
         )}
+      </button>
+
+      {/* Loop button */}
+      <button
+        onClick={onLoopToggle}
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          background: isLooping
+            ? 'linear-gradient(135deg, rgba(0,212,160,0.22), rgba(56,189,248,0.15))'
+            : 'rgba(255,255,255,0.05)',
+          boxShadow: isLooping
+            ? '0 0 14px rgba(0,212,160,0.40), inset 0 0 0 1px rgba(0,212,160,0.55)'
+            : 'inset 0 0 0 1px rgba(255,255,255,0.10)',
+          border: 'none',
+          cursor: 'pointer',
+          transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
+          color: isLooping ? '#00d4a0' : 'rgba(255,255,255,0.35)',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.background = isLooping
+            ? 'linear-gradient(135deg, rgba(0,212,160,0.30), rgba(56,189,248,0.22))'
+            : 'rgba(255,255,255,0.09)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.background = isLooping
+            ? 'linear-gradient(135deg, rgba(0,212,160,0.22), rgba(56,189,248,0.15))'
+            : 'rgba(255,255,255,0.05)';
+        }}
+        title={isLooping ? 'Loop: On' : 'Loop: Off'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 2l4 4-4 4" />
+          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+          <path d="M7 22l-4-4 4-4" />
+          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        </svg>
       </button>
 
       {/* Current time */}
