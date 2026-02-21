@@ -144,25 +144,58 @@ export default function TransportControls({
             flexShrink: 0,
             background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
             boxShadow: isPlaying
-              ? '0 0 36px rgba(0,212,160,0.80), 0 0 12px rgba(56,189,248,0.45), 0 4px 14px rgba(0,0,0,0.35)'
+              ? '0 0 40px rgba(0,212,160,0.85), 0 0 14px rgba(56,189,248,0.50), 0 4px 14px rgba(0,0,0,0.35)'
               : '0 0 20px rgba(0,212,160,0.45), 0 4px 14px rgba(0,0,0,0.30)',
             border: '1.5px solid rgba(0,212,160,0.50)',
             cursor: 'pointer',
-            transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
+            transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
             animation: isPlaying ? 'glowPulse 2.5s ease-in-out infinite' : 'none',
+            position: 'relative',
+            overflow: 'visible',
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.transform = 'scale(1.10)';
-            (e.currentTarget as HTMLElement).style.boxShadow = '0 0 36px rgba(0,212,160,0.75), 0 6px 18px rgba(0,0,0,0.4)';
+            const el = e.currentTarget as HTMLElement;
+            el.style.transform = 'scale(1.12)';
+            el.style.boxShadow = '0 0 40px rgba(0,212,160,0.80), 0 8px 22px rgba(0,0,0,0.4)';
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.transform = '';
-            (e.currentTarget as HTMLElement).style.boxShadow = isPlaying
-              ? '0 0 36px rgba(0,212,160,0.80), 0 0 12px rgba(56,189,248,0.45), 0 4px 14px rgba(0,0,0,0.35)'
+            const el = e.currentTarget as HTMLElement;
+            el.style.transform = '';
+            el.style.boxShadow = isPlaying
+              ? '0 0 40px rgba(0,212,160,0.85), 0 0 14px rgba(56,189,248,0.50), 0 4px 14px rgba(0,0,0,0.35)'
               : '0 0 20px rgba(0,212,160,0.45), 0 4px 14px rgba(0,0,0,0.30)';
+          }}
+          onMouseDown={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'scale(0.92)';
+            (e.currentTarget as HTMLElement).style.transition = 'all 0.08s ease';
+          }}
+          onMouseUp={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'scale(1.12)';
+            (e.currentTarget as HTMLElement).style.transition = 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
           }}
           title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
         >
+          {/* Ripple ring when playing */}
+          {isPlaying && (
+            <>
+              <span style={{
+                position: 'absolute',
+                inset: -6,
+                borderRadius: '50%',
+                border: '1.5px solid rgba(0,212,160,0.45)',
+                animation: 'ripple 2s ease-out infinite',
+                pointerEvents: 'none',
+              }} />
+              <span style={{
+                position: 'absolute',
+                inset: -6,
+                borderRadius: '50%',
+                border: '1.5px solid rgba(0,212,160,0.25)',
+                animation: 'ripple 2s ease-out 0.7s infinite',
+                pointerEvents: 'none',
+              }} />
+            </>
+          )}
           {isPlaying ? (
             <svg width="16" height="16" viewBox="0 0 14 14" fill="#040a08">
               <rect x="2" y="1" width="4" height="12" rx="1.5" />

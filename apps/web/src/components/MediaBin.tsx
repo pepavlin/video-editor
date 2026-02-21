@@ -224,11 +224,13 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
             padding: 24,
             color: 'rgba(255,255,255,0.18)',
           }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
+            <div className="animate-float" style={{ color: 'rgba(0,212,160,0.30)' }}>
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </div>
             <p style={{ fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
               Drop videos or audio here<br />or click Import
             </p>
@@ -237,15 +239,20 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
           <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {/* Importing items */}
             {Object.entries(importProgress).map(([assetId, progress]) => (
-              <div key={assetId} style={{
+              <div key={assetId} className="fade-up" style={{
                 borderRadius: 12,
                 padding: '10px 12px',
                 background: 'rgba(0,212,160,0.06)',
-                border: '1px solid rgba(0,212,160,0.12)',
+                border: '1px solid rgba(0,212,160,0.14)',
+                boxShadow: '0 0 12px rgba(0,212,160,0.06)',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(0,212,160,0.75)', fontSize: 13 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00d4a0', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(0,212,160,0.80)', fontSize: 13 }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%', background: '#00d4a0',
+                      display: 'inline-block',
+                      animation: 'dotBlink 1.2s ease-in-out infinite',
+                    }} />
                     Importing...
                   </span>
                   <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#5ee8c8', fontSize: 13 }}>{progress}%</span>
@@ -259,7 +266,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
                       background: 'linear-gradient(90deg, #00d4a0, #38bdf8)',
                       boxShadow: '0 0 6px rgba(0,212,160,0.5)',
                       borderRadius: 4,
-                      transition: 'right 0.3s ease',
+                      transition: 'right 0.35s cubic-bezier(0.4,0,0.2,1)',
                     }}
                   />
                   <div className="progress-shimmer" />
@@ -268,10 +275,11 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
             ))}
 
             {/* Assets */}
-            {assets.map((asset) => (
+            {assets.map((asset, idx) => (
               <AssetItem
                 key={asset.id}
                 asset={asset}
+                index={idx}
                 onDragStart={handleAssetDragStart}
               />
             ))}
@@ -284,9 +292,11 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
 
 function AssetItem({
   asset,
+  index = 0,
   onDragStart,
 }: {
   asset: Asset;
+  index?: number;
   onDragStart: (e: React.DragEvent, asset: Asset) => void;
 }) {
   const isVideo = asset.type === 'video';
@@ -296,6 +306,7 @@ function AssetItem({
     <div
       draggable={isReady}
       onDragStart={(e) => onDragStart(e, asset)}
+      className="stagger-item"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -305,20 +316,31 @@ function AssetItem({
         border: '1px solid transparent',
         opacity: isReady ? 1 : 0.55,
         cursor: isReady ? 'grab' : 'wait',
-        transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
+        transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        animationDelay: `${index * 0.05}s`,
       }}
       onMouseEnter={(e) => {
         if (!isReady) return;
         const el = e.currentTarget as HTMLElement;
         el.style.background = 'rgba(255,255,255,0.06)';
-        el.style.borderColor = 'rgba(0,212,160,0.20)';
-        el.style.transform = 'translateY(-1px)';
+        el.style.borderColor = 'rgba(0,212,160,0.22)';
+        el.style.transform = 'translateX(2px) translateY(-1px)';
+        el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLElement;
         el.style.background = '';
         el.style.borderColor = 'transparent';
         el.style.transform = '';
+        el.style.boxShadow = '';
+      }}
+      onMouseDown={(e) => {
+        if (!isReady) return;
+        (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)';
+      }}
+      onMouseUp={(e) => {
+        if (!isReady) return;
+        (e.currentTarget as HTMLElement).style.transform = 'translateX(2px) translateY(-1px)';
       }}
       title={asset.name}
     >
