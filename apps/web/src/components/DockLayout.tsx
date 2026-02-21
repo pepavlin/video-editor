@@ -600,42 +600,40 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
         transition: 'opacity 0.12s',
       }}
     >
-      {/* Hover-reveal drag handle / title bar – absolutely positioned, overlays content */}
+      {/* Hover-reveal drag handle – small centered pill at top, does not block content */}
       <div
         onMouseDown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
           onStartDrag(node.panelId, e.clientX, e.clientY);
         }}
+        title={PANEL_LABELS[node.panelId] ?? node.panelId}
         style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
+          top: 4,
+          left: '50%',
+          transform: 'translateX(-50%)',
           zIndex: 20,
-          height: 22,
+          height: 18,
           display: 'flex',
           alignItems: 'center',
           paddingLeft: 8,
           paddingRight: 8,
-          gap: 6,
+          gap: 4,
           cursor: 'grab',
-          background: 'rgba(6,14,26,0.88)',
+          background: 'rgba(6,14,26,0.90)',
           backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 999,
           userSelect: 'none',
-          fontSize: 10,
-          fontWeight: 700,
-          color: 'rgba(255,255,255,0.35)',
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
           opacity: showHeader ? 1 : 0,
           pointerEvents: showHeader ? 'auto' : 'none',
           transition: 'opacity 0.18s ease',
         }}
       >
         <GripDots />
-        {PANEL_LABELS[node.panelId] ?? node.panelId}
       </div>
 
       {/* Panel content – takes full height since header is absolute */}
