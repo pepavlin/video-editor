@@ -70,6 +70,120 @@ const DEFAULT_TEXT_STYLE: TextStyle = {
   align: 'center',
 };
 
+// ─── Cartoon effect (canvas preview) ─────────────────────────────────────────
+//
+// Simulates the FFmpeg cartoon pipeline in the browser:
+//   hqdn3d  → blur (color simplification)
+//   eq      → saturate
+//   edgedetect + blend multiply → Sobel edges multiplied onto base
+//
+// Two module-level canvases are reused each frame to avoid GC pressure.
+
+let _cartoonBase: HTMLCanvasElement | null = null;
+let _cartoonEdge: HTMLCanvasElement | null = null;
+
+function getCartoonCanvases(iw: number, ih: number) {
+  const ew = Math.max(2, Math.round(iw / 2));
+  const eh = Math.max(2, Math.round(ih / 2));
+
+  if (!_cartoonBase || _cartoonBase.width !== iw || _cartoonBase.height !== ih) {
+    _cartoonBase = document.createElement('canvas');
+    _cartoonBase.width = iw;
+    _cartoonBase.height = ih;
+  }
+  if (!_cartoonEdge || _cartoonEdge.width !== ew || _cartoonEdge.height !== eh) {
+    _cartoonEdge = document.createElement('canvas');
+    _cartoonEdge.width = ew;
+    _cartoonEdge.height = eh;
+  }
+  return { base: _cartoonBase, edge: _cartoonEdge, ew, eh };
+}
+
+/**
+ * Draw a cartoon-styled video frame onto ctx at the given bounds.
+ * Relies on the caller to have set ctx.globalAlpha and any rotation transform.
+ */
+function applyCartoonEffectToCtx(
+  ctx: CanvasRenderingContext2D,
+  videoEl: HTMLVideoElement,
+  bounds: Bounds,
+  effect: import('@video-editor/shared').CartoonEffect
+): void {
+  const iw = Math.max(2, Math.round(bounds.w));
+  const ih = Math.max(2, Math.round(bounds.h));
+
+  const { base, edge, ew, eh } = getCartoonCanvases(iw, ih);
+  const baseCtx = base.getContext('2d');
+  const edgeCtx = edge.getContext('2d');
+  if (!baseCtx || !edgeCtx) return;
+
+  // ── 1. Color-simplified base: blur + saturation ───────────────────────────
+  const blurPx = effect.colorSimplification * 5;
+  baseCtx.clearRect(0, 0, iw, ih);
+  baseCtx.filter =
+    blurPx > 0.1
+      ? `blur(${blurPx.toFixed(1)}px) saturate(${effect.saturation.toFixed(2)})`
+      : `saturate(${effect.saturation.toFixed(2)})`;
+  baseCtx.drawImage(videoEl, 0, 0, iw, ih);
+  baseCtx.filter = 'none';
+
+  // ── 2. Edge detection at half resolution (Sobel) ─────────────────────────
+  edgeCtx.clearRect(0, 0, ew, eh);
+  edgeCtx.drawImage(videoEl, 0, 0, ew, eh);
+
+  const { data: srcData } = edgeCtx.getImageData(0, 0, ew, eh);
+  const edgeImageData = edgeCtx.createImageData(ew, eh);
+  const dst = edgeImageData.data;
+
+  // Grayscale pre-pass
+  const gray = new Float32Array(ew * eh);
+  for (let i = 0; i < ew * eh; i++) {
+    const p = i * 4;
+    gray[i] = 0.299 * srcData[p] + 0.587 * srcData[p + 1] + 0.114 * srcData[p + 2];
+  }
+
+  // edgeStrength=0 → rawThreshold=200 (almost no edges)
+  // edgeStrength=1 → rawThreshold=0   (all gradients become edges)
+  const rawThreshold = (1 - effect.edgeStrength) * 200;
+
+  for (let y = 0; y < eh; y++) {
+    for (let x = 0; x < ew; x++) {
+      let edgeVal = 255; // white = transparent in multiply blend
+      if (y > 0 && y < eh - 1 && x > 0 && x < ew - 1) {
+        const tl = gray[(y - 1) * ew + (x - 1)];
+        const tm = gray[(y - 1) * ew + x];
+        const tr = gray[(y - 1) * ew + (x + 1)];
+        const ml = gray[y * ew + (x - 1)];
+        const mr = gray[y * ew + (x + 1)];
+        const bl = gray[(y + 1) * ew + (x - 1)];
+        const bm = gray[(y + 1) * ew + x];
+        const br = gray[(y + 1) * ew + (x + 1)];
+        const gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
+        const gy = -tl - 2 * tm - tr + bl + 2 * bm + br;
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        if (mag > rawThreshold) {
+          // Darker = stronger edge; scale by edgeStrength
+          edgeVal = Math.max(0, 255 - (mag - rawThreshold) * effect.edgeStrength * 4);
+        }
+      }
+      const idx = (y * ew + x) * 4;
+      dst[idx] = dst[idx + 1] = dst[idx + 2] = Math.round(edgeVal);
+      dst[idx + 3] = 255;
+    }
+  }
+  edgeCtx.putImageData(edgeImageData, 0, 0);
+
+  // ── 3. Multiply edges onto base ───────────────────────────────────────────
+  // White pixels (no edge) leave base unchanged; dark pixels darken the base.
+  baseCtx.save();
+  baseCtx.globalCompositeOperation = 'multiply';
+  baseCtx.drawImage(edge, 0, 0, ew, eh, 0, 0, iw, ih);
+  baseCtx.restore();
+
+  // ── 4. Blit result to main canvas (inherits caller's globalAlpha + transform) ──
+  ctx.drawImage(base, bounds.x, bounds.y, bounds.w, bounds.h);
+}
+
 // ─── Video element cache ──────────────────────────────────────────────────────
 
 const videoElementCache = new Map<string, HTMLVideoElement>();
@@ -516,8 +630,13 @@ export default function Preview({
             ctx.translate(-cx, -cy);
           }
 
+          const cartoonEff = clip.effects.find((e) => e.type === 'cartoon' && e.enabled);
           try {
-            ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
+            if (cartoonEff && cartoonEff.type === 'cartoon') {
+              applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff);
+            } else {
+              ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
+            }
           } catch {
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
