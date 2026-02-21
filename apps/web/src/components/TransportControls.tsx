@@ -48,15 +48,47 @@ export default function TransportControls({
   const timeDisplayRef = useRef<HTMLSpanElement>(null);
   const rafRef = useRef<number>(0);
 
-  // When playing, update progress bar directly via DOM to guarantee 60fps updates
-  // regardless of React's render scheduling.
+  // Keep latest displayDuration/waStart in refs so the RAF loop always reads
+  // up-to-date values without needing to restart when they change.
+  const displayDurationRef = useRef(displayDuration);
+  displayDurationRef.current = displayDuration;
+  const waStartRef = useRef(waStart);
+  waStartRef.current = waStart;
+
+  // When NOT playing, sync progress bar width from React state so seeking and
+  // paused-seek scrubbing are reflected immediately.
+  useEffect(() => {
+    if (isPlaying) return;
+    const pct = Math.min(100, Math.max(0, progress));
+    if (progressFillRef.current) {
+      progressFillRef.current.style.transition = 'width 0.08s linear';
+      progressFillRef.current.style.width = `${pct}%`;
+    }
+    if (scrubDotRef.current) {
+      scrubDotRef.current.style.left = `calc(${pct}% - 10px)`;
+    }
+    if (timeDisplayRef.current) {
+      timeDisplayRef.current.textContent = formatTime(displayTime);
+    }
+  }, [isPlaying, progress, displayTime]);
+
+  // When playing, update progress bar directly via DOM at 60fps to guarantee
+  // smooth updates regardless of React's render scheduling. React must NOT
+  // control the `width` style on progressFillRef while this loop is active —
+  // that's why we manage width exclusively via DOM refs here (and via the
+  // effect above when paused).
   useEffect(() => {
     if (!isPlaying || !getTime) return;
 
+    if (progressFillRef.current) {
+      progressFillRef.current.style.transition = 'none';
+    }
+
     const update = () => {
       const t = getTime();
-      const dt = Math.max(0, t - waStart);
-      const pct = displayDuration > 0 ? (dt / displayDuration) * 100 : 0;
+      const dt = Math.max(0, t - waStartRef.current);
+      const dd = displayDurationRef.current;
+      const pct = dd > 0 ? (dt / dd) * 100 : 0;
       const clampedPct = Math.min(100, Math.max(0, pct));
 
       if (progressFillRef.current) {
@@ -74,7 +106,7 @@ export default function TransportControls({
 
     rafRef.current = requestAnimationFrame(update);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying, displayDuration, waStart, getTime]);
+  }, [isPlaying, getTime]);
 
   return (
     <div
@@ -218,7 +250,8 @@ export default function TransportControls({
             onSeek(waStart + ratio * displayDuration);
           }}
         >
-          {/* Filled portion — width driven by DOM ref during playback */}
+          {/* Filled portion — width driven exclusively via DOM ref (progressFillRef).
+              React must NOT set width here; it would overwrite the RAF loop's updates. */}
           <div
             ref={progressFillRef}
             style={{
@@ -226,10 +259,9 @@ export default function TransportControls({
               left: 0,
               top: 0,
               height: '100%',
-              width: `${progress}%`,
+              width: 0,
               borderRadius: 6,
               overflow: 'hidden',
-              transition: isPlaying && getTime ? 'none' : 'width 0.08s linear',
             }}
           >
             <div
@@ -243,7 +275,7 @@ export default function TransportControls({
             {/* Shimmer */}
             <div className="progress-shimmer" />
           </div>
-          {/* Scrubber dot */}
+          {/* Scrubber dot — left position driven exclusively via DOM ref */}
           <div
             ref={scrubDotRef}
             className="opacity-0 group-hover:opacity-100"
@@ -251,7 +283,7 @@ export default function TransportControls({
               position: 'absolute',
               top: '50%',
               transform: 'translateY(-50%)',
-              left: `calc(${progress}% - 10px)`,
+              left: `calc(0% - 10px)`,
               width: 20,
               height: 20,
               background: '#00d4a0',
