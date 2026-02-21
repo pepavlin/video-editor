@@ -81,6 +81,7 @@ export default function Editor() {
     saving,
     createProject,
     updateProject,
+    addTrack,
     addClip,
     updateClip,
     deleteClip,
@@ -92,6 +93,7 @@ export default function Editor() {
   } = projectHook;
 
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [draggedAssetId, setDraggedAssetId] = useState<string | null>(null);
   const [waveforms, setWaveforms] = useState(new Map<string, WaveformData>());
   const [beatsData, setBeatsData] = useState(new Map<string, BeatsData>());
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -238,6 +240,52 @@ export default function Editor() {
     setJobNotifications((prev) => [...prev.slice(-4), msg]);
     setTimeout(() => setJobNotifications((prev) => prev.filter((m) => m !== msg)), 5000);
   };
+
+  // Clear dragged asset when drag ends anywhere on the document
+  useEffect(() => {
+    const onDragEnd = () => setDraggedAssetId(null);
+    document.addEventListener('dragend', onDragEnd);
+    return () => document.removeEventListener('dragend', onDragEnd);
+  }, []);
+
+  const draggedAsset = assets.find((a) => a.id === draggedAssetId) ?? null;
+
+  // Handle drop that creates a new track + adds clip atomically
+  const handleDropAssetNewTrack = useCallback(
+    (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => {
+      updateProject((p) => {
+        const count = p.tracks.filter((t) => t.type === assetType).length;
+        const name = assetType === 'audio' ? `Audio ${count + 1}` : `Video ${count + 1}`;
+        const trackId = `track_${Date.now()}`;
+        const isVideo = assetType === 'video';
+        const newClip = {
+          id: `clip_${Date.now()}`,
+          assetId,
+          trackId,
+          timelineStart,
+          timelineEnd: timelineStart + duration,
+          sourceStart: 0,
+          sourceEnd: duration,
+          effects: [] as any[],
+          ...(isVideo && {
+            useClipAudio: false,
+            clipAudioVolume: 1,
+            transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+          }),
+        };
+        const newTrack = {
+          id: trackId,
+          type: assetType,
+          name,
+          isMaster: false,
+          muted: false,
+          clips: [newClip],
+        };
+        return { ...p, tracks: [...p.tracks, newTrack] };
+      });
+    },
+    [updateProject]
+  );
 
   const masterTrack = project?.tracks.find((t) => t.type === 'audio' && t.isMaster);
   const masterClip = masterTrack?.clips[0];
@@ -499,7 +547,7 @@ export default function Editor() {
           className="flex-shrink-0 border-r panel flex flex-col"
           style={{ width: leftWidth, borderColor: 'rgba(255,255,255,0.07)' }}
         >
-          <MediaBin assets={assets} onAssetsChange={refreshAssets} />
+          <MediaBin assets={assets} onAssetsChange={refreshAssets} onDragAsset={setDraggedAssetId} />
         </div>
 
         {/* Left resize handle */}
@@ -568,12 +616,14 @@ export default function Editor() {
               beatsData={beatsData}
               selectedClipId={selectedClipId}
               workArea={workArea}
+              draggedAsset={draggedAsset}
               onSeek={playback.seek}
               onClipSelect={setSelectedClipId}
               onClipUpdate={(clipId, updates) => updateClip(clipId, updates)}
               onClipDelete={(clipId) => { deleteClip(clipId); setSelectedClipId(null); }}
               onSplit={(clipId, time) => splitClip(clipId, time)}
               onDropAsset={(trackId, assetId, start, dur) => addClip(trackId, assetId, start, dur)}
+              onDropAssetNewTrack={handleDropAssetNewTrack}
               onWorkAreaChange={handleWorkAreaChange}
             />
           </div>

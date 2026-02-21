@@ -205,6 +205,7 @@ export default function Inspector({
             <Row label="Duration">{valueText(formatTime(selectedClip.timelineEnd - selectedClip.timelineStart))}</Row>
           </Section>
 
+          {selectedTrackType === 'video' && selectedClip.transform && (
           <Section title="Transform">
             <Row label="Scale">
               <NumInput
@@ -213,7 +214,7 @@ export default function Inspector({
                 max={5}
                 onChange={(v) =>
                   onClipUpdate(selectedClip!.id, {
-                    transform: { ...selectedClip!.transform, scale: v },
+                    transform: { ...selectedClip!.transform!, scale: v },
                   })
                 }
               />
@@ -224,7 +225,7 @@ export default function Inspector({
                 step={1}
                 onChange={(v) =>
                   onClipUpdate(selectedClip!.id, {
-                    transform: { ...selectedClip!.transform, x: v },
+                    transform: { ...selectedClip!.transform!, x: v },
                   })
                 }
               />
@@ -235,7 +236,7 @@ export default function Inspector({
                 step={1}
                 onChange={(v) =>
                   onClipUpdate(selectedClip!.id, {
-                    transform: { ...selectedClip!.transform, y: v },
+                    transform: { ...selectedClip!.transform!, y: v },
                   })
                 }
               />
@@ -250,12 +251,13 @@ export default function Inspector({
                 style={{ width: '100%' }}
                 onChange={(e) =>
                   onClipUpdate(selectedClip!.id, {
-                    transform: { ...selectedClip!.transform, opacity: parseFloat(e.target.value) },
+                    transform: { ...selectedClip!.transform!, opacity: parseFloat(e.target.value) },
                   })
                 }
               />
             </Row>
           </Section>
+          )}
 
           {selectedTrackType === 'video' && (
           <Section title="Audio">

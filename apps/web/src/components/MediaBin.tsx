@@ -71,7 +71,9 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset }: Props)
   const handleAssetDragStart = (e: React.DragEvent, asset: Asset) => {
     e.dataTransfer.setData('assetId', asset.id);
     e.dataTransfer.setData('assetDuration', String(asset.duration));
+    e.dataTransfer.setData('assetType', asset.type);
     e.dataTransfer.effectAllowed = 'copy';
+    onDragAsset?.(asset.id);
   };
 
   const handleLinkFile = async (filename: string) => {

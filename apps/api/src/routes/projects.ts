@@ -25,12 +25,6 @@ function makeDefaultProject(name: string): Project {
         clips: [],
       },
       {
-        id: `track_v2_${uuidv4().slice(0, 8)}`,
-        type: 'video',
-        name: 'Video 2',
-        clips: [],
-      },
-      {
         id: `track_master_${uuidv4().slice(0, 8)}`,
         type: 'audio',
         isMaster: true,

@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Effect } from '@video-editor/shared';
+import type { Project, Clip, Track, Effect, Transform } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
+
+const DEFAULT_TRANSFORM: Transform = { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
 
 const AUTOSAVE_DELAY = 1500;
 
@@ -77,6 +79,28 @@ export function useProject() {
     });
   }, [setProject, recomputeDuration]);
 
+  // Add track to project
+  const addTrack = useCallback(
+    (type: 'video' | 'audio', options: { name?: string; isMaster?: boolean } = {}): string => {
+      const trackId = genId('track');
+      updateProject((p) => {
+        const count = p.tracks.filter((t) => t.type === type).length;
+        const name = options.name ?? (type === 'audio' ? `Audio ${count + 1}` : `Video ${count + 1}`);
+        const newTrack: Track = {
+          id: trackId,
+          type,
+          name,
+          isMaster: options.isMaster ?? false,
+          muted: false,
+          clips: [],
+        };
+        return { ...p, tracks: [...p.tracks, newTrack] };
+      });
+      return trackId;
+    },
+    [updateProject]
+  );
+
   // Add clip to track
   const addClip = useCallback(
     (trackId: string, assetId: string, timelineStart: number, duration: number) => {
@@ -84,6 +108,7 @@ export function useProject() {
         ...p,
         tracks: p.tracks.map((t) => {
           if (t.id !== trackId) return t;
+          const isVideo = t.type === 'video';
           const clip: Clip = {
             id: genId('clip'),
             assetId,
@@ -92,10 +117,13 @@ export function useProject() {
             timelineEnd: timelineStart + duration,
             sourceStart: 0,
             sourceEnd: duration,
-            useClipAudio: false,
-            clipAudioVolume: 1,
-            transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
             effects: [],
+            // Video-only fields:
+            ...(isVideo && {
+              useClipAudio: false,
+              clipAudioVolume: 1,
+              transform: { ...DEFAULT_TRANSFORM },
+            }),
           };
           return { ...t, clips: [...t.clips, clip] };
         }),
@@ -242,6 +270,7 @@ export function useProject() {
     createProject,
     loadProject,
     updateProject,
+    addTrack,
     addClip,
     updateClip,
     deleteClip,

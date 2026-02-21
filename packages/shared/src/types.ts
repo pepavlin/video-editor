@@ -36,9 +36,10 @@ export interface Clip {
   timelineEnd: number;   // seconds on timeline
   sourceStart: number;   // trim: start in asset (seconds)
   sourceEnd: number;     // trim: end in asset (seconds)
-  useClipAudio: boolean;
-  clipAudioVolume: number; // 0..2
-  transform: Transform;
+  // Video-clip-only fields (absent on audio clips):
+  useClipAudio?: boolean;    // use embedded audio from video clip
+  clipAudioVolume?: number;  // 0..2, defaults to 1
+  transform?: Transform;     // position/scale/opacity (video tracks only)
   effects: Effect[];
 }
 
