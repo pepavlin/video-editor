@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 
 const VERSION_KEY = 'app_last_seen_version';
+const DISMISSED_BUILD_KEY = 'app_dismissed_build';
 const POLL_INTERVAL_MS = 60_000; // check every 60 s
 const INITIAL_POLL_DELAY_MS = 10_000; // first check after 10 s
 
@@ -32,9 +33,11 @@ export function useVersionCheck(): { status: VersionStatus; dismiss: () => void 
 
   const dismiss = useCallback(() => {
     setStatus(null);
-    // Remember the dismissed server build so the poll doesn't re-trigger it.
+    // Remember the dismissed server build so the poll doesn't re-trigger it —
+    // both in-memory (ref) and in localStorage so it persists across page loads.
     if (detectedServerBuildRef.current) {
       dismissedServerBuildRef.current = detectedServerBuildRef.current;
+      localStorage.setItem(DISMISSED_BUILD_KEY, detectedServerBuildRef.current);
     }
   }, []);
 
@@ -42,6 +45,12 @@ export function useVersionCheck(): { status: VersionStatus; dismiss: () => void 
     const currentBuildId: string =
       (window as unknown as { __NEXT_DATA__?: { buildId?: string } }).__NEXT_DATA__?.buildId ??
       'dev';
+
+    // ── Restore previously dismissed server build from localStorage ───────────
+    const persistedDismissed = localStorage.getItem(DISMISSED_BUILD_KEY);
+    if (persistedDismissed) {
+      dismissedServerBuildRef.current = persistedDismissed;
+    }
 
     // ── Welcome detection ─────────────────────────────────────────────────────
     const lastSeenVersion = localStorage.getItem(VERSION_KEY);
