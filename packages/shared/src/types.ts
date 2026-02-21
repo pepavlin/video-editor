@@ -55,7 +55,7 @@ export interface Clip {
   useClipAudio?: boolean;    // use embedded audio from video clip
   clipAudioVolume?: number;  // 0..2, defaults to 1
   transform?: Transform;     // position/scale/rotation/opacity (video + text tracks)
-  effects: Effect[];
+  effects?: Effect[]; // @deprecated – use effect tracks (Track.type === 'effect') instead
   // Text-clip-only fields:
   textContent?: string;      // text to display (text tracks only)
   textStyle?: TextStyle;     // text appearance (text tracks only)

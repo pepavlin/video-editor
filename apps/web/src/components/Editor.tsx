@@ -47,9 +47,6 @@ export default function Editor() {
     updateClip,
     deleteClip,
     splitClip,
-    addEffect,
-    removeEffect,
-    updateEffect,
     findClip,
     reorderTrack,
   } = projectHook;
@@ -206,7 +203,6 @@ export default function Editor() {
           timelineEnd: timelineStart + duration,
           sourceStart: 0,
           sourceEnd: duration,
-          effects: [] as any[],
           ...(isVideo && {
             useClipAudio: false,
             clipAudioVolume: 1,
