@@ -15,65 +15,87 @@ export default function TransportControls({ isPlaying, currentTime, duration, on
 
   return (
     <div
-      className="flex items-center gap-4 px-5 flex-shrink-0 border-b select-none"
       style={{
-        height: 56,
-        background: 'rgba(10,20,36,0.92)',
-        backdropFilter: 'blur(16px)',
-        borderColor: 'rgba(255,255,255,0.08)',
-        boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.12)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '0 20px',
+        flexShrink: 0,
+        height: 64,
+        background: 'rgba(8,18,34,0.95)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.10)',
+        userSelect: 'none',
       }}
     >
       {/* Play/Pause button */}
       <button
         onClick={onToggle}
-        className="rounded-full flex items-center justify-center flex-shrink-0 active:scale-95"
         style={{
-          width: 48,
-          height: 48,
-          background: isPlaying
-            ? 'linear-gradient(135deg, #00d4a0, #38bdf8)'
-            : 'linear-gradient(135deg, #00d4a0, #38bdf8)',
+          width: 52,
+          height: 52,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
           boxShadow: isPlaying
-            ? '0 0 32px rgba(0,212,160,0.75), 0 0 10px rgba(56,189,248,0.4), 0 4px 12px rgba(0,0,0,0.35)'
-            : '0 0 18px rgba(0,212,160,0.4), 0 4px 12px rgba(0,0,0,0.3)',
-          border: '1.5px solid rgba(0,212,160,0.5)',
+            ? '0 0 36px rgba(0,212,160,0.80), 0 0 12px rgba(56,189,248,0.45), 0 4px 14px rgba(0,0,0,0.35)'
+            : '0 0 20px rgba(0,212,160,0.45), 0 4px 14px rgba(0,0,0,0.30)',
+          border: '1.5px solid rgba(0,212,160,0.50)',
+          cursor: 'pointer',
           transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
           animation: isPlaying ? 'glowPulse 2.5s ease-in-out infinite' : 'none',
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.transform = 'scale(1.1)';
-          (e.currentTarget as HTMLElement).style.boxShadow = '0 0 32px rgba(0,212,160,0.7), 0 6px 16px rgba(0,0,0,0.4)';
+          (e.currentTarget as HTMLElement).style.transform = 'scale(1.10)';
+          (e.currentTarget as HTMLElement).style.boxShadow = '0 0 36px rgba(0,212,160,0.75), 0 6px 18px rgba(0,0,0,0.4)';
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLElement).style.transform = '';
           (e.currentTarget as HTMLElement).style.boxShadow = isPlaying
-            ? '0 0 32px rgba(0,212,160,0.75), 0 0 10px rgba(56,189,248,0.4), 0 4px 12px rgba(0,0,0,0.35)'
-            : '0 0 18px rgba(0,212,160,0.4), 0 4px 12px rgba(0,0,0,0.3)';
+            ? '0 0 36px rgba(0,212,160,0.80), 0 0 12px rgba(56,189,248,0.45), 0 4px 14px rgba(0,0,0,0.35)'
+            : '0 0 20px rgba(0,212,160,0.45), 0 4px 14px rgba(0,0,0,0.30)';
         }}
         title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
       >
         {isPlaying ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="#040a08">
+          <svg width="16" height="16" viewBox="0 0 14 14" fill="#040a08">
             <rect x="2" y="1" width="4" height="12" rx="1.5" />
             <rect x="8" y="1" width="4" height="12" rx="1.5" />
           </svg>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="#040a08">
+          <svg width="16" height="16" viewBox="0 0 14 14" fill="#040a08">
             <polygon points="3,1 13,7 3,13" />
           </svg>
         )}
       </button>
 
       {/* Current time */}
-      <span className="font-mono text-sm min-w-[72px] tabular-nums font-semibold" style={{ color: '#7de0cc' }}>
+      <span style={{
+        fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
+        fontSize: 15,
+        minWidth: 80,
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: 600,
+        color: '#7de0cc',
+      }}>
         {formatTime(currentTime)}
       </span>
 
       {/* Seek bar */}
       <div
-        className="flex-1 relative rounded-full cursor-pointer group"
-        style={{ height: 6, background: 'rgba(255,255,255,0.08)' }}
+        style={{
+          flex: 1,
+          position: 'relative',
+          borderRadius: 6,
+          cursor: 'pointer',
+          height: 8,
+          background: 'rgba(255,255,255,0.08)',
+        }}
+        className="group"
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -82,33 +104,56 @@ export default function TransportControls({ isPlaying, currentTime, duration, on
       >
         {/* Filled portion */}
         <div
-          className="absolute left-0 top-0 h-full rounded-full overflow-hidden"
-          style={{ width: `${progress}%`, transition: 'width 0.08s linear' }}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            height: '100%',
+            width: `${progress}%`,
+            borderRadius: 6,
+            overflow: 'hidden',
+            transition: 'width 0.08s linear',
+          }}
         >
           <div
-            className="w-full h-full"
-            style={{ background: 'linear-gradient(90deg, #00d4a0, #38bdf8)', boxShadow: '0 0 8px rgba(0,212,160,0.5)' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(90deg, #00d4a0, #38bdf8)',
+              boxShadow: '0 0 10px rgba(0,212,160,0.55)',
+            }}
           />
           {/* Shimmer */}
           <div className="progress-shimmer" />
         </div>
         {/* Scrubber dot */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 rounded-full opacity-0 group-hover:opacity-100"
+          className="opacity-0 group-hover:opacity-100"
           style={{
-            left: `calc(${progress}% - 8px)`,
-            width: 16,
-            height: 16,
+            position: 'absolute',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            left: `calc(${progress}% - 10px)`,
+            width: 20,
+            height: 20,
             background: '#00d4a0',
-            boxShadow: '0 0 10px rgba(0,212,160,0.8)',
-            border: '2px solid rgba(255,255,255,0.8)',
+            borderRadius: '50%',
+            boxShadow: '0 0 12px rgba(0,212,160,0.85)',
+            border: '2.5px solid rgba(255,255,255,0.85)',
             transition: 'opacity 0.15s',
           }}
         />
       </div>
 
       {/* Duration */}
-      <span className="font-mono text-sm min-w-[72px] text-right tabular-nums" style={{ color: 'rgba(255,255,255,0.22)' }}>
+      <span style={{
+        fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
+        fontSize: 15,
+        minWidth: 80,
+        textAlign: 'right',
+        fontVariantNumeric: 'tabular-nums',
+        color: 'rgba(255,255,255,0.22)',
+      }}>
         {formatTime(duration)}
       </span>
     </div>

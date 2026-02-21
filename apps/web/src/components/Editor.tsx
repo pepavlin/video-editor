@@ -106,9 +106,9 @@ export default function Editor() {
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
 
   // ── Panel sizes (persisted) ────────────────────────────────────────────────
-  const storedLeft = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-left-width') || '260', 10) : 260;
-  const storedRight = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-right-width') || '300', 10) : 300;
-  const storedTimeline = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-timeline-h') || '220', 10) : 220;
+  const storedLeft = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-left-width') || '300', 10) : 300;
+  const storedRight = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-right-width') || '360', 10) : 360;
+  const storedTimeline = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-timeline-h') || '260', 10) : 260;
 
   const [leftWidth, setLeftWidth] = useState(storedLeft);
   const [rightWidth, setRightWidth] = useState(storedRight);
@@ -121,9 +121,9 @@ export default function Editor() {
   const timelineHeightRef = useRef(timelineHeight);
   timelineHeightRef.current = timelineHeight;
 
-  const onLeftResize = useResizeHandle(leftWidthRef, setLeftWidth, 'horizontal', 160, 480, 've-left-width');
-  const onRightResize = useResizeHandle(rightWidthRef, setRightWidth, 'horizontal', 200, 520, 've-right-width');
-  const onTimelineResize = useResizeHandle(timelineHeightRef, setTimelineHeight, 'vertical', 100, 500, 've-timeline-h');
+  const onLeftResize = useResizeHandle(leftWidthRef, setLeftWidth, 'horizontal', 200, 520, 've-left-width');
+  const onRightResize = useResizeHandle(rightWidthRef, setRightWidth, 'horizontal', 240, 560, 've-right-width');
+  const onTimelineResize = useResizeHandle(timelineHeightRef, setTimelineHeight, 'vertical', 120, 520, 've-timeline-h');
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -316,21 +316,22 @@ export default function Editor() {
   if (showProjectPicker) {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: 'inherit' }}>
-        <div className="glass rounded-2xl p-8 w-[420px] space-y-7 shadow-panel">
+        <div className="glass rounded-2xl p-10 w-[480px] space-y-8 shadow-panel">
           {/* Logo / Title */}
           <div>
-            <h1 className="text-2xl font-bold text-gradient">Video Editor</h1>
-            <p className="text-xs text-gray-500 mt-1">Craft your story, frame by frame</p>
+            <h1 className="text-3xl font-bold text-gradient">Video Editor</h1>
+            <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.38)' }}>Craft your story, frame by frame</p>
           </div>
 
           {/* New project */}
-          <div className="space-y-3">
-            <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">New Project</p>
+          <div className="space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.65)', letterSpacing: '0.1em' }}>New Project</p>
             <input
               type="text"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
               placeholder="Project name"
+              style={{ fontSize: 15 }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   createProject(newProjectName).then((proj) => {
@@ -342,7 +343,8 @@ export default function Editor() {
               }}
             />
             <button
-              className="btn btn-primary w-full py-2.5"
+              className="btn btn-primary w-full"
+              style={{ padding: '12px 16px', fontSize: 15 }}
               onClick={async () => {
                 const proj = await createProject(newProjectName);
                 if (proj?.id) setUrlProject(proj.id);
@@ -356,13 +358,13 @@ export default function Editor() {
 
           {/* Recent */}
           {projects.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Recent</p>
-              <div className="space-y-1.5 max-h-52 overflow-y-auto">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.65)', letterSpacing: '0.1em' }}>Recent</p>
+              <div className="space-y-2 max-h-56 overflow-y-auto">
                 {projects.map((p) => (
                   <button
                     key={p.id}
-                    className="w-full text-left rounded-xl p-3 transition-all duration-150"
+                    className="w-full text-left rounded-xl p-4 transition-all duration-150"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLElement;
@@ -383,8 +385,8 @@ export default function Editor() {
                       setShowProjectPicker(false);
                     }}
                   >
-                    <div className="text-sm font-medium" style={{ color: '#d0ece6' }}>{p.name}</div>
-                    <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
+                    <div className="text-sm font-semibold" style={{ color: '#d0ece6' }}>{p.name}</div>
+                    <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.28)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
                   </button>
                 ))}
               </div>
@@ -401,19 +403,20 @@ export default function Editor() {
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center px-4 h-12 flex-shrink-0 gap-4 border-b"
+        className="flex items-center px-5 flex-shrink-0 gap-4 border-b"
         style={{
-          background: 'rgba(10,18,32,0.96)',
+          height: 56,
+          background: 'rgba(8,16,30,0.97)',
           backdropFilter: 'blur(24px)',
-          borderColor: 'rgba(255,255,255,0.08)',
-          boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.10)',
+          borderColor: 'rgba(255,255,255,0.07)',
+          boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.08)',
         }}
       >
-        <span className="font-semibold text-gradient text-sm">
+        <span className="font-bold text-gradient" style={{ fontSize: 16 }}>
           {project?.name ?? 'Video Editor'}
         </span>
         {saving && (
-          <span className="text-xs text-gray-600 flex items-center gap-1">
+          <span className="flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.30)', fontSize: 13 }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent/60 animate-pulse" />
             Saving
           </span>
@@ -422,16 +425,18 @@ export default function Editor() {
         <div className="flex-1" />
 
         <button
-          className="btn btn-ghost text-xs"
+          className="btn btn-ghost"
+          style={{ fontSize: 13 }}
           onClick={() => { setShowProjectPicker(true); refreshProjects(); }}
         >
           Projects
         </button>
 
-        <div className="w-px h-4" style={{ background: 'rgba(255,255,255,0.1)' }} />
+        <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
 
         <button
-          className="btn btn-ghost text-base px-2 py-1 disabled:opacity-25"
+          className="btn btn-ghost disabled:opacity-25"
+          style={{ fontSize: 18, padding: '4px 10px' }}
           disabled={!history.canUndo}
           onClick={history.undo}
           title="Undo (Cmd+Z)"
@@ -439,7 +444,8 @@ export default function Editor() {
           ↺
         </button>
         <button
-          className="btn btn-ghost text-base px-2 py-1 disabled:opacity-25"
+          className="btn btn-ghost disabled:opacity-25"
+          style={{ fontSize: 18, padding: '4px 10px' }}
           disabled={!history.canRedo}
           onClick={history.redo}
           title="Redo (Shift+Cmd+Z)"
@@ -462,7 +468,7 @@ export default function Editor() {
         {/* Left resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(255,255,255,0.04)' }}
+          style={{ width: 5, background: 'rgba(255,255,255,0.04)' }}
           onMouseDown={onLeftResize}
         />
 
@@ -532,7 +538,7 @@ export default function Editor() {
         {/* Right resize handle */}
         <div
           className="resize-handle-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 4, background: 'rgba(255,255,255,0.04)' }}
+          style={{ width: 5, background: 'rgba(255,255,255,0.04)' }}
           onMouseDown={onRightResize}
         />
 
@@ -564,8 +570,8 @@ export default function Editor() {
           {jobNotifications.map((msg, i) => (
             <div
               key={i}
-              className="glass rounded-xl px-4 py-3 text-xs text-gray-200 shadow-panel flex items-center gap-2 toast-enter"
-              style={{ minWidth: 220 }}
+              className="glass rounded-xl px-5 py-4 shadow-panel flex items-center gap-3 toast-enter"
+              style={{ minWidth: 280, color: '#c8e8e0', fontSize: 13 }}
             >
               <span
                 className="inline-block w-2 h-2 rounded-full flex-shrink-0"
