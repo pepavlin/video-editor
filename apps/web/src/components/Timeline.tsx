@@ -447,20 +447,27 @@ export default function Timeline({
           const ar = asset.width && asset.height ? asset.width / asset.height : 9 / 16;
           const thumbH = clipH;
           const thumbW = Math.max(1, Math.round(thumbH * ar));
-          const numFrames = Math.ceil(clipW / thumbW) + 2;
+          // Align frame grid to fixed asset-time intervals so the cache stays valid after trimming/cutting.
+          // Previously the grid started at sourceStart, so any trim shifted all cache keys → full regeneration.
+          // Now frames are at multiples of frameInterval from asset time 0; trimming only changes which
+          // frames are visible, not their cache keys.
+          const frameInterval = thumbW / Z;
+          const firstSourceTime = Math.floor(clip.sourceStart / frameInterval) * frameInterval;
+          const maxFrames = Math.ceil(clipW / thumbW) + 3;
 
           ctx.save();
           ctx.beginPath();
           ctx.rect(visX, clipTop, visW, clipH);
           ctx.clip();
 
-          for (let fi = 0; fi < numFrames; fi++) {
-            const frameRelTimeSec = (fi * thumbW) / Z;
-            const sourceTime = clip.sourceStart + frameRelTimeSec;
+          for (let fi = 0; fi <= maxFrames; fi++) {
+            const sourceTime = firstSourceTime + fi * frameInterval;
             if (sourceTime > clip.sourceEnd + 0.01) break;
 
-            const frameX = clipX + frameRelTimeSec * Z;
-            if (frameX + thumbW < visX || frameX > visX + visW) continue;
+            const timeFromClipStart = sourceTime - clip.sourceStart;
+            const frameX = clipX + timeFromClipStart * Z;
+            if (frameX + thumbW < visX) continue;
+            if (frameX > visX + visW) break;
 
             const thumbKey = `${clip.assetId}:${sourceTime.toFixed(1)}`;
             const bitmap = thumbnailCacheRef.current.get(thumbKey);
