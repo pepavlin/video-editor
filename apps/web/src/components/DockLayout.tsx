@@ -552,6 +552,31 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
     registerLeaf(node.id, node.panelId, el);
   }, [node.id, node.panelId, registerLeaf]);
 
+  const [showHeader, setShowHeader] = useState(false);
+  const showHeaderRef = useRef(false);
+  // Track if mouse is inside the panel
+  const insideRef = useRef(false);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    const shouldShow = relY <= 34;
+    if (shouldShow !== showHeaderRef.current) {
+      showHeaderRef.current = shouldShow;
+      setShowHeader(shouldShow);
+    }
+  }, []);
+
+  const handleMouseEnter = useCallback(() => {
+    insideRef.current = true;
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    insideRef.current = false;
+    showHeaderRef.current = false;
+    setShowHeader(false);
+  }, []);
+
   const isBeingDragged = dragState.panel === node.panelId;
   const isDropTarget   = dragState.target?.nodeId === node.id;
   const dropZone       = isDropTarget ? dragState.target!.zone : null;
@@ -560,6 +585,9 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
   return (
     <div
       ref={setRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       style={{
         flex: 1,
         display: 'flex',
@@ -572,7 +600,7 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
         transition: 'opacity 0.12s',
       }}
     >
-      {/* Drag handle / title bar */}
+      {/* Hover-reveal drag handle / title bar – absolutely positioned, overlays content */}
       <div
         onMouseDown={(e) => {
           if (e.button !== 0) return;
@@ -580,7 +608,11 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
           onStartDrag(node.panelId, e.clientX, e.clientY);
         }}
         style={{
-          flexShrink: 0,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 20,
           height: 22,
           display: 'flex',
           alignItems: 'center',
@@ -588,21 +620,25 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
           paddingRight: 8,
           gap: 6,
           cursor: 'grab',
-          background: 'rgba(255,255,255,0.025)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(6,14,26,0.88)',
+          backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
           userSelect: 'none',
           fontSize: 10,
           fontWeight: 700,
-          color: 'rgba(255,255,255,0.30)',
+          color: 'rgba(255,255,255,0.35)',
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
+          opacity: showHeader ? 1 : 0,
+          pointerEvents: showHeader ? 'auto' : 'none',
+          transition: 'opacity 0.18s ease',
         }}
       >
         <GripDots />
         {PANEL_LABELS[node.panelId] ?? node.panelId}
       </div>
 
-      {/* Panel content */}
+      {/* Panel content – takes full height since header is absolute */}
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {renderer
           ? renderer()
