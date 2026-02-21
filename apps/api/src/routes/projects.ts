@@ -162,6 +162,95 @@ export async function projectsRoutes(app: FastifyInstance) {
     return reply.code(202).send({ jobId: job.id });
   });
 
+  // POST /projects/:id/clips/:clipId/align-lyrics
+  // Aligns lyrics for a specific lyrics clip using Whisper and updates the clip's lyricsWords field.
+  app.post<{
+    Params: { id: string; clipId: string };
+    Body: { text: string; audioAssetId?: string };
+  }>('/projects/:id/clips/:clipId/align-lyrics', async (req, reply) => {
+    const project = ws.readProject(req.params.id);
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    const { text, audioAssetId } = req.body;
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return reply.code(400).send({ error: 'text is required' });
+    }
+    if (text.length > 100_000) {
+      return reply.code(400).send({ error: 'Lyrics text too long (max 100k chars)' });
+    }
+
+    // Find the clip
+    let targetClip: Clip | undefined;
+    for (const track of project.tracks) {
+      const found = track.clips.find((c) => c.id === req.params.clipId);
+      if (found) { targetClip = found; break; }
+    }
+    if (!targetClip) return reply.code(404).send({ error: 'Clip not found' });
+
+    // Find master audio wav
+    let audioWavPath: string | null = null;
+    const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
+    const masterClip = masterTrack?.clips[0];
+    const targetAssetId = audioAssetId ?? masterClip?.assetId;
+
+    if (targetAssetId) {
+      const asset = ws.getAsset(targetAssetId);
+      if (asset?.audioPath) {
+        const wavPath = path.join(ws.getWorkspaceDir(), asset.audioPath);
+        if (fs.existsSync(wavPath)) audioWavPath = wavPath;
+      }
+    }
+
+    if (!audioWavPath) {
+      return reply.code(400).send({ error: 'No audio WAV available. Import and wait for a master audio track.' });
+    }
+
+    const projectDir = ws.getProjectDir(project.id);
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const clipId = req.params.clipId;
+    const job = jq.createJob('lyrics', project.id);
+    const lyricsOutputPath = path.join(projectDir, `words_${clipId}.json`);
+    const textFilePath = path.join(projectDir, `lyrics_input_${clipId}.txt`);
+    fs.writeFileSync(textFilePath, text);
+
+    const scriptPath = path.join(config.scriptsDir, 'align_lyrics.py');
+
+    jq.runCommand(
+      job.id,
+      config.pythonBin,
+      [scriptPath, audioWavPath, textFilePath, lyricsOutputPath],
+      {
+        onDone: () => {
+          try {
+            const words = JSON.parse(fs.readFileSync(lyricsOutputPath, 'utf8'));
+            const proj = ws.readProject(project.id);
+            if (proj) {
+              const updatedProject: Project = {
+                ...proj,
+                tracks: proj.tracks.map((t) => ({
+                  ...t,
+                  clips: t.clips.map((c) =>
+                    c.id === clipId
+                      ? { ...c, lyricsWords: words, lyricsAlignStatus: 'done' as const }
+                      : c
+                  ),
+                })),
+                updatedAt: new Date().toISOString(),
+              };
+              ws.writeProject(updatedProject);
+            }
+          } catch (e) {
+            ws.appendJobLog(job.id, `Failed to update clip with lyrics: ${e}`);
+          }
+        },
+        outputPath: lyricsOutputPath,
+      }
+    );
+
+    return reply.code(202).send({ jobId: job.id });
+  });
+
   // POST /projects/:id/clips/:clipId/sync-audio
   // Finds where the clip's audio best aligns within the master audio using cross-correlation.
   // Returns { offset, confidence, newTimelineStart } without modifying the project.

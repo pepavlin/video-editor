@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Transform, TextStyle, EffectClipConfig, EffectType } from '@video-editor/shared';
+import type { Project, Clip, Track, Transform, TextStyle, EffectClipConfig, EffectType, LyricsStyle } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 
@@ -236,6 +236,48 @@ export function useProject() {
     [updateProject]
   );
 
+  // Add a lyrics track with one clip at timelineStart
+  const addLyricsTrack = useCallback(
+    (timelineStart: number, duration: number, text: string = '') => {
+      const trackId = genId('track');
+      const clipId = genId('clip');
+      const defaultStyle: LyricsStyle = {
+        fontSize: 48,
+        color: '#ffffff',
+        highlightColor: '#FFE600',
+        position: 'bottom',
+        wordsPerChunk: 3,
+      };
+      updateProject((p) => {
+        const count = p.tracks.filter((t) => t.type === 'lyrics').length;
+        const newTrack: Track = {
+          id: trackId,
+          type: 'lyrics',
+          name: `Lyrics ${count + 1}`,
+          muted: false,
+          clips: [
+            {
+              id: clipId,
+              assetId: '',
+              trackId,
+              timelineStart,
+              timelineEnd: timelineStart + duration,
+              sourceStart: 0,
+              sourceEnd: duration,
+              lyricsContent: text,
+              lyricsStyle: defaultStyle,
+              lyricsAlignStatus: 'idle',
+              transform: { ...DEFAULT_TRANSFORM },
+            },
+          ],
+        };
+        return { ...p, tracks: [...p.tracks, newTrack] };
+      });
+      return clipId;
+    },
+    [updateProject]
+  );
+
   // Add clip to track
   const addClip = useCallback(
     (trackId: string, assetId: string, timelineStart: number, duration: number) => {
@@ -362,6 +404,7 @@ export function useProject() {
     updateProject,
     addTrack,
     addTextTrack,
+    addLyricsTrack,
     addEffectTrack,
     updateEffectClipConfig,
     addClip,

@@ -41,6 +41,7 @@ export default function Editor() {
     updateProject,
     addTrack,
     addTextTrack,
+    addLyricsTrack,
     addEffectTrack,
     updateEffectClipConfig,
     addClip,
@@ -247,12 +248,13 @@ export default function Editor() {
     finally { setBeatsProgress(null); setBeatsLogLine(null); }
   };
 
-  const handleAlignLyrics = async (text: string) => {
+  const handleAlignLyricsClip = async (clipId: string, text: string) => {
     if (!project) return;
     notify('Starting lyrics alignment...');
     try {
-      const { jobId } = await api.alignLyrics(project.id, text, masterAssetId);
+      const { jobId } = await api.alignLyricsClip(project.id, clipId, text, masterAssetId);
       await api.pollJob(jobId, (j) => notify(`Lyrics: ${j.progress}%`));
+      // Reload project to get updated lyricsWords on the clip
       const { project: updated } = await api.loadProject(project.id);
       setProject(updated);
       notify('Lyrics aligned!');
@@ -637,10 +639,9 @@ export default function Editor() {
           onUpdateEffectClipConfig={updateEffectClipConfig}
           onUpdateProject={updateProject}
           masterAssetId={masterAssetId}
-          onAlignLyrics={handleAlignLyrics}
+          onAlignLyricsClip={handleAlignLyricsClip}
           onStartCutout={handleStartCutout}
           onStartHeadStabilization={handleStartHeadStabilization}
-          onExport={handleExport}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
         />
       </div>
@@ -792,6 +793,28 @@ export default function Editor() {
             WebkitTextFillColor: 'transparent',
           }}>T</span>
           Add Text
+        </button>
+
+        <button
+          className="btn btn-ghost"
+          style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
+          disabled={!project}
+          title="Add a lyrics track to the timeline"
+          onClick={() => {
+            if (!project) return;
+            const start = playback.currentTime;
+            const duration = 10;
+            const clipId = addLyricsTrack(start, duration);
+            setSelectedClipId(clipId);
+          }}
+        >
+          <span style={{
+            fontSize: 14, fontWeight: 700,
+            background: 'linear-gradient(135deg, #c084fc, #818cf8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>♪</span>
+          Add Lyrics
         </button>
       </div>
 
