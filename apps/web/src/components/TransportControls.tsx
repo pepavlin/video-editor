@@ -41,6 +41,7 @@ export default function TransportControls({
   // Local edit state for work area inputs
   const [editStart, setEditStart] = useState<string | null>(null);
   const [editEnd, setEditEnd] = useState<string | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   const hasWorkArea = workArea != null && onWorkAreaChange != null;
 
@@ -274,15 +275,38 @@ export default function TransportControls({
             position: 'relative',
             borderRadius: 6,
             cursor: 'pointer',
-            height: 8,
+            height: isMobile ? 12 : 8,
             background: 'rgba(255,255,255,0.08)',
+            // Enlarge touch hit area vertically via padding
+            paddingTop: isMobile ? 8 : 4,
+            paddingBottom: isMobile ? 8 : 4,
+            marginTop: isMobile ? -8 : -4,
+            marginBottom: isMobile ? -8 : -4,
+            touchAction: 'none',
           }}
           className="group"
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            // Translate to absolute project time
             onSeek(waStart + ratio * displayDuration);
+          }}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            setIsScrubbing(true);
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.touches[0].clientX - rect.left) / rect.width));
+            onSeek(waStart + ratio * displayDuration);
+          }}
+          onTouchMove={(e) => {
+            e.preventDefault();
+            if (!isScrubbing) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.touches[0].clientX - rect.left) / rect.width));
+            onSeek(waStart + ratio * displayDuration);
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            setIsScrubbing(false);
           }}
         >
           {/* Filled portion — width driven exclusively via DOM ref (progressFillRef).
@@ -292,8 +316,8 @@ export default function TransportControls({
             style={{
               position: 'absolute',
               left: 0,
-              top: 0,
-              height: '100%',
+              top: isMobile ? 8 : 4,
+              height: isMobile ? 12 : 8,
               width: 0,
               borderRadius: 6,
               overflow: 'hidden',
@@ -310,22 +334,24 @@ export default function TransportControls({
             {/* Shimmer */}
             <div className="progress-shimmer" />
           </div>
-          {/* Scrubber dot — left position driven exclusively via DOM ref */}
+          {/* Scrubber dot — always visible on mobile/touch, hover-only on desktop */}
           <div
             ref={scrubDotRef}
-            className="opacity-0 group-hover:opacity-100"
+            className={isMobile ? '' : 'opacity-0 group-hover:opacity-100'}
             style={{
               position: 'absolute',
               top: '50%',
               transform: 'translateY(-50%)',
               left: `calc(0% - 10px)`,
-              width: 20,
-              height: 20,
+              width: isMobile ? 24 : 20,
+              height: isMobile ? 24 : 20,
               background: '#00d4a0',
               borderRadius: '50%',
               boxShadow: '0 0 12px rgba(0,212,160,0.85)',
               border: '2.5px solid rgba(255,255,255,0.85)',
               transition: 'opacity 0.15s',
+              opacity: isMobile ? 1 : undefined,
+              zIndex: 2,
             }}
           />
         </div>
