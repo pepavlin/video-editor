@@ -388,7 +388,7 @@ export default function Timeline({
     // ─── Beat markers on ruler ─────────────────────────────────────────────
     const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
-    if (masterClip) {
+    if (masterClip && snapModeRef.current === 'beats') {
       const beats = beatsData.get(masterClip.assetId);
       if (beats) {
         ctx.fillStyle = 'rgba(0, 212, 160, 0.60)';
@@ -508,7 +508,7 @@ export default function Timeline({
       }
 
       // Beat markers on tracks
-      if (masterClip) {
+      if (masterClip && snapModeRef.current === 'beats') {
         const beats = beatsData.get(masterClip.assetId);
         if (beats) {
           ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.20)' : 'rgba(0, 212, 160, 0.15)';
