@@ -531,10 +531,12 @@ export default function Editor() {
             currentTime={playback.currentTime}
             duration={playback.duration || project?.duration || 0}
             isLooping={playback.isLooping}
+            workArea={workArea}
             onToggle={playback.toggle}
             onLoopToggle={playback.toggleLoop}
             onSeek={playback.seek}
             getTime={playback.getTime}
+            onWorkAreaChange={handleWorkAreaChange}
           />
 
           {/* Preview */}

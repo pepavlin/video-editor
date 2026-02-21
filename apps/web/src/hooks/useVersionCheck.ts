@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 const VERSION_KEY = 'app_last_seen_version';
 const POLL_INTERVAL_MS = 60_000; // check every 60 s
@@ -25,7 +25,18 @@ export type VersionStatus = 'welcome' | 'update-available' | null;
 export function useVersionCheck(): { status: VersionStatus; dismiss: () => void } {
   const [status, setStatus] = useState<VersionStatus>(null);
 
-  const dismiss = useCallback(() => setStatus(null), []);
+  // Track which server build the user has already dismissed so polling
+  // doesn't re-show the banner for the same build after the user closes it.
+  const dismissedServerBuildRef = useRef<string | null>(null);
+  const detectedServerBuildRef = useRef<string | null>(null);
+
+  const dismiss = useCallback(() => {
+    setStatus(null);
+    // Remember the dismissed server build so the poll doesn't re-trigger it.
+    if (detectedServerBuildRef.current) {
+      dismissedServerBuildRef.current = detectedServerBuildRef.current;
+    }
+  }, []);
 
   useEffect(() => {
     const currentBuildId: string =
@@ -45,7 +56,12 @@ export function useVersionCheck(): { status: VersionStatus; dismiss: () => void 
         const res = await fetch('/app-version', { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as { buildId?: string };
-        if (data.buildId && data.buildId !== currentBuildId) {
+        if (
+          data.buildId &&
+          data.buildId !== currentBuildId &&
+          data.buildId !== dismissedServerBuildRef.current
+        ) {
+          detectedServerBuildRef.current = data.buildId;
           setStatus('update-available');
         }
       } catch {
