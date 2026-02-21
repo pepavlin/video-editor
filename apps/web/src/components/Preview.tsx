@@ -585,7 +585,8 @@ export default function Preview({
               currentTime, masterBeats,
               cfg.intensity ?? 0.08,
               cfg.durationMs ?? 150,
-              cfg.easing ?? 'easeOut'
+              cfg.easing ?? 'easeOut',
+              cfg.beatDivision ?? 1
             );
           }
 
@@ -608,17 +609,18 @@ export default function Preview({
             (t) => t.type === 'effect' && t.effectType === 'cartoon' && t.parentTrackId === track.id
           );
           const activeCartoonClip = cartoonEffectTrack?.clips.find(
-            (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
+            (ec) => ec.effectConfig?.enabled &&
+              currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
           );
-          const cartoonCfg = activeCartoonClip?.effectConfig?.enabled ? activeCartoonClip.effectConfig : null;
+          const cartoonCfg = activeCartoonClip?.effectConfig;
           try {
-            if (cartoonCfg) {
+            if (cartoonCfg?.enabled) {
               applyCartoonEffectToCtx(ctx, videoEl, bounds, {
-                type: 'cartoon',
+                type: 'cartoon' as const,
                 enabled: true,
-                edgeStrength: cartoonCfg.edgeStrength ?? 0.6,
                 colorSimplification: cartoonCfg.colorSimplification ?? 0.5,
                 saturation: cartoonCfg.saturation ?? 1.5,
+                edgeStrength: cartoonCfg.edgeStrength ?? 0.6,
               });
             } else {
               ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);

@@ -89,7 +89,7 @@ export function useProject() {
       const defaultConfig: EffectClipConfig = (() => {
         switch (effectType) {
           case 'beatZoom':
-            return { effectType: 'beatZoom', enabled: true, intensity: 0.08, durationMs: 150, easing: 'easeOut' as const };
+            return { effectType: 'beatZoom', enabled: true, intensity: 0.08, durationMs: 150, easing: 'easeOut' as const, beatDivision: 1 };
           case 'cutout':
             return { effectType: 'cutout', enabled: true, background: { type: 'solid' as const, color: '#000000' }, maskStatus: 'pending' as const };
           case 'headStabilization':

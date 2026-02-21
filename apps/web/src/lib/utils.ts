@@ -54,6 +54,34 @@ export function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+// ─── Beat division filter ─────────────────────────────────────────────────────
+
+// beatDivision controls how many beats trigger the zoom:
+//   >= 1  → use every Nth beat (1=every beat, 2=every 2nd, 4=every 4th, …)
+//   < 1   → interpolate sub-beat triggers (0.5=twice per beat, 0.25=4x per beat)
+export function filterBeatsByDivision(beats: number[], beatDivision: number): number[] {
+  if (beatDivision <= 0) return beats;
+
+  if (beatDivision >= 1) {
+    const step = Math.round(beatDivision);
+    return beats.filter((_, i) => i % step === 0);
+  }
+
+  // Sub-beat: interpolate evenly between consecutive beats
+  const subdivisions = Math.round(1 / beatDivision);
+  const result: number[] = [];
+  for (let i = 0; i < beats.length; i++) {
+    result.push(beats[i]);
+    if (i < beats.length - 1) {
+      const interval = beats[i + 1] - beats[i];
+      for (let j = 1; j < subdivisions; j++) {
+        result.push(beats[i] + (j / subdivisions) * interval);
+      }
+    }
+  }
+  return result;
+}
+
 // ─── Beat zoom scale at time t ────────────────────────────────────────────────
 
 // beats[] contains absolute timeline timestamps (= song time, since master audio starts at 0).
@@ -63,10 +91,12 @@ export function getBeatZoomScale(
   beats: number[],
   intensity: number,
   durationMs: number,
-  easing: string
+  easing: string,
+  beatDivision = 1
 ): number {
+  const activeBeats = beatDivision === 1 ? beats : filterBeatsByDivision(beats, beatDivision);
   const dur = durationMs / 1000;
-  for (const beat of beats) {
+  for (const beat of activeBeats) {
     if (t >= beat && t < beat + dur) {
       const progress = (t - beat) / dur;
       const invProgress = 1 - progress; // zoom then release

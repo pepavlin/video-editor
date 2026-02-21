@@ -8,6 +8,7 @@ import {
   easeIn,
   easeInOut,
   getBeatZoomScale,
+  filterBeatsByDivision,
   clamp,
   snap,
 } from '../lib/utils';
@@ -173,6 +174,77 @@ describe('getBeatZoomScale', () => {
 
   it('returns 1 for empty beats array', () => {
     expect(getBeatZoomScale(1.0, [], intensity, durationMs, 'easeOut')).toBe(1);
+  });
+});
+
+// ─── filterBeatsByDivision ─────────────────────────────────────────────────────
+
+describe('filterBeatsByDivision', () => {
+  const beats = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+  it('division=1 returns all beats', () => {
+    expect(filterBeatsByDivision(beats, 1)).toEqual(beats);
+  });
+
+  it('division=2 returns every 2nd beat', () => {
+    expect(filterBeatsByDivision(beats, 2)).toEqual([1.0, 3.0, 5.0, 7.0]);
+  });
+
+  it('division=4 returns every 4th beat', () => {
+    expect(filterBeatsByDivision(beats, 4)).toEqual([1.0, 5.0]);
+  });
+
+  it('division=8 returns every 8th beat', () => {
+    expect(filterBeatsByDivision(beats, 8)).toEqual([1.0]);
+  });
+
+  it('division=0.5 (2/1) returns 2x triggers per beat interval', () => {
+    const twoBeats = [0.0, 1.0];
+    const result = filterBeatsByDivision(twoBeats, 0.5);
+    // expects: [0.0, 0.5, 1.0]
+    expect(result).toHaveLength(3);
+    expect(result[0]).toBeCloseTo(0.0);
+    expect(result[1]).toBeCloseTo(0.5);
+    expect(result[2]).toBeCloseTo(1.0);
+  });
+
+  it('division=0.25 (4/1) returns 4x triggers per beat interval', () => {
+    const twoBeats = [0.0, 1.0];
+    const result = filterBeatsByDivision(twoBeats, 0.25);
+    expect(result).toHaveLength(5);
+    expect(result[1]).toBeCloseTo(0.25);
+    expect(result[2]).toBeCloseTo(0.5);
+    expect(result[3]).toBeCloseTo(0.75);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(filterBeatsByDivision([], 2)).toEqual([]);
+  });
+});
+
+// ─── getBeatZoomScale with beatDivision ────────────────────────────────────────
+
+describe('getBeatZoomScale with beatDivision', () => {
+  const beats = [1.0, 2.0, 3.0, 4.0];
+  const intensity = 0.1;
+  const durationMs = 100; // 0.1s
+
+  it('division=2: zooms on 1st beat, skips 2nd', () => {
+    expect(getBeatZoomScale(1.0, beats, intensity, durationMs, 'easeOut', 2)).toBeGreaterThan(1);
+    expect(getBeatZoomScale(2.0, beats, intensity, durationMs, 'easeOut', 2)).toBe(1);
+  });
+
+  it('division=4: zooms only on 1st beat', () => {
+    expect(getBeatZoomScale(1.0, beats, intensity, durationMs, 'easeOut', 4)).toBeGreaterThan(1);
+    expect(getBeatZoomScale(2.0, beats, intensity, durationMs, 'easeOut', 4)).toBe(1);
+    expect(getBeatZoomScale(3.0, beats, intensity, durationMs, 'easeOut', 4)).toBe(1);
+    expect(getBeatZoomScale(4.0, beats, intensity, durationMs, 'easeOut', 4)).toBe(1);
+  });
+
+  it('division=1 (default): behaves same as no division argument', () => {
+    const withDivision = getBeatZoomScale(2.0, beats, intensity, durationMs, 'easeOut', 1);
+    const withoutDivision = getBeatZoomScale(2.0, beats, intensity, durationMs, 'easeOut');
+    expect(withDivision).toBe(withoutDivision);
   });
 });
 

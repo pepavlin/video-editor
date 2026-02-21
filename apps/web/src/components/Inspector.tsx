@@ -276,6 +276,20 @@ export default function Inspector({
                         <option value="easeInOut">Ease In/Out</option>
                       </select>
                     </Row>
+                    <Row label="Division">
+                      <select
+                        value={String(cfg.beatDivision ?? 1)}
+                        style={{ fontSize: 13 }}
+                        onChange={(e) => update({ beatDivision: parseFloat(e.target.value) })}
+                      >
+                        <option value="0.25">4/1 — 4× per beat</option>
+                        <option value="0.5">2/1 — 2× per beat</option>
+                        <option value="1">1/1 — every beat</option>
+                        <option value="2">1/2 — every 2nd</option>
+                        <option value="4">1/4 — every 4th</option>
+                        <option value="8">1/8 — every 8th</option>
+                      </select>
+                    </Row>
                   </>
                 )}
 
