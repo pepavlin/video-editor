@@ -2,12 +2,12 @@ import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { config } from '../config';
 import * as ws from '../services/workspace';
 import * as ffmpeg from '../services/ffmpegService';
 import * as jq from '../services/jobQueue';
-import type { Project, BeatsData } from '@video-editor/shared';
+import type { Project, BeatsData, Clip } from '@video-editor/shared';
 
 function makeDefaultProject(name: string): Project {
   const now = new Date().toISOString();
@@ -166,6 +166,98 @@ export async function projectsRoutes(app: FastifyInstance) {
     );
 
     return reply.code(202).send({ jobId: job.id });
+  });
+
+  // POST /projects/:id/clips/:clipId/sync-audio
+  // Finds where the clip's audio best aligns within the master audio using cross-correlation.
+  // Returns { offset, confidence, newTimelineStart } without modifying the project.
+  app.post<{
+    Params: { id: string; clipId: string };
+  }>('/projects/:id/clips/:clipId/sync-audio', async (req, reply) => {
+    const project = ws.readProject(req.params.id);
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    // Find the clip
+    let targetClip: Clip | undefined;
+    for (const track of project.tracks) {
+      const found = track.clips.find((c) => c.id === req.params.clipId);
+      if (found) { targetClip = found; break; }
+    }
+    if (!targetClip) return reply.code(404).send({ error: 'Clip not found' });
+
+    // Get clip audio WAV
+    const clipAsset = ws.getAsset(targetClip.assetId);
+    if (!clipAsset?.audioPath) {
+      return reply.code(400).send({ error: 'Clip asset has no extracted audio. Wait for import to finish.' });
+    }
+    const clipWavPath = path.join(ws.getWorkspaceDir(), clipAsset.audioPath);
+    if (!fs.existsSync(clipWavPath)) {
+      return reply.code(400).send({ error: 'Clip audio WAV file not found.' });
+    }
+
+    // Get master audio WAV
+    const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
+    const masterClip = masterTrack?.clips[0];
+    if (!masterClip) {
+      return reply.code(400).send({ error: 'No master audio clip on the master track.' });
+    }
+    const masterAsset = ws.getAsset(masterClip.assetId);
+    if (!masterAsset?.audioPath) {
+      return reply.code(400).send({ error: 'Master audio has no extracted WAV. Wait for import to finish.' });
+    }
+    const masterWavPath = path.join(ws.getWorkspaceDir(), masterAsset.audioPath);
+    if (!fs.existsSync(masterWavPath)) {
+      return reply.code(400).send({ error: 'Master audio WAV file not found.' });
+    }
+
+    // Run sync_audio.py
+    const projectDir = ws.getProjectDir(project.id);
+    fs.mkdirSync(projectDir, { recursive: true });
+    const outputPath = path.join(projectDir, `sync_${targetClip.id}.json`);
+    const scriptPath = path.join(config.scriptsDir, 'sync_audio.py');
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(config.pythonBin, [scriptPath, clipWavPath, masterWavPath, outputPath], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const logLines: string[] = [];
+        const handleLine = (line: string) => {
+          logLines.push(line);
+          if (logLines.length > 50) logLines.shift();
+        };
+        child.stdout.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(handleLine));
+        child.stderr.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(handleLine));
+        child.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`sync_audio.py exited with code ${code}: ${logLines.slice(-3).join(' | ')}`));
+        });
+        child.on('error', reject);
+      });
+    } catch (e: any) {
+      return reply.code(500).send({ error: `Audio sync failed: ${e.message}` });
+    }
+
+    let result: { offset: number; confidence: number };
+    try {
+      result = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+    } catch (e: any) {
+      return reply.code(500).send({ error: 'Failed to read sync result.' });
+    }
+
+    // Compute the new timeline position:
+    //   master plays its WAV from sourceStart at timelineStart
+    //   result.offset = seconds into the master WAV where the clip audio best matches
+    //   → clip should be placed so its start aligns there on the timeline
+    const masterSourceStart = masterClip.sourceStart ?? 0;
+    const masterTimelineStart = masterClip.timelineStart ?? 0;
+    const newTimelineStart = Math.max(0, masterTimelineStart + (result.offset - masterSourceStart));
+
+    return reply.send({
+      offset: result.offset,
+      confidence: result.confidence,
+      newTimelineStart,
+    });
   });
 
   // POST /projects/:id/export

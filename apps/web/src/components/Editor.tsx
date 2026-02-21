@@ -279,6 +279,25 @@ export default function Editor() {
     } catch (e: any) { notify(`Cutout error: ${e.message}`); }
   };
 
+  const handleSyncAudio = async (clipId: string) => {
+    if (!project) return;
+    notify('Analyzing audio alignment...');
+    try {
+      const result = await api.syncClipAudio(project.id, clipId);
+      const clip = findClip(clipId);
+      if (!clip) return;
+      const clipDuration = clip.timelineEnd - clip.timelineStart;
+      updateClip(clipId, {
+        timelineStart: result.newTimelineStart,
+        timelineEnd: result.newTimelineStart + clipDuration,
+      });
+      const pct = Math.round(result.confidence * 100);
+      notify(`Audio synced! Confidence: ${pct}%`);
+    } catch (e: any) {
+      notify(`Auto sync failed: ${e.message}`);
+    }
+  };
+
   const handleExport = async () => {
     if (!project) return;
     setExportProgress(0);
@@ -562,6 +581,7 @@ export default function Editor() {
             onAlignLyrics={handleAlignLyrics}
             onStartCutout={handleStartCutout}
             onExport={handleExport}
+            onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
           />
         </div>
       </div>
