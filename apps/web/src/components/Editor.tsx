@@ -13,6 +13,41 @@ import Inspector from './Inspector';
 import TransportControls from './TransportControls';
 import ProjectBar from './ProjectBar';
 
+// ─── Draggable panel types ────────────────────────────────────────────────────
+
+type PanelId = 'project-bar' | 'preview' | 'transport';
+const DEFAULT_PANEL_ORDER: PanelId[] = ['project-bar', 'preview', 'transport'];
+
+function loadPanelOrder(): PanelId[] {
+  try {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('ve-panel-order') : null;
+    if (stored) {
+      const parsed = JSON.parse(stored) as PanelId[];
+      if (
+        parsed.length === DEFAULT_PANEL_ORDER.length &&
+        DEFAULT_PANEL_ORDER.every((id) => parsed.includes(id))
+      ) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return DEFAULT_PANEL_ORDER;
+}
+
+/** Grip icon rendered in each draggable panel's handle */
+function GripIcon() {
+  return (
+    <svg width="20" height="8" viewBox="0 0 20 8" fill="rgba(255,255,255,0.25)">
+      <circle cx="4" cy="2" r="1.5" />
+      <circle cx="10" cy="2" r="1.5" />
+      <circle cx="16" cy="2" r="1.5" />
+      <circle cx="4" cy="6" r="1.5" />
+      <circle cx="10" cy="6" r="1.5" />
+      <circle cx="16" cy="6" r="1.5" />
+    </svg>
+  );
+}
+
 // ─── Resize handle ───────────────────────────────────────────────────────────
 
 function useResizeHandle(
@@ -107,6 +142,32 @@ export default function Editor() {
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportLogLine, setExportLogLine] = useState<string | null>(null);
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
+
+  // ── Panel order (draggable sections, persisted) ────────────────────────────
+  const [panelOrder, setPanelOrder] = useState<PanelId[]>(loadPanelOrder);
+  const [draggingPanel, setDraggingPanel] = useState<PanelId | null>(null);
+  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
+
+  const handlePanelDragStart = useCallback((id: PanelId) => setDraggingPanel(id), []);
+  const handlePanelDragEnd = useCallback(() => {
+    setDraggingPanel(null);
+    setDropTargetIdx(null);
+  }, []);
+  const handleDropZoneOver = useCallback((idx: number) => setDropTargetIdx(idx), []);
+  const handleDropZoneDrop = useCallback(
+    (idx: number) => {
+      if (!draggingPanel) return;
+      const without = panelOrder.filter((id) => id !== draggingPanel);
+      const fromIdx = panelOrder.indexOf(draggingPanel);
+      const insertIdx = idx > fromIdx ? idx - 1 : idx;
+      without.splice(Math.max(0, Math.min(insertIdx, without.length)), 0, draggingPanel);
+      setPanelOrder(without);
+      localStorage.setItem('ve-panel-order', JSON.stringify(without));
+      setDraggingPanel(null);
+      setDropTargetIdx(null);
+    },
+    [draggingPanel, panelOrder]
+  );
 
   // ── Panel sizes (persisted) ────────────────────────────────────────────────
   const storedLeft = typeof window !== 'undefined' ? parseInt(localStorage.getItem('ve-left-width') || '300', 10) : 300;
@@ -597,46 +658,141 @@ export default function Editor() {
           onMouseDown={onLeftResize}
         />
 
-        {/* Center: Preview + Transport + Timeline */}
+        {/* Center: draggable panels + Timeline */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* Project bar (global: master, beats, export) */}
-          <ProjectBar
-            masterAsset={masterAsset}
-            beatsData={beatsData}
-            onAnalyzeBeats={handleAnalyzeBeats}
-            onExport={handleExport}
-            beatsProgress={beatsProgress}
-            beatsLogLine={beatsLogLine}
-            exportProgress={exportProgress}
-            exportLogLine={exportLogLine}
-            completedExportJobId={completedExportJobId}
-            onDownload={handleDownload}
-          />
 
-          {/* Transport */}
-          <TransportControls
-            isPlaying={playback.isPlaying}
-            currentTime={playback.currentTime}
-            duration={playback.duration || project?.duration || 0}
-            isLooping={playback.isLooping}
-            workArea={workArea}
-            onToggle={playback.toggle}
-            onLoopToggle={playback.toggleLoop}
-            onSeek={playback.seek}
-            getTime={playback.getTime}
-            onWorkAreaChange={handleWorkAreaChange}
-          />
+          {/* ── Draggable panel area (project-bar, preview, transport) ────── */}
+          {panelOrder.map((panelId, idx) => (
+            <div
+              key={panelId}
+              style={{ display: 'contents' }}
+            >
+              {/* Drop zone before this panel */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); handleDropZoneOver(idx); }}
+                onDragLeave={() => setDropTargetIdx(null)}
+                onDrop={() => handleDropZoneDrop(idx)}
+                style={{
+                  flexShrink: 0,
+                  height: draggingPanel && draggingPanel !== panelId ? 4 : 0,
+                  background: dropTargetIdx === idx && draggingPanel !== panelId
+                    ? 'rgba(0,212,160,0.8)'
+                    : 'transparent',
+                  transition: 'background 0.1s, height 0.1s',
+                  boxShadow: dropTargetIdx === idx && draggingPanel !== panelId
+                    ? '0 0 8px rgba(0,212,160,0.6)'
+                    : 'none',
+                }}
+              />
 
-          {/* Preview */}
-          <Preview
-            project={project}
-            assets={assets}
-            currentTime={playback.currentTime}
-            isPlaying={playback.isPlaying}
-            beatsData={beatsData}
-            selectedClipId={selectedClipId}
-            onClipSelect={setSelectedClipId}
-            onClipUpdate={updateClip}
+              {/* Panel content */}
+              {panelId === 'project-bar' && (
+                <div
+                  className="flex-shrink-0"
+                  style={{ opacity: draggingPanel === 'project-bar' ? 0.45 : 1, transition: 'opacity 0.15s' }}
+                >
+                  {/* Drag handle */}
+                  <div
+                    draggable
+                    onDragStart={() => handlePanelDragStart('project-bar')}
+                    onDragEnd={handlePanelDragEnd}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: 10,
+                      cursor: 'grab',
+                      background: 'rgba(255,255,255,0.02)',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                    title="Drag to reorder panel"
+                  >
+                    <GripIcon />
+                  </div>
+                  <ProjectBar
+                    masterAsset={masterAsset}
+                    beatsData={beatsData}
+                    onAnalyzeBeats={handleAnalyzeBeats}
+                    onExport={handleExport}
+                    beatsProgress={beatsProgress}
+                    beatsLogLine={beatsLogLine}
+                    exportProgress={exportProgress}
+                    exportLogLine={exportLogLine}
+                    completedExportJobId={completedExportJobId}
+                    onDownload={handleDownload}
+                  />
+                </div>
+              )}
+
+              {panelId === 'preview' && (
+                <Preview
+                  project={project}
+                  assets={assets}
+                  currentTime={playback.currentTime}
+                  isPlaying={playback.isPlaying}
+                  beatsData={beatsData}
+                  selectedClipId={selectedClipId}
+                  onClipSelect={setSelectedClipId}
+                  onClipUpdate={updateClip}
+                />
+              )}
+
+              {panelId === 'transport' && (
+                <div
+                  className="flex-shrink-0"
+                  style={{ opacity: draggingPanel === 'transport' ? 0.45 : 1, transition: 'opacity 0.15s' }}
+                >
+                  {/* Drag handle */}
+                  <div
+                    draggable
+                    onDragStart={() => handlePanelDragStart('transport')}
+                    onDragEnd={handlePanelDragEnd}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: 10,
+                      cursor: 'grab',
+                      background: 'rgba(255,255,255,0.02)',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                    title="Drag to reorder panel"
+                  >
+                    <GripIcon />
+                  </div>
+                  <TransportControls
+                    isPlaying={playback.isPlaying}
+                    currentTime={playback.currentTime}
+                    duration={playback.duration || project?.duration || 0}
+                    isLooping={playback.isLooping}
+                    workArea={workArea}
+                    onToggle={playback.toggle}
+                    onLoopToggle={playback.toggleLoop}
+                    onSeek={playback.seek}
+                    getTime={playback.getTime}
+                    onWorkAreaChange={handleWorkAreaChange}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Final drop zone (after last panel, before timeline) */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); handleDropZoneOver(panelOrder.length); }}
+            onDragLeave={() => setDropTargetIdx(null)}
+            onDrop={() => handleDropZoneDrop(panelOrder.length)}
+            style={{
+              flexShrink: 0,
+              height: draggingPanel ? 4 : 0,
+              background: dropTargetIdx === panelOrder.length
+                ? 'rgba(0,212,160,0.8)'
+                : 'transparent',
+              transition: 'background 0.1s, height 0.1s',
+              boxShadow: dropTargetIdx === panelOrder.length
+                ? '0 0 8px rgba(0,212,160,0.6)'
+                : 'none',
+            }}
           />
 
           {/* Timeline resize handle */}
