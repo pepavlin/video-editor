@@ -30,6 +30,9 @@ type DragState =
       clipId: string;
       startMouseX: number; startMouseY: number;
       startTX: number; startTY: number;
+      boundsW: number; boundsH: number;
+      offsetX: number; // bounds.x - transform.x (stable during move)
+      offsetY: number; // bounds.y - transform.y (stable during move)
     }
   | {
       type: 'scale';
@@ -50,6 +53,7 @@ type DragState =
 
 const HANDLE_RADIUS = 7;
 const ROTATE_HANDLE_OFFSET = 28;
+const PREVIEW_SNAP_THRESHOLD = 12; // canvas pixels — snap to edges/center within this distance
 const DEFAULT_TRANSFORM: Transform = { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
 const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: 'Arial',
@@ -305,6 +309,9 @@ export default function Preview({
   // Drag state
   const dragRef = useRef<DragState>({ type: 'none' });
 
+  // Active snap guide lines drawn during move drag { x: canvas-x[], y: canvas-y[] }
+  const snapLinesRef = useRef<{ x: number[]; y: number[] }>({ x: [], y: [] });
+
   const assetMap = useRef(new Map<string, Asset>());
   useEffect(() => {
     const map = new Map<string, Asset>();
@@ -459,6 +466,28 @@ export default function Preview({
       }
     }
 
+    // ── Snap guide lines (shown during move drag) ─────────────────────────────
+    const snapLines = snapLinesRef.current;
+    if (dragRef.current.type === 'move' && (snapLines.x.length > 0 || snapLines.y.length > 0)) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,212,160,0.85)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      for (const sx of snapLines.x) {
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, H);
+        ctx.stroke();
+      }
+      for (const sy of snapLines.y) {
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(W, sy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // ── Lyrics overlay ───────────────────────────────────────────────────────
     if (project.lyrics?.enabled && project.lyrics.words && project.lyrics.words.length > 0) {
       drawLyricsOverlay(ctx, W, H, currentTime, project.lyrics);
@@ -568,10 +597,54 @@ export default function Preview({
       if (drag.type === 'move') {
         const dx = mx - drag.startMouseX;
         const dy = my - drag.startMouseY;
+        let newX = drag.startTX + dx;
+        let newY = drag.startTY + dy;
+
+        // ── Snap to canvas edges and center ──────────────────────────────────
+        const W = canvas.width;
+        const H = canvas.height;
+        const { boundsW, boundsH, offsetX, offsetY } = drag;
+        const activeSnapX: number[] = [];
+        const activeSnapY: number[] = [];
+
+        // Projected bounds edges at current position
+        const bLeft   = newX + offsetX;
+        const bRight  = bLeft + boundsW;
+        const bCenterX = bLeft + boundsW / 2;
+        const bTop    = newY + offsetY;
+        const bBottom = bTop + boundsH;
+        const bCenterY = bTop + boundsH / 2;
+
+        // Snap X: left edge→0, right edge→W, center→W/2
+        if (Math.abs(bLeft) < PREVIEW_SNAP_THRESHOLD) {
+          newX = -offsetX;
+          activeSnapX.push(0);
+        } else if (Math.abs(bRight - W) < PREVIEW_SNAP_THRESHOLD) {
+          newX = W - boundsW - offsetX;
+          activeSnapX.push(W);
+        } else if (Math.abs(bCenterX - W / 2) < PREVIEW_SNAP_THRESHOLD) {
+          newX = W / 2 - boundsW / 2 - offsetX;
+          activeSnapX.push(W / 2);
+        }
+
+        // Snap Y: top edge→0, bottom edge→H, center→H/2
+        if (Math.abs(bTop) < PREVIEW_SNAP_THRESHOLD) {
+          newY = -offsetY;
+          activeSnapY.push(0);
+        } else if (Math.abs(bBottom - H) < PREVIEW_SNAP_THRESHOLD) {
+          newY = H - boundsH - offsetY;
+          activeSnapY.push(H);
+        } else if (Math.abs(bCenterY - H / 2) < PREVIEW_SNAP_THRESHOLD) {
+          newY = H / 2 - boundsH / 2 - offsetY;
+          activeSnapY.push(H / 2);
+        }
+
+        snapLinesRef.current = { x: activeSnapX, y: activeSnapY };
+
         const prev = liveTransformRef.current!;
         liveTransformRef.current = {
           clipId: drag.clipId,
-          transform: { ...prev.transform, x: drag.startTX + dx, y: drag.startTY + dy },
+          transform: { ...prev.transform, x: newX, y: newY },
         };
         drawFrame();
       } else if (drag.type === 'scale') {
@@ -616,6 +689,7 @@ export default function Preview({
 
       dragRef.current = { type: 'none' };
       liveTransformRef.current = null;
+      snapLinesRef.current = { x: [], y: [] };
 
       // Reset cursor
       if (canvasRef.current) canvasRef.current.style.cursor = 'default';
@@ -720,6 +794,9 @@ export default function Preview({
             clipId: clip.id,
             startMouseX: mx, startMouseY: my,
             startTX: transform.x, startTY: transform.y,
+            boundsW: bounds.w, boundsH: bounds.h,
+            offsetX: bounds.x - transform.x,
+            offsetY: bounds.y - transform.y,
           };
           liveTransformRef.current = { clipId: clip.id, transform: { ...transform } };
           e.preventDefault();
