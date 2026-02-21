@@ -25,6 +25,7 @@ interface Props {
   onAlignLyrics: (text: string) => Promise<void>;
   onStartCutout: (clipId: string) => Promise<void>;
   onExport: () => Promise<void>;
+  onSyncAudio?: (clipId: string) => Promise<void>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -132,24 +133,33 @@ export default function Inspector({
   onAlignLyrics,
   onStartCutout,
   onExport,
+  onSyncAudio,
 }: Props) {
   const [lyricsText, setLyricsText] = useState('');
   const [aligningLyrics, setAligningLyrics] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  // Find selected clip
+  // Find selected clip and its track
   let selectedClip: Clip | undefined;
+  let selectedTrackType: 'video' | 'audio' | undefined;
   if (selectedClipId && project) {
     for (const t of project.tracks) {
-      selectedClip = t.clips.find((c) => c.id === selectedClipId);
-      if (selectedClip) break;
+      const found = t.clips.find((c) => c.id === selectedClipId);
+      if (found) {
+        selectedClip = found;
+        selectedTrackType = t.type;
+        break;
+      }
     }
   }
 
   const selectedAsset = selectedClip
     ? assets.find((a) => a.id === selectedClip!.assetId)
     : undefined;
+
+  const assetHasAudio = !!(selectedAsset?.audioPath);
 
   const beatZoom = selectedClip?.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
   const cutout = selectedClip?.effects.find((e) => e.type === 'cutout') as CutoutEffect | undefined;
@@ -247,34 +257,73 @@ export default function Inspector({
             </Row>
           </Section>
 
+          {selectedTrackType === 'video' && (
           <Section title="Audio">
             <Row label="Use audio">
-              <input
-                type="checkbox"
-                checked={selectedClip.useClipAudio}
-                onChange={(e) =>
-                  onClipUpdate(selectedClip!.id, { useClipAudio: e.target.checked })
-                }
-              />
-            </Row>
-            {selectedClip.useClipAudio && (
-              <Row label="Volume">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: assetHasAudio ? 'pointer' : 'not-allowed' }}>
                 <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  value={selectedClip.clipAudioVolume}
-                  style={{ width: '100%' }}
+                  type="checkbox"
+                  checked={!!selectedClip.useClipAudio}
+                  disabled={!assetHasAudio}
                   onChange={(e) =>
-                    onClipUpdate(selectedClip!.id, {
-                      clipAudioVolume: parseFloat(e.target.value),
-                    })
+                    onClipUpdate(selectedClip!.id, { useClipAudio: e.target.checked })
                   }
                 />
+                {!assetHasAudio && (
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>no audio</span>
+                )}
+              </label>
+            </Row>
+            {!!selectedClip.useClipAudio && (
+              <Row label="Volume">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    value={selectedClip.clipAudioVolume ?? 1}
+                    style={{ width: '100%' }}
+                    onChange={(e) =>
+                      onClipUpdate(selectedClip!.id, {
+                        clipAudioVolume: parseFloat(e.target.value),
+                      })
+                    }
+                  />
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                    {Math.round((selectedClip.clipAudioVolume ?? 1) * 100)}%
+                  </span>
+                </div>
+              </Row>
+            )}
+            {onSyncAudio && masterAssetId && assetHasAudio && (
+              <Row label="">
+                <button
+                  className="btn btn-ghost"
+                  style={{
+                    fontSize: 12,
+                    border: '1px solid rgba(0,212,160,0.30)',
+                    padding: '6px 12px',
+                    width: '100%',
+                    color: syncing ? 'rgba(255,255,255,0.40)' : '#00d4a0',
+                    opacity: syncing ? 0.6 : 1,
+                  }}
+                  disabled={syncing}
+                  onClick={async () => {
+                    setSyncing(true);
+                    try {
+                      await onSyncAudio(selectedClip!.id);
+                    } finally {
+                      setSyncing(false);
+                    }
+                  }}
+                >
+                  {syncing ? 'Syncing...' : 'Auto Sync to Master'}
+                </button>
               </Row>
             )}
           </Section>
+          )}
 
           <Section title="Effects">
             {/* Beat Zoom */}

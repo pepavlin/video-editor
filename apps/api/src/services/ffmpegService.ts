@@ -199,6 +199,22 @@ export function buildExportCommand(
     inputs.push(assetPath);
   }
 
+  // Clip audio WAV inputs — use extracted WAV (not proxy) for useClipAudio clips
+  // This is more reliable: the WAV is guaranteed to exist and have proper audio
+  const clipAudioWavMap = new Map<string, number>(); // assetId → ffmpeg input index
+  for (const track of videoTracks) {
+    for (const clip of track.clips) {
+      if (!clip.useClipAudio) continue;
+      if (clipAudioWavMap.has(clip.assetId)) continue; // dedup same asset
+      const asset = ws.getAsset(clip.assetId);
+      if (!asset?.audioPath) continue;
+      const wavPath = path.join(ws.getWorkspaceDir(), asset.audioPath);
+      if (!fs.existsSync(wavPath)) continue;
+      clipAudioWavMap.set(clip.assetId, inputs.length);
+      inputs.push(wavPath);
+    }
+  }
+
   for (const inp of inputs) {
     inputArgs.push('-i', inp);
   }
@@ -328,12 +344,12 @@ export function buildExportCommand(
     }
   }
 
-  // Clip audio contributions
+  // Clip audio contributions — use extracted WAV files for proper audio
   for (const track of videoTracks) {
     for (const clip of track.clips) {
       if (!clip.useClipAudio) continue;
-      const inputIdx = assetInputIdxMap.get(clip.assetId);
-      if (inputIdx === undefined) continue;
+      const inputIdx = clipAudioWavMap.get(clip.assetId);
+      if (inputIdx === undefined) continue; // no WAV available for this asset
 
       const vol = Math.max(0, clip.clipAudioVolume);
       const clipAudioPad = `caudio${filterIdx}`;

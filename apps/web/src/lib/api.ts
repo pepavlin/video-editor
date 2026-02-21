@@ -111,6 +111,17 @@ export async function exportProject(
   });
 }
 
+export async function syncClipAudio(
+  projectId: string,
+  clipId: string
+): Promise<{ offset: number; confidence: number; newTimelineStart: number }> {
+  return apiFetch(`/projects/${projectId}/clips/${clipId}/sync-audio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+}
+
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
 export async function getJobStatus(jobId: string): Promise<{ job: Job & { lastLogLines: string[] } }> {
