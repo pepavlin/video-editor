@@ -7,6 +7,8 @@ import type {
   Asset,
   BeatZoomEffect,
   CutoutEffect,
+  HeadStabilizationEffect,
+  CartoonEffect,
   LyricsStyle,
   TextStyle,
 } from '@video-editor/shared';
@@ -25,6 +27,7 @@ interface Props {
   masterAssetId?: string;
   onAlignLyrics: (text: string) => Promise<void>;
   onStartCutout: (clipId: string) => Promise<void>;
+  onStartHeadStabilization: (clipId: string) => Promise<void>;
   onExport: () => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
 }
@@ -133,6 +136,7 @@ export default function Inspector({
   masterAssetId,
   onAlignLyrics,
   onStartCutout,
+  onStartHeadStabilization,
   onExport,
   onSyncAudio,
 }: Props) {
@@ -164,6 +168,8 @@ export default function Inspector({
 
   const beatZoom = selectedClip?.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
   const cutout = selectedClip?.effects.find((e) => e.type === 'cutout') as CutoutEffect | undefined;
+  const headStabilization = selectedClip?.effects.find((e) => e.type === 'headStabilization') as HeadStabilizationEffect | undefined;
+  const cartoon = selectedClip?.effects.find((e) => e.type === 'cartoon') as CartoonEffect | undefined;
 
   const handleAlignLyrics = async () => {
     if (!lyricsText.trim()) return;
@@ -673,6 +679,256 @@ export default function Inspector({
                         />
                       </Row>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Head Stabilization */}
+            {selectedAsset?.type === 'video' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: '#c0ddd8' }}>Head Stabilization</span>
+                  {headStabilization ? (
+                    <button
+                      style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
+                      onClick={() => onRemoveEffect(selectedClip!.id, 'headStabilization')}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
+                      onClick={() =>
+                        onAddEffect(selectedClip!.id, {
+                          type: 'headStabilization',
+                          enabled: true,
+                          smoothingX: 0.7,
+                          smoothingY: 0.7,
+                          smoothingZ: 0.0,
+                          status: 'pending',
+                        } satisfies HeadStabilizationEffect)
+                      }
+                    >
+                      + Add
+                    </button>
+                  )}
+                </div>
+                {headStabilization && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={headStabilization.enabled}
+                        onChange={(e) => onUpdateEffect(selectedClip!.id, 'headStabilization', { enabled: e.target.checked })}
+                      />
+                      Enabled
+                    </label>
+                    <Row label="X Axis">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={headStabilization.smoothingX}
+                          style={{ width: '100%' }}
+                          onChange={(e) =>
+                            onUpdateEffect(selectedClip!.id, 'headStabilization', {
+                              smoothingX: parseFloat(e.target.value),
+                              status: 'pending',
+                            })
+                          }
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                          {Math.round(headStabilization.smoothingX * 100)}%
+                        </span>
+                      </div>
+                    </Row>
+                    <Row label="Y Axis">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={headStabilization.smoothingY}
+                          style={{ width: '100%' }}
+                          onChange={(e) =>
+                            onUpdateEffect(selectedClip!.id, 'headStabilization', {
+                              smoothingY: parseFloat(e.target.value),
+                              status: 'pending',
+                            })
+                          }
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                          {Math.round(headStabilization.smoothingY * 100)}%
+                        </span>
+                      </div>
+                    </Row>
+                    <Row label="Z Zoom">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={headStabilization.smoothingZ}
+                          style={{ width: '100%' }}
+                          onChange={(e) =>
+                            onUpdateEffect(selectedClip!.id, 'headStabilization', {
+                              smoothingZ: parseFloat(e.target.value),
+                              status: 'pending',
+                            })
+                          }
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                          {Math.round(headStabilization.smoothingZ * 100)}%
+                        </span>
+                      </div>
+                    </Row>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                      <div style={{
+                        fontSize: 11,
+                        color: headStabilization.status === 'done'
+                          ? '#4ade80'
+                          : headStabilization.status === 'error'
+                          ? '#f87171'
+                          : headStabilization.status === 'processing'
+                          ? '#fbbf24'
+                          : 'rgba(255,255,255,0.28)',
+                        flex: 1,
+                      }}>
+                        {headStabilization.status === 'done' && 'Stabilized'}
+                        {headStabilization.status === 'processing' && 'Processing...'}
+                        {headStabilization.status === 'error' && 'Error – retry below'}
+                        {(headStabilization.status === 'pending' || !headStabilization.status) && 'Not processed'}
+                      </div>
+                      <button
+                        className="btn btn-ghost"
+                        style={{
+                          fontSize: 11,
+                          border: '1px solid rgba(0,212,160,0.30)',
+                          padding: '4px 10px',
+                          color: headStabilization.status === 'processing' ? 'rgba(255,255,255,0.30)' : '#00d4a0',
+                          opacity: headStabilization.status === 'processing' ? 0.5 : 1,
+                        }}
+                        disabled={headStabilization.status === 'processing'}
+                        onClick={() => onStartHeadStabilization(selectedClip!.id)}
+                      >
+                        Process
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cartoon */}
+            {selectedAsset?.type === 'video' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: '#c0ddd8' }}>Cartoon</span>
+                  {cartoon ? (
+                    <button
+                      style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
+                      onClick={() => onRemoveEffect(selectedClip!.id, 'cartoon')}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
+                      onClick={() =>
+                        onAddEffect(selectedClip!.id, {
+                          type: 'cartoon',
+                          enabled: true,
+                          edgeStrength: 0.6,
+                          colorSimplification: 0.5,
+                          saturation: 1.5,
+                        } satisfies CartoonEffect)
+                      }
+                    >
+                      + Add
+                    </button>
+                  )}
+                </div>
+                {cartoon && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={cartoon.enabled}
+                        onChange={(e) => onUpdateEffect(selectedClip!.id, 'cartoon', { enabled: e.target.checked })}
+                      />
+                      Enabled
+                    </label>
+                    <Row label="Edges">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={cartoon.edgeStrength}
+                          style={{ width: '100%' }}
+                          onChange={(e) =>
+                            onUpdateEffect(selectedClip!.id, 'cartoon', {
+                              edgeStrength: parseFloat(e.target.value),
+                            })
+                          }
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                          {Math.round(cartoon.edgeStrength * 100)}%
+                        </span>
+                      </div>
+                    </Row>
+                    <Row label="Flatten">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={cartoon.colorSimplification}
+                          style={{ width: '100%' }}
+                          onChange={(e) =>
+                            onUpdateEffect(selectedClip!.id, 'cartoon', {
+                              colorSimplification: parseFloat(e.target.value),
+                            })
+                          }
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                          {Math.round(cartoon.colorSimplification * 100)}%
+                        </span>
+                      </div>
+                    </Row>
+                    <Row label="Saturation">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={2}
+                          step={0.05}
+                          value={cartoon.saturation}
+                          style={{ width: '100%' }}
+                          onChange={(e) =>
+                            onUpdateEffect(selectedClip!.id, 'cartoon', {
+                              saturation: parseFloat(e.target.value),
+                            })
+                          }
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+                          {cartoon.saturation.toFixed(1)}×
+                        </span>
+                      </div>
+                    </Row>
                   </div>
                 )}
               </div>

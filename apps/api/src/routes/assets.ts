@@ -272,6 +272,54 @@ export async function assetsRoutes(app: FastifyInstance) {
     return reply.code(202).send({ jobId: job.id, assetId });
   });
 
+  // POST /assets/:id/head-stabilize - start head-tracking stabilization job
+  app.post<{
+    Params: { id: string };
+    Body: { smoothingX?: number; smoothingY?: number; smoothingZ?: number };
+  }>('/assets/:id/head-stabilize', async (req, reply) => {
+    const asset = ws.getAsset(req.params.id);
+    if (!asset || asset.type !== 'video') {
+      return reply.code(404).send({ error: 'Video asset not found' });
+    }
+
+    const proxyPath = asset.proxyPath
+      ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
+      : path.join(ws.getWorkspaceDir(), asset.originalPath);
+
+    if (!fs.existsSync(proxyPath)) {
+      return reply.code(400).send({ error: 'Proxy not ready - import may still be processing' });
+    }
+
+    const body = req.body ?? {};
+    const sx = String(Math.max(0, Math.min(1, body.smoothingX ?? 0.7)));
+    const sy = String(Math.max(0, Math.min(1, body.smoothingY ?? 0.7)));
+    const sz = String(Math.max(0, Math.min(1, body.smoothingZ ?? 0.0)));
+
+    const job = jq.createJob('headStabilization', asset.id);
+    const stabilizedOutputPath = path.join(ws.getAssetDir(asset.id), 'head_stabilized.mp4');
+    const scriptPath = path.join(config.scriptsDir, 'head_stabilize.py');
+
+    jq.runCommand(
+      job.id,
+      config.pythonBin,
+      [scriptPath, proxyPath, stabilizedOutputPath, sx, sy, sz],
+      {
+        onDone: () => {
+          const latestAsset = ws.getAsset(asset.id);
+          if (latestAsset) {
+            ws.upsertAsset({
+              ...latestAsset,
+              headStabilizedPath: `assets/${asset.id}/head_stabilized.mp4`,
+            });
+          }
+        },
+        outputPath: stabilizedOutputPath,
+      }
+    );
+
+    return reply.code(202).send({ jobId: job.id });
+  });
+
   // POST /assets/:id/cutout - start cutout mask generation
   app.post<{ Params: { id: string } }>('/assets/:id/cutout', async (req, reply) => {
     const asset = ws.getAsset(req.params.id);

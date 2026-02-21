@@ -404,6 +404,33 @@ export default function Editor() {
     } catch (e: any) { notify(`Cutout error: ${e.message}`); }
   };
 
+  const handleStartHeadStabilization = async (clipId: string) => {
+    const clip = findClip(clipId);
+    if (!clip) return;
+    const effect = clip.effects.find((e) => e.type === 'headStabilization') as any;
+    if (!effect) return;
+    notify('Starting head stabilization...');
+    try {
+      updateEffect(clipId, 'headStabilization', { status: 'processing' });
+      const { jobId } = await api.startHeadStabilization(clip.assetId, {
+        smoothingX: effect.smoothingX ?? 0.7,
+        smoothingY: effect.smoothingY ?? 0.7,
+        smoothingZ: effect.smoothingZ ?? 0.0,
+      });
+      api.pollJob(jobId, (j) => notify(`Head stabilization: ${j.progress}%`)).then(() => {
+        updateEffect(clipId, 'headStabilization', { status: 'done' });
+        notify('Head stabilization done!');
+        refreshAssets();
+      }).catch((e) => {
+        updateEffect(clipId, 'headStabilization', { status: 'error' });
+        notify(`Head stabilization failed: ${e.message}`);
+      });
+    } catch (e: any) {
+      updateEffect(clipId, 'headStabilization', { status: 'error' });
+      notify(`Head stabilization error: ${e.message}`);
+    }
+  };
+
   const handleSyncAudio = async (clipId: string) => {
     if (!project) return;
     notify('Analyzing audio alignment...');
@@ -854,6 +881,7 @@ export default function Editor() {
             masterAssetId={masterAssetId}
             onAlignLyrics={handleAlignLyrics}
             onStartCutout={handleStartCutout}
+            onStartHeadStabilization={handleStartHeadStabilization}
             onExport={handleExport}
             onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
           />

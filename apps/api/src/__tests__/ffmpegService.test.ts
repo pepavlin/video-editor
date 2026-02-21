@@ -395,4 +395,219 @@ describe('buildExportCommand', () => {
     // All clips use timeline-aligned setpts so crop filter's `t` equals timeline time
     expect(fc).toContain('/TB'); // setpts=PTS-STARTPTS+timelineStart/TB
   });
+
+  // ─── Cartoon effect ──────────────────────────────────────────────────────────
+
+  function makeVideoProjectWithEffect(effects: any[]) {
+    const videoAsset = {
+      id: 'va1',
+      name: 'clip.mp4',
+      type: 'video' as const,
+      originalPath: 'assets/va1/original.mp4',
+      proxyPath: 'assets/va1/proxy.mp4',
+      duration: 5,
+      createdAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
+    fs.mkdirSync(path.join(tmpDir, 'assets', 'va1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'va1', 'proxy.mp4'), '');
+
+    return makeProject({
+      tracks: [
+        {
+          id: 'tr1',
+          type: 'video',
+          name: 'V1',
+          clips: [
+            {
+              id: 'c1',
+              assetId: 'va1',
+              trackId: 'tr1',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              useClipAudio: false,
+              clipAudioVolume: 1,
+              transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+              effects,
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  it('cartoon effect adds hqdn3d, edgedetect, blend and eq filters', () => {
+    const project = makeVideoProjectWithEffect([
+      {
+        type: 'cartoon' as const,
+        enabled: true,
+        edgeStrength: 0.6,
+        colorSimplification: 0.5,
+        saturation: 1.5,
+      },
+    ]);
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    const fcIdx = args.indexOf('-filter_complex');
+    const fc = args[fcIdx + 1];
+
+    expect(fc).toContain('hqdn3d=');
+    expect(fc).toContain('edgedetect=');
+    expect(fc).toContain('blend=all_mode=multiply');
+    expect(fc).toContain('eq=saturation=');
+    expect(fc).toContain('split');
+  });
+
+  it('cartoon effect disabled does not add cartoon filters', () => {
+    const project = makeVideoProjectWithEffect([
+      {
+        type: 'cartoon' as const,
+        enabled: false,
+        edgeStrength: 0.6,
+        colorSimplification: 0.5,
+        saturation: 1.5,
+      },
+    ]);
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    const fcIdx = args.indexOf('-filter_complex');
+    const fc = args[fcIdx + 1];
+
+    expect(fc).not.toContain('hqdn3d=');
+    expect(fc).not.toContain('edgedetect=');
+  });
+
+  it('cartoon saturation is clamped to 0-3 range in filter', () => {
+    const project = makeVideoProjectWithEffect([
+      {
+        type: 'cartoon' as const,
+        enabled: true,
+        edgeStrength: 0.5,
+        colorSimplification: 0.5,
+        saturation: 5.0, // over the limit
+      },
+    ]);
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    const fcIdx = args.indexOf('-filter_complex');
+    const fc = args[fcIdx + 1];
+
+    // Saturation should be clamped to 3.00
+    expect(fc).toContain('eq=saturation=3.00');
+  });
+
+  // ─── Head Stabilization effect ───────────────────────────────────────────────
+
+  it('head stabilization uses stabilized path when status is done', () => {
+    const videoAsset = {
+      id: 'hsa1',
+      name: 'clip.mp4',
+      type: 'video' as const,
+      originalPath: 'assets/hsa1/original.mp4',
+      proxyPath: 'assets/hsa1/proxy.mp4',
+      headStabilizedPath: 'assets/hsa1/head_stabilized.mp4',
+      duration: 5,
+      createdAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
+    fs.mkdirSync(path.join(tmpDir, 'assets', 'hsa1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa1', 'proxy.mp4'), '');
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa1', 'head_stabilized.mp4'), '');
+
+    const project = makeProject({
+      tracks: [
+        {
+          id: 'tr1',
+          type: 'video',
+          name: 'V1',
+          clips: [
+            {
+              id: 'c1',
+              assetId: 'hsa1',
+              trackId: 'tr1',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              useClipAudio: false,
+              clipAudioVolume: 1,
+              transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+              effects: [
+                {
+                  type: 'headStabilization' as const,
+                  enabled: true,
+                  smoothingX: 0.7,
+                  smoothingY: 0.7,
+                  smoothingZ: 0.0,
+                  status: 'done' as const,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    // The stabilized path should appear in the -i args
+    expect(args).toContain(path.join(tmpDir, 'assets/hsa1/head_stabilized.mp4'));
+    // The proxy path should NOT appear
+    expect(args).not.toContain(path.join(tmpDir, 'assets/hsa1/proxy.mp4'));
+  });
+
+  it('head stabilization uses proxy when status is not done', () => {
+    const videoAsset = {
+      id: 'hsa2',
+      name: 'clip.mp4',
+      type: 'video' as const,
+      originalPath: 'assets/hsa2/original.mp4',
+      proxyPath: 'assets/hsa2/proxy.mp4',
+      headStabilizedPath: 'assets/hsa2/head_stabilized.mp4',
+      duration: 5,
+      createdAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
+    fs.mkdirSync(path.join(tmpDir, 'assets', 'hsa2'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa2', 'proxy.mp4'), '');
+
+    const project = makeProject({
+      tracks: [
+        {
+          id: 'tr1',
+          type: 'video',
+          name: 'V1',
+          clips: [
+            {
+              id: 'c1',
+              assetId: 'hsa2',
+              trackId: 'tr1',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              useClipAudio: false,
+              clipAudioVolume: 1,
+              transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+              effects: [
+                {
+                  type: 'headStabilization' as const,
+                  enabled: true,
+                  smoothingX: 0.7,
+                  smoothingY: 0.7,
+                  smoothingZ: 0.0,
+                  status: 'pending' as const,  // not done
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    // Should use proxy since status is not 'done'
+    expect(args).toContain(path.join(tmpDir, 'assets/hsa2/proxy.mp4'));
+  });
 });

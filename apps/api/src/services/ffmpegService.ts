@@ -4,7 +4,7 @@ import fs from 'fs';
 import { config } from '../config';
 import * as ws from './workspace';
 import { computeWaveform } from './waveform';
-import type { Project, Clip, BeatZoomEffect, WaveformData, BeatsData, LyricsData } from '@video-editor/shared';
+import type { Project, Clip, BeatZoomEffect, HeadStabilizationEffect, CartoonEffect, WaveformData, BeatsData, LyricsData } from '@video-editor/shared';
 
 const FF = config.ffmpegBin;
 const FFP = config.ffprobeBin;
@@ -166,6 +166,19 @@ export function buildExportCommand(
   const inputs: string[] = [];
   const inputArgs: string[] = [];
 
+  // Determine which assets should use the head-stabilized video path.
+  // If ANY clip for a given asset has headStabilization enabled+done, use the
+  // stabilized derivative for all clips of that asset.
+  const stabilizedAssetIds = new Set<string>();
+  for (const track of videoTracks) {
+    for (const clip of track.clips) {
+      const hsEffect = clip.effects.find((e) => e.type === 'headStabilization') as HeadStabilizationEffect | undefined;
+      if (hsEffect?.enabled && hsEffect?.status === 'done') {
+        stabilizedAssetIds.add(clip.assetId);
+      }
+    }
+  }
+
   // Collect unique asset proxy paths for video clips
   const assetPathMap = new Map<string, string>();
   for (const track of videoTracks) {
@@ -173,9 +186,14 @@ export function buildExportCommand(
       if (!assetPathMap.has(clip.assetId)) {
         const asset = ws.getAsset(clip.assetId);
         if (asset) {
-          const absProxy = asset.proxyPath
-            ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
-            : path.join(ws.getWorkspaceDir(), asset.originalPath);
+          let absProxy: string;
+          if (stabilizedAssetIds.has(clip.assetId) && asset.headStabilizedPath) {
+            absProxy = path.join(ws.getWorkspaceDir(), asset.headStabilizedPath);
+          } else {
+            absProxy = asset.proxyPath
+              ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
+              : path.join(ws.getWorkspaceDir(), asset.originalPath);
+          }
           assetPathMap.set(clip.assetId, absProxy);
         }
       }
@@ -316,10 +334,46 @@ export function buildExportCommand(
       }
 
       // Single clip chain with optional beat-zoom crop baked in
-      const clipPad = `clip${filterIdx}`;
+      const baseClipPad = `clip${filterIdx}`;
       filterParts.push(
-        `[${inputIdx}:v]${trimFilter}${beatZoomCropFilter},${scaleFilter},format=yuv420p[${clipPad}]`
+        `[${inputIdx}:v]${trimFilter}${beatZoomCropFilter},${scaleFilter},format=yuv420p[${baseClipPad}]`
       );
+
+      // ─── Cartoon effect ────────────────────────────────────────────────────
+      // Uses hqdn3d for color simplification + edgedetect for cartoon outlines +
+      // blend (multiply) to composite them + eq to boost saturation.
+      // This is a multi-input filter so we extend the chain with split/blend steps.
+      const cartoonEffect = clip.effects.find((e) => e.type === 'cartoon') as CartoonEffect | undefined;
+      let clipPad = baseClipPad;
+      if (cartoonEffect?.enabled) {
+        const cs = cartoonEffect.colorSimplification;
+        const es = cartoonEffect.edgeStrength;
+        const sat = Math.max(0, Math.min(3, cartoonEffect.saturation)).toFixed(2);
+
+        // hqdn3d parameters: luma_spatial, chroma_spatial, luma_tmp, chroma_tmp
+        const ls = (1 + cs * 8).toFixed(1);
+        const chs = (1 + cs * 6).toFixed(1);
+        const lt = (2 + cs * 6).toFixed(1);
+        const ct = (2 + cs * 6).toFixed(1);
+
+        // edgedetect thresholds
+        const edgeLow = (es * 0.06).toFixed(3);
+        const edgeHigh = (0.05 + es * 0.20).toFixed(3);
+
+        const czSplit1 = `czs1_${filterIdx}`;
+        const czSplit2 = `czs2_${filterIdx}`;
+        const czBlur = `czb_${filterIdx}`;
+        const czEdge = `cze_${filterIdx}`;
+        const czBlend = `czbd_${filterIdx}`;
+        const czOut = `cz_${filterIdx}`;
+
+        filterParts.push(`[${clipPad}]split[${czSplit1}][${czSplit2}]`);
+        filterParts.push(`[${czSplit1}]hqdn3d=${ls}:${chs}:${lt}:${ct}[${czBlur}]`);
+        filterParts.push(`[${czSplit2}]edgedetect=low=${edgeLow}:high=${edgeHigh}:mode=colormix[${czEdge}]`);
+        filterParts.push(`[${czBlur}][${czEdge}]blend=all_mode=multiply[${czBlend}]`);
+        filterParts.push(`[${czBlend}]eq=saturation=${sat}[${czOut}]`);
+        clipPad = czOut;
+      }
 
       // Overlay clip for its full timeline duration
       const overlayPad = `ov${filterIdx}`;
