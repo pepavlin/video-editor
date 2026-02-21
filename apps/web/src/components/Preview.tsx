@@ -136,8 +136,8 @@ export default function Preview({
           }
         }
 
-        // Compute transform
-        const transform = clip.transform;
+        // Compute transform (default to identity if absent)
+        const transform = clip.transform ?? { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
         let scale = transform.scale;
 
         // Apply beat zoom effect (beats come from master audio, not the video asset)

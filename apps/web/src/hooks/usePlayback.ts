@@ -17,7 +17,7 @@ export interface PlaybackControls {
   getTime: () => number;
 }
 
-// Map assetId -> AudioBuffer (cached)
+// Map assetId -> AudioBuffer (cached across renders)
 const audioCache = new Map<string, AudioBuffer>();
 
 export function usePlayback(
@@ -32,16 +32,21 @@ export function usePlayback(
   const [isLooping, setIsLooping] = useState(false);
 
   const ctxRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const startAudioTimeRef = useRef<number>(0); // ctx.currentTime when play started
-  const startProjectTimeRef = useRef<number>(0); // project time when play started
-  const startWallTimeRef = useRef<number>(0);   // performance.now() (ms) when play started
+  // Master audio source node
+  const masterNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  // Extra source nodes for video clips with useClipAudio
+  const clipNodesRef = useRef<AudioBufferSourceNode[]>([]);
+
+  const startWallTimeRef = useRef<number>(0);
+  const startProjectTimeRef = useRef<number>(0);
   const rafRef = useRef<number>(0);
   const currentTimeRef = useRef(0);
   const isPlayingRef = useRef(false);
   const isLoopingRef = useRef(false);
   const projectRef = useRef<Project | null>(null);
   projectRef.current = project;
+  const assetsRef = useRef<Asset[]>(assets);
+  assetsRef.current = assets;
   const workAreaRef = useRef(workArea);
   workAreaRef.current = workArea;
 
@@ -63,7 +68,7 @@ export function usePlayback(
     return startProjectTimeRef.current + wallElapsed;
   }, []);
 
-  // Load audio buffer for an asset
+  // Load audio buffer for an asset (caches result)
   const loadAudio = useCallback(async (asset: Asset): Promise<AudioBuffer | null> => {
     if (!asset.audioPath) return null;
     if (audioCache.has(asset.id)) return audioCache.get(asset.id)!;
@@ -82,12 +87,102 @@ export function usePlayback(
     }
   }, [getCtx]);
 
+  // Stop all audio nodes immediately
+  const stopAllNodes = useCallback(() => {
+    try { masterNodeRef.current?.stop(); } catch {}
+    masterNodeRef.current?.disconnect();
+    masterNodeRef.current = null;
+
+    for (const node of clipNodesRef.current) {
+      try { node.stop(); } catch {}
+      node.disconnect();
+    }
+    clipNodesRef.current = [];
+  }, []);
+
+  /**
+   * Start all audio from cached buffers at the given project time.
+   * Must be called after buffers are pre-loaded into audioCache.
+   */
+  const startFromCache = useCallback((ctx: AudioContext, projectTime: number) => {
+    const proj = projectRef.current;
+    if (!proj) return;
+
+    // ── Master audio track ──────────────────────────────────────────────────
+    const masterTrack = proj.tracks.find((t) => t.type === 'audio' && t.isMaster);
+    const masterClip = masterTrack?.clips[0];
+    const masterBuffer = masterClip ? audioCache.get(masterClip.assetId) : undefined;
+
+    if (masterBuffer && masterClip) {
+      const src = ctx.createBufferSource();
+      src.buffer = masterBuffer;
+      src.connect(ctx.destination);
+
+      const tlStart = masterClip.timelineStart ?? 0;
+      const srcStart = masterClip.sourceStart ?? 0;
+
+      if (projectTime >= tlStart) {
+        const offset = Math.min(srcStart + (projectTime - tlStart), masterBuffer.duration - 0.001);
+        src.start(ctx.currentTime, Math.max(0, offset));
+      } else {
+        src.start(ctx.currentTime + (tlStart - projectTime), Math.max(0, srcStart));
+      }
+
+      masterNodeRef.current = src;
+    }
+
+    // ── Video clips with useClipAudio ───────────────────────────────────────
+    const newClipNodes: AudioBufferSourceNode[] = [];
+
+    for (const track of proj.tracks) {
+      if (track.type !== 'video' || track.muted) continue;
+
+      for (const clip of track.clips) {
+        if (!clip.useClipAudio) continue;
+        if (projectTime >= clip.timelineEnd) continue; // already past this clip
+
+        const buf = audioCache.get(clip.assetId);
+        if (!buf) continue;
+
+        const srcStart = clip.sourceStart ?? 0;
+        const srcEnd = Math.min(clip.sourceEnd ?? buf.duration, buf.duration);
+        if (srcEnd <= srcStart) continue;
+
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+
+        // Per-clip volume gain
+        const gain = ctx.createGain();
+        gain.gain.value = Math.max(0, clip.clipAudioVolume ?? 1);
+        src.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (projectTime >= clip.timelineStart) {
+          // Already inside the clip
+          const intoClip = projectTime - clip.timelineStart;
+          const offset = Math.min(srcStart + intoClip, srcEnd - 0.001);
+          const remaining = srcEnd - offset;
+          if (remaining <= 0) continue;
+          src.start(ctx.currentTime, Math.max(0, offset), remaining);
+        } else {
+          // Clip is in the future
+          const delay = clip.timelineStart - projectTime;
+          const audioDur = srcEnd - srcStart;
+          if (audioDur <= 0) continue;
+          src.start(ctx.currentTime + delay, Math.max(0, srcStart), audioDur);
+        }
+
+        newClipNodes.push(src);
+      }
+    }
+
+    clipNodesRef.current = newClipNodes;
+  }, []);
+
   // RAF loop: update currentTime state from wall-clock time
   const tick = useCallback(() => {
     if (!isPlayingRef.current) return;
 
-    // Use performance.now() for reliable timing — AudioContext.currentTime can
-    // stall if the context is suspended by the browser (e.g. autoplay policy).
     const wallElapsed = (performance.now() - startWallTimeRef.current) / 1000;
     const t = startProjectTimeRef.current + wallElapsed;
 
@@ -100,31 +195,12 @@ export function usePlayback(
 
     if (stopAt > 0 && t >= stopAt) {
       if (isLoopingRef.current) {
-        // Restart audio from loop start using cached buffer
+        // Restart all audio from loop start using cached buffers
         const ctx = ctxRef.current;
+        stopAllNodes();
+
         if (ctx) {
-          sourceNodeRef.current?.stop();
-          sourceNodeRef.current?.disconnect();
-          sourceNodeRef.current = null;
-
-          const masterTrack = projectRef.current?.tracks.find((tr) => tr.type === 'audio' && tr.isMaster);
-          const masterClip = masterTrack?.clips[0];
-          const buffer = masterClip ? audioCache.get(masterClip.assetId) : null;
-
-          if (buffer && masterClip) {
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(ctx.destination);
-            // Offset into audio = sourceStart + (loopStart - timelineStart)
-            const audioOffset = Math.max(
-              masterClip.sourceStart ?? 0,
-              (masterClip.sourceStart ?? 0) + (loopStart - (masterClip.timelineStart ?? 0))
-            );
-            source.start(ctx.currentTime, audioOffset);
-            sourceNodeRef.current = source;
-          }
-
-          startAudioTimeRef.current = ctx.currentTime;
+          startFromCache(ctx, loopStart);
         }
 
         startWallTimeRef.current = performance.now();
@@ -140,12 +216,12 @@ export function usePlayback(
       setIsPlaying(false);
       currentTimeRef.current = stopAt;
       setCurrentTime(stopAt);
-      sourceNodeRef.current?.stop();
+      stopAllNodes();
       return;
     }
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [duration]);
+  }, [duration, stopAllNodes, startFromCache]);
 
   const play = useCallback(async () => {
     if (isPlayingRef.current) return;
@@ -153,49 +229,43 @@ export function usePlayback(
     const ctx = getCtx();
     if (ctx.state === 'suspended') await ctx.resume();
 
-    // Find master audio track + asset
-    const masterTrack = project?.tracks.find((t) => t.type === 'audio' && t.isMaster);
+    const proj = project;
+    if (!proj) return;
+
+    // Pre-load all required audio buffers
+    const loads: Promise<unknown>[] = [];
+
+    // Master audio
+    const masterTrack = proj.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
     const masterAsset = masterClip ? assets.find((a) => a.id === masterClip.assetId) : null;
+    if (masterAsset) loads.push(loadAudio(masterAsset));
 
-    if (masterAsset) {
-      const buffer = await loadAudio(masterAsset);
-      if (buffer) {
-        // Stop any existing source
-        sourceNodeRef.current?.stop();
-        sourceNodeRef.current?.disconnect();
-
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(ctx.destination);
-
-        const clipTimelineStart = masterClip?.timelineStart ?? 0;
-        const clipSourceStart = masterClip?.sourceStart ?? 0;
-        const projectTime = currentTimeRef.current;
-
-        if (projectTime >= clipTimelineStart) {
-          // Already at or past the clip's timeline position: start immediately at the correct source offset
-          const intoClip = projectTime - clipTimelineStart;
-          const audioOffset = Math.min(clipSourceStart + intoClip, buffer.duration);
-          source.start(ctx.currentTime, audioOffset);
-        } else {
-          // Before the clip starts: schedule audio to begin when the timeline reaches the clip
-          const delay = clipTimelineStart - projectTime;
-          source.start(ctx.currentTime + delay, clipSourceStart);
-        }
-
-        sourceNodeRef.current = source;
+    // Video clips with useClipAudio
+    for (const track of proj.tracks) {
+      if (track.type !== 'video') continue;
+      for (const clip of track.clips) {
+        if (!clip.useClipAudio) continue;
+        const asset = assets.find((a) => a.id === clip.assetId);
+        if (asset) loads.push(loadAudio(asset));
       }
     }
 
-    startAudioTimeRef.current = ctx.currentTime;
+    await Promise.all(loads);
+
+    // Stop any lingering nodes before starting new ones
+    stopAllNodes();
+
+    // Start all audio from current position
+    startFromCache(ctx, currentTimeRef.current);
+
     startWallTimeRef.current = performance.now();
     startProjectTimeRef.current = currentTimeRef.current;
     isPlayingRef.current = true;
     setIsPlaying(true);
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [project, assets, loadAudio, getCtx, tick]);
+  }, [project, assets, loadAudio, getCtx, tick, stopAllNodes, startFromCache]);
 
   const pause = useCallback(() => {
     if (!isPlayingRef.current) return;
@@ -209,10 +279,8 @@ export function usePlayback(
     currentTimeRef.current = startProjectTimeRef.current + wallElapsed;
     setCurrentTime(currentTimeRef.current);
 
-    sourceNodeRef.current?.stop();
-    sourceNodeRef.current?.disconnect();
-    sourceNodeRef.current = null;
-  }, []);
+    stopAllNodes();
+  }, [stopAllNodes]);
 
   const seek = useCallback(
     (t: number) => {
@@ -221,7 +289,6 @@ export function usePlayback(
       currentTimeRef.current = Math.max(0, Math.min(t, duration || 9999));
       setCurrentTime(currentTimeRef.current);
       if (wasp) {
-        // Brief delay to allow state to settle
         setTimeout(() => play(), 50);
       }
     },
@@ -237,9 +304,6 @@ export function usePlayback(
     if (isPlayingRef.current) {
       pause();
     } else {
-      // Start from work area start when:
-      // - at or past the work area end (restart after finishing), OR
-      // - before the work area start (so 00:00 in display always = interval start in preview)
       const stopAt = workAreaRef.current?.end ?? duration;
       const restartFrom = workAreaRef.current?.start ?? 0;
       if (
@@ -256,10 +320,22 @@ export function usePlayback(
   // Preload audio when project/assets change
   useEffect(() => {
     if (!project) return;
+
+    // Master audio
     const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
     const masterClip = masterTrack?.clips[0];
     const masterAsset = masterClip ? assets.find((a) => a.id === masterClip.assetId) : null;
     if (masterAsset) loadAudio(masterAsset).catch(console.warn);
+
+    // Video clips with useClipAudio
+    for (const track of project.tracks) {
+      if (track.type !== 'video') continue;
+      for (const clip of track.clips) {
+        if (!clip.useClipAudio) continue;
+        const asset = assets.find((a) => a.id === clip.assetId);
+        if (asset) loadAudio(asset).catch(console.warn);
+      }
+    }
   }, [project, assets, loadAudio]);
 
   // Update duration when project changes
@@ -271,10 +347,10 @@ export function usePlayback(
   useEffect(() => {
     return () => {
       cancelAnimationFrame(rafRef.current);
-      sourceNodeRef.current?.stop();
+      stopAllNodes();
       ctxRef.current?.close();
     };
-  }, []);
+  }, [stopAllNodes]);
 
   return {
     isPlaying,

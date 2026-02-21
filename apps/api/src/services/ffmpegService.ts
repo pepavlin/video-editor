@@ -255,9 +255,10 @@ export function buildExportCommand(
       if (outDuration <= 0) continue;
 
       const delay = clip.timelineStart;
-      const scale = Math.max(0.01, clip.transform.scale);
-      const tx = Math.round(clip.transform.x);
-      const ty = Math.round(clip.transform.y);
+      const transform = clip.transform ?? { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
+      const scale = Math.max(0.01, transform.scale);
+      const tx = Math.round(transform.x);
+      const ty = Math.round(transform.y);
 
       // Scale to fill canvas with aspect-aware scaling
       const scaledW = Math.round(W * scale);
@@ -353,7 +354,7 @@ export function buildExportCommand(
       const inputIdx = clipAudioWavMap.get(clip.assetId);
       if (inputIdx === undefined) continue; // no WAV available for this asset
 
-      const vol = Math.max(0, clip.clipAudioVolume);
+      const vol = Math.max(0, clip.clipAudioVolume ?? 1);
       const clipAudioPad = `caudio${filterIdx}`;
       filterParts.push(
         `[${inputIdx}:a]atrim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},asetpts=PTS-STARTPTS,adelay=${Math.round(clip.timelineStart * 1000)}:all=1,volume=${vol.toFixed(4)}[${clipAudioPad}]`
