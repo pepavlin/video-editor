@@ -54,7 +54,7 @@ type DragMode =
   | { type: 'seek' }
   | { type: 'workAreaStart' }
   | { type: 'workAreaEnd' }
-  | { type: 'moveClip'; clipId: string; trackId: string; offsetSeconds: number }
+  | { type: 'moveClip'; clipId: string; trackId: string; offsetSeconds: number; leftAdjacentId: string | null; rightAdjacentId: string | null }
   | { type: 'trimLeft'; clipId: string }
   | { type: 'trimRight'; clipId: string };
 
@@ -111,6 +111,13 @@ export default function Timeline({
 
   // Ghost clip ref (updated during drag-over without triggering re-renders)
   const ghostRef = useRef<GhostClip | null>(null);
+
+  // Half-hover state: which clip + which half is under cursor during moveClip drag
+  const clipHoverRef = useRef<{
+    clip: Clip;
+    half: 'left' | 'right';
+    blocked: boolean;
+  } | null>(null);
 
   const propsRef = useRef({ project, currentTime, assets, waveforms, beatsData, selectedClipId, workArea });
   useEffect(() => {
@@ -728,6 +735,40 @@ export default function Timeline({
             ctx.fillRect(Math.min(clipX + clipW, W) - 4, clipTop, 4, clipH);
           }
         }
+
+        // ─── Clip half-hover overlay (during moveClip drag) ─────────────
+        const hover = clipHoverRef.current;
+        if (hover && hover.clip.id === clip.id) {
+          const hClipTop = trackY + 2;
+          const hClipH = (isEffectTrack ? trackH : TRACK_HEIGHT) - 4;
+          const midX = ((hover.clip.timelineStart + hover.clip.timelineEnd) / 2) * Z - SL + HEADER_WIDTH;
+
+          // Highlight the active half
+          const halfLeft = hover.half === 'left';
+          const halfStartX = halfLeft ? Math.max(clipX, HEADER_WIDTH) : Math.max(midX, HEADER_WIDTH);
+          const halfEndX = halfLeft ? Math.min(midX, W) : Math.min(clipX + clipW, W);
+          const halfW = halfEndX - halfStartX;
+          if (halfW > 0) {
+            ctx.globalAlpha = 0.38;
+            ctx.fillStyle = hover.blocked ? 'rgba(239,68,68,0.6)' : 'rgba(0,212,160,0.5)';
+            ctx.fillRect(halfStartX, hClipTop, halfW, hClipH);
+            ctx.globalAlpha = 1;
+          }
+
+          // Midpoint divider line
+          if (midX >= HEADER_WIDTH && midX <= W) {
+            ctx.globalAlpha = 0.75;
+            ctx.strokeStyle = hover.blocked ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.8)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(midX, hClipTop);
+            ctx.lineTo(midX, hClipTop + hClipH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
+          }
+        }
       }
 
       // ─── Ghost clip on existing track ──────────────────────────────────
@@ -906,7 +947,14 @@ export default function Timeline({
         setDrag({ type: 'trimRight', clipId: clip.id });
       } else {
         const offsetSeconds = (x + SL - HEADER_WIDTH) / Z - clip.timelineStart;
-        setDrag({ type: 'moveClip', clipId: clip.id, trackId: track.id, offsetSeconds });
+        // Find clips immediately adjacent (sharing a border) on the same track
+        const leftAdjacentId = track.clips.find(
+          (c) => c.id !== clip.id && Math.abs(c.timelineEnd - clip.timelineStart) < 0.001
+        )?.id ?? null;
+        const rightAdjacentId = track.clips.find(
+          (c) => c.id !== clip.id && Math.abs(c.timelineStart - clip.timelineEnd) < 0.001
+        )?.id ?? null;
+        setDrag({ type: 'moveClip', clipId: clip.id, trackId: track.id, offsetSeconds, leftAdjacentId, rightAdjacentId });
       }
     },
     [getClipAtPosition, onClipSelect, onSeek]
@@ -951,11 +999,12 @@ export default function Timeline({
         t = Math.max(0, t);
 
         let clip: Clip | undefined;
+        let clipTrack: Track | undefined;
         for (const tr of project.tracks) {
           clip = tr.clips.find((c) => c.id === d.clipId);
-          if (clip) break;
+          if (clip) { clipTrack = tr; break; }
         }
-        if (!clip) return;
+        if (!clip || !clipTrack) return;
 
         const dur = clip.timelineEnd - clip.timelineStart;
         const snapTargets = getSnapTargets(d.clipId);
@@ -964,7 +1013,36 @@ export default function Timeline({
         t = snap(t + dur, snapTargets, snapThreshold) - dur;
         t = Math.max(0, t);
 
+        // ── Half-hover detection ──────────────────────────────────────────
+        // Find a clip on the SAME track that the cursor time overlaps with.
+        // The half that already borders the dragged clip is blocked (no-op move).
+        const cursorTime = (x + SL - HEADER_WIDTH) / Z;
+        const hoveredClip = clipTrack.clips.find(
+          (c) => c.id !== d.clipId && cursorTime >= c.timelineStart && cursorTime <= c.timelineEnd
+        );
+        if (hoveredClip) {
+          const midpoint = (hoveredClip.timelineStart + hoveredClip.timelineEnd) / 2;
+          const half: 'left' | 'right' = cursorTime < midpoint ? 'left' : 'right';
+          // Left half of right-adjacent clip is blocked (B was already touching its left edge)
+          // Right half of left-adjacent clip is blocked (B was already touching its right edge)
+          const blocked =
+            (half === 'left' && hoveredClip.id === d.rightAdjacentId) ||
+            (half === 'right' && hoveredClip.id === d.leftAdjacentId);
+          clipHoverRef.current = { clip: hoveredClip, half, blocked };
+          if (!blocked) {
+            // Override snap: place B just before or just after the hovered clip
+            if (half === 'left') {
+              t = Math.max(0, hoveredClip.timelineStart - dur);
+            } else {
+              t = hoveredClip.timelineEnd;
+            }
+          }
+        } else {
+          clipHoverRef.current = null;
+        }
+
         onClipUpdate(d.clipId, { timelineStart: t, timelineEnd: t + dur });
+        draw();
         return;
       }
 
@@ -1016,10 +1094,13 @@ export default function Timeline({
         return;
       }
     },
-    [project, assets, getSnapTargets, onClipUpdate, onSeek, onWorkAreaChange]
+    [project, assets, getSnapTargets, onClipUpdate, onSeek, onWorkAreaChange, draw]
   );
 
-  const handleMouseUp = useCallback(() => { setDrag({ type: 'none' }); }, []);
+  const handleMouseUp = useCallback(() => {
+    clipHoverRef.current = null;
+    setDrag({ type: 'none' });
+  }, []);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
