@@ -163,7 +163,7 @@ export default function Inspector({
       {selectedClip ? (
         <>
           <Section title={selectedTrackType === 'effect' ? 'Effect Info' : 'Clip Info'}>
-            {selectedTrackType !== 'effect' && (
+            {selectedTrackType !== 'effect' && selectedClip.assetId && (
               <Row label="Asset">
                 <span style={{ fontSize: 13, color: '#8ab8b0', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {selectedAsset?.name ?? selectedClip.assetId}
@@ -423,7 +423,7 @@ export default function Inspector({
             );
           })()}
 
-          {(selectedTrackType === 'video' || selectedTrackType === 'text' || selectedTrackType === 'lyrics') && selectedClip.transform && (
+          {(selectedTrackType === 'video' || selectedTrackType === 'text' || !!selectedClip?.textStyle) && selectedClip.transform && (
           <Section title="Transform">
             <Row label="Scale">
               <NumInput
@@ -512,7 +512,7 @@ export default function Inspector({
           </Section>
           )}
 
-          {selectedTrackType === 'text' && selectedClip && (
+          {(selectedTrackType === 'text' || !!selectedClip?.textContent || !!selectedClip?.textStyle) && selectedClip && (
           <Section title="Text">
             <Row label="Content">
               <textarea
