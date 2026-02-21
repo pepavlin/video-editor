@@ -5,15 +5,10 @@ import type {
   Project,
   Clip,
   Asset,
-  BeatZoomEffect,
-  CutoutEffect,
-  HeadStabilizationEffect,
-  CartoonEffect,
   LyricsStyle,
   TextStyle,
   EffectClipConfig,
 } from '@video-editor/shared';
-import * as api from '@/lib/api';
 import { formatTime } from '@/lib/utils';
 
 interface Props {
@@ -21,9 +16,6 @@ interface Props {
   selectedClipId: string | null;
   assets: Asset[];
   onClipUpdate: (clipId: string, updates: Partial<Clip>) => void;
-  onAddEffect: (clipId: string, effect: any) => void;
-  onRemoveEffect: (clipId: string, type: string) => void;
-  onUpdateEffect: (clipId: string, type: string, updates: any) => void;
   onUpdateEffectClipConfig: (clipId: string, updates: Partial<EffectClipConfig>) => void;
   onUpdateProject: (updater: (p: Project) => Project) => void;
   masterAssetId?: string;
@@ -131,9 +123,6 @@ export default function Inspector({
   selectedClipId,
   assets,
   onClipUpdate,
-  onAddEffect,
-  onRemoveEffect,
-  onUpdateEffect,
   onUpdateEffectClipConfig,
   onUpdateProject,
   masterAssetId,
@@ -168,11 +157,6 @@ export default function Inspector({
     : undefined;
 
   const assetHasAudio = !!(selectedAsset?.audioPath);
-
-  const beatZoom = selectedClip?.effects.find((e) => e.type === 'beatZoom') as BeatZoomEffect | undefined;
-  const cutout = selectedClip?.effects.find((e) => e.type === 'cutout') as CutoutEffect | undefined;
-  const headStabilization = selectedClip?.effects.find((e) => e.type === 'headStabilization') as HeadStabilizationEffect | undefined;
-  const cartoon = selectedClip?.effects.find((e) => e.type === 'cartoon') as CartoonEffect | undefined;
 
   const handleAlignLyrics = async () => {
     if (!lyricsText.trim()) return;
@@ -215,7 +199,10 @@ export default function Inspector({
             {selectedTrackType === 'effect' && selectedClip.effectConfig && (
               <Row label="Type">
                 <span style={{ fontSize: 13, color: 'rgba(251,146,60,0.90)', fontWeight: 600 }}>
-                  {selectedClip.effectConfig.effectType === 'beatZoom' ? '⚡ Beat Zoom' : '✂ Cutout'}
+                  {selectedClip.effectConfig.effectType === 'beatZoom' && '⚡ Beat Zoom'}
+                  {selectedClip.effectConfig.effectType === 'cutout' && '✂ Cutout'}
+                  {selectedClip.effectConfig.effectType === 'headStabilization' && '⦿ Head Stabilize'}
+                  {selectedClip.effectConfig.effectType === 'cartoon' && '◈ Cartoon'}
                 </span>
               </Row>
             )}
@@ -294,6 +281,28 @@ export default function Inspector({
 
                 {cfg.effectType === 'cutout' && (
                   <>
+                    <Row label="Status">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          fontSize: 11,
+                          color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'processing' ? '#fbbf24' : 'rgba(255,255,255,0.28)',
+                          flex: 1,
+                        }}>
+                          {cfg.maskStatus === 'done' && 'Mask ready'}
+                          {cfg.maskStatus === 'processing' && 'Processing...'}
+                          {cfg.maskStatus === 'error' && 'Error – retry'}
+                          {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
+                        </span>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, border: '1px solid rgba(0,212,160,0.30)', padding: '4px 10px', color: cfg.maskStatus === 'processing' ? 'rgba(255,255,255,0.30)' : '#00d4a0', opacity: cfg.maskStatus === 'processing' ? 0.5 : 1 }}
+                          disabled={cfg.maskStatus === 'processing'}
+                          onClick={() => onStartCutout(selectedClip!.id)}
+                        >
+                          Process
+                        </button>
+                      </div>
+                    </Row>
                     <Row label="BG Type">
                       <select
                         value={cfg.background?.type ?? 'solid'}
@@ -325,6 +334,86 @@ export default function Inspector({
                         />
                       </Row>
                     )}
+                  </>
+                )}
+
+                {cfg.effectType === 'headStabilization' && (
+                  <>
+                    <Row label="X Axis">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingX ?? 0.7} style={{ width: '100%' }}
+                          onChange={(e) => update({ smoothingX: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingX ?? 0.7) * 100)}%</span>
+                      </div>
+                    </Row>
+                    <Row label="Y Axis">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingY ?? 0.7} style={{ width: '100%' }}
+                          onChange={(e) => update({ smoothingY: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingY ?? 0.7) * 100)}%</span>
+                      </div>
+                    </Row>
+                    <Row label="Z Zoom">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingZ ?? 0.0} style={{ width: '100%' }}
+                          onChange={(e) => update({ smoothingZ: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingZ ?? 0) * 100)}%</span>
+                      </div>
+                    </Row>
+                    <Row label="">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          fontSize: 11,
+                          color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'processing' ? '#fbbf24' : 'rgba(255,255,255,0.28)',
+                          flex: 1,
+                        }}>
+                          {cfg.stabilizationStatus === 'done' && 'Stabilized'}
+                          {cfg.stabilizationStatus === 'processing' && 'Processing...'}
+                          {cfg.stabilizationStatus === 'error' && 'Error – retry'}
+                          {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
+                        </span>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, border: '1px solid rgba(0,212,160,0.30)', padding: '4px 10px', color: cfg.stabilizationStatus === 'processing' ? 'rgba(255,255,255,0.30)' : '#00d4a0', opacity: cfg.stabilizationStatus === 'processing' ? 0.5 : 1 }}
+                          disabled={cfg.stabilizationStatus === 'processing'}
+                          onClick={() => onStartHeadStabilization(selectedClip!.id)}
+                        >
+                          Process
+                        </button>
+                      </div>
+                    </Row>
+                  </>
+                )}
+
+                {cfg.effectType === 'cartoon' && (
+                  <>
+                    <Row label="Edges">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={1} step={0.05} value={cfg.edgeStrength ?? 0.6} style={{ width: '100%' }}
+                          onChange={(e) => update({ edgeStrength: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>{Math.round((cfg.edgeStrength ?? 0.6) * 100)}%</span>
+                      </div>
+                    </Row>
+                    <Row label="Flatten">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={1} step={0.05} value={cfg.colorSimplification ?? 0.5} style={{ width: '100%' }}
+                          onChange={(e) => update({ colorSimplification: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>{Math.round((cfg.colorSimplification ?? 0.5) * 100)}%</span>
+                      </div>
+                    </Row>
+                    <Row label="Saturation">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={2} step={0.05} value={cfg.saturation ?? 1.5} style={{ width: '100%' }}
+                          onChange={(e) => update({ saturation: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
+                      </div>
+                    </Row>
                   </>
                 )}
               </Section>
@@ -641,418 +730,6 @@ export default function Inspector({
             )}
           </Section>
           )}
-
-          <Section title="Effects">
-            {/* Beat Zoom */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, color: '#c0ddd8' }}>Beat Zoom</span>
-                {beatZoom ? (
-                  <button
-                    style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
-                    onClick={() => onRemoveEffect(selectedClip!.id, 'beatZoom')}
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <button
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
-                    onClick={() =>
-                      onAddEffect(selectedClip!.id, {
-                        type: 'beatZoom',
-                        enabled: true,
-                        intensity: 0.08,
-                        durationMs: 120,
-                        easing: 'easeOut',
-                      } satisfies BeatZoomEffect)
-                    }
-                  >
-                    + Add
-                  </button>
-                )}
-              </div>
-              {beatZoom && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={beatZoom.enabled}
-                      onChange={(e) => onUpdateEffect(selectedClip!.id, 'beatZoom', { enabled: e.target.checked })}
-                    />
-                    Enabled
-                  </label>
-                  <Row label="Intensity">
-                    <input
-                      type="range"
-                      min={0.01}
-                      max={0.5}
-                      step={0.01}
-                      value={beatZoom.intensity}
-                      style={{ width: '100%' }}
-                      onChange={(e) =>
-                        onUpdateEffect(selectedClip!.id, 'beatZoom', {
-                          intensity: parseFloat(e.target.value),
-                        })
-                      }
-                    />
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{(beatZoom.intensity * 100).toFixed(0)}%</span>
-                  </Row>
-                  <Row label="Duration">
-                    <NumInput
-                      value={beatZoom.durationMs}
-                      min={50}
-                      max={500}
-                      step={10}
-                      onChange={(v) =>
-                        onUpdateEffect(selectedClip!.id, 'beatZoom', { durationMs: v })
-                      }
-                    />
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>ms</span>
-                  </Row>
-                  <Row label="Easing">
-                    <select
-                      value={beatZoom.easing}
-                      style={{ fontSize: 13 }}
-                      onChange={(e) =>
-                        onUpdateEffect(selectedClip!.id, 'beatZoom', { easing: e.target.value })
-                      }
-                    >
-                      <option value="linear">Linear</option>
-                      <option value="easeOut">Ease Out</option>
-                      <option value="easeIn">Ease In</option>
-                      <option value="easeInOut">Ease In/Out</option>
-                    </select>
-                  </Row>
-                </div>
-              )}
-            </div>
-
-            {/* Cutout */}
-            {selectedAsset?.type === 'video' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, color: '#c0ddd8' }}>Cutout Person</span>
-                  {cutout ? (
-                    <button
-                      style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
-                      onClick={() => onRemoveEffect(selectedClip!.id, 'cutout')}
-                    >
-                      Remove
-                    </button>
-                  ) : (
-                    <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
-                      onClick={async () => {
-                        onAddEffect(selectedClip!.id, {
-                          type: 'cutout',
-                          enabled: true,
-                          background: { type: 'solid', color: '#000000' },
-                          maskStatus: 'pending',
-                        } satisfies CutoutEffect);
-                        await onStartCutout(selectedClip!.id);
-                      }}
-                    >
-                      + Add
-                    </button>
-                  )}
-                </div>
-                {cutout && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.38)' }}>
-                      Mask: {cutout.maskStatus ?? 'unknown'}
-                    </div>
-                    <Row label="BG Type">
-                      <select
-                        value={cutout.background.type}
-                        style={{ fontSize: 13 }}
-                        onChange={(e) =>
-                          onUpdateEffect(selectedClip!.id, 'cutout', {
-                            background: {
-                              ...cutout.background,
-                              type: e.target.value as 'solid' | 'video',
-                            },
-                          })
-                        }
-                      >
-                        <option value="solid">Solid Color</option>
-                        <option value="video">Video</option>
-                      </select>
-                    </Row>
-                    {cutout.background.type === 'solid' && (
-                      <Row label="Color">
-                        <input
-                          type="color"
-                          value={cutout.background.color ?? '#000000'}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'cutout', {
-                              background: { ...cutout.background, color: e.target.value },
-                            })
-                          }
-                          style={{ width: '100%', height: 36 }}
-                        />
-                      </Row>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Head Stabilization */}
-            {selectedAsset?.type === 'video' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, color: '#c0ddd8' }}>Head Stabilization</span>
-                  {headStabilization ? (
-                    <button
-                      style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
-                      onClick={() => onRemoveEffect(selectedClip!.id, 'headStabilization')}
-                    >
-                      Remove
-                    </button>
-                  ) : (
-                    <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
-                      onClick={() =>
-                        onAddEffect(selectedClip!.id, {
-                          type: 'headStabilization',
-                          enabled: true,
-                          smoothingX: 0.7,
-                          smoothingY: 0.7,
-                          smoothingZ: 0.0,
-                          status: 'pending',
-                        } satisfies HeadStabilizationEffect)
-                      }
-                    >
-                      + Add
-                    </button>
-                  )}
-                </div>
-                {headStabilization && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={headStabilization.enabled}
-                        onChange={(e) => onUpdateEffect(selectedClip!.id, 'headStabilization', { enabled: e.target.checked })}
-                      />
-                      Enabled
-                    </label>
-                    <Row label="X Axis">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={headStabilization.smoothingX}
-                          style={{ width: '100%' }}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'headStabilization', {
-                              smoothingX: parseFloat(e.target.value),
-                              status: 'pending',
-                            })
-                          }
-                        />
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
-                          {Math.round(headStabilization.smoothingX * 100)}%
-                        </span>
-                      </div>
-                    </Row>
-                    <Row label="Y Axis">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={headStabilization.smoothingY}
-                          style={{ width: '100%' }}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'headStabilization', {
-                              smoothingY: parseFloat(e.target.value),
-                              status: 'pending',
-                            })
-                          }
-                        />
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
-                          {Math.round(headStabilization.smoothingY * 100)}%
-                        </span>
-                      </div>
-                    </Row>
-                    <Row label="Z Zoom">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={headStabilization.smoothingZ}
-                          style={{ width: '100%' }}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'headStabilization', {
-                              smoothingZ: parseFloat(e.target.value),
-                              status: 'pending',
-                            })
-                          }
-                        />
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
-                          {Math.round(headStabilization.smoothingZ * 100)}%
-                        </span>
-                      </div>
-                    </Row>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                      <div style={{
-                        fontSize: 11,
-                        color: headStabilization.status === 'done'
-                          ? '#4ade80'
-                          : headStabilization.status === 'error'
-                          ? '#f87171'
-                          : headStabilization.status === 'processing'
-                          ? '#fbbf24'
-                          : 'rgba(255,255,255,0.28)',
-                        flex: 1,
-                      }}>
-                        {headStabilization.status === 'done' && 'Stabilized'}
-                        {headStabilization.status === 'processing' && 'Processing...'}
-                        {headStabilization.status === 'error' && 'Error – retry below'}
-                        {(headStabilization.status === 'pending' || !headStabilization.status) && 'Not processed'}
-                      </div>
-                      <button
-                        className="btn btn-ghost"
-                        style={{
-                          fontSize: 11,
-                          border: '1px solid rgba(0,212,160,0.30)',
-                          padding: '4px 10px',
-                          color: headStabilization.status === 'processing' ? 'rgba(255,255,255,0.30)' : '#00d4a0',
-                          opacity: headStabilization.status === 'processing' ? 0.5 : 1,
-                        }}
-                        disabled={headStabilization.status === 'processing'}
-                        onClick={() => onStartHeadStabilization(selectedClip!.id)}
-                      >
-                        Process
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Cartoon */}
-            {selectedAsset?.type === 'video' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, color: '#c0ddd8' }}>Cartoon</span>
-                  {cartoon ? (
-                    <button
-                      style={{ fontSize: 12, color: '#ff7090', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff9090'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#ff7090'; }}
-                      onClick={() => onRemoveEffect(selectedClip!.id, 'cartoon')}
-                    >
-                      Remove
-                    </button>
-                  ) : (
-                    <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
-                      onClick={() =>
-                        onAddEffect(selectedClip!.id, {
-                          type: 'cartoon',
-                          enabled: true,
-                          edgeStrength: 0.6,
-                          colorSimplification: 0.5,
-                          saturation: 1.5,
-                        } satisfies CartoonEffect)
-                      }
-                    >
-                      + Add
-                    </button>
-                  )}
-                </div>
-                {cartoon && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={cartoon.enabled}
-                        onChange={(e) => onUpdateEffect(selectedClip!.id, 'cartoon', { enabled: e.target.checked })}
-                      />
-                      Enabled
-                    </label>
-                    <Row label="Edges">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={cartoon.edgeStrength}
-                          style={{ width: '100%' }}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'cartoon', {
-                              edgeStrength: parseFloat(e.target.value),
-                            })
-                          }
-                        />
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
-                          {Math.round(cartoon.edgeStrength * 100)}%
-                        </span>
-                      </div>
-                    </Row>
-                    <Row label="Flatten">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={cartoon.colorSimplification}
-                          style={{ width: '100%' }}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'cartoon', {
-                              colorSimplification: parseFloat(e.target.value),
-                            })
-                          }
-                        />
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
-                          {Math.round(cartoon.colorSimplification * 100)}%
-                        </span>
-                      </div>
-                    </Row>
-                    <Row label="Saturation">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="range"
-                          min={0}
-                          max={2}
-                          step={0.05}
-                          value={cartoon.saturation}
-                          style={{ width: '100%' }}
-                          onChange={(e) =>
-                            onUpdateEffect(selectedClip!.id, 'cartoon', {
-                              saturation: parseFloat(e.target.value),
-                            })
-                          }
-                        />
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
-                          {cartoon.saturation.toFixed(1)}×
-                        </span>
-                      </div>
-                    </Row>
-                  </div>
-                )}
-              </div>
-            )}
-          </Section>
         </>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 120, gap: 10, color: 'rgba(255,255,255,0.18)' }}>

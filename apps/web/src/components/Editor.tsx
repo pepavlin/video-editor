@@ -264,46 +264,77 @@ export default function Editor() {
   };
 
   const handleStartCutout = async (clipId: string) => {
+    if (!project) return;
     const clip = findClip(clipId);
-    if (!clip) return;
+    if (!clip || !clip.effectConfig) return;
+
+    // Find parent video track and get assets to process
+    const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    const parentTrack = effectTrack?.parentTrackId
+      ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
+      : undefined;
+    const videoClips = parentTrack?.clips ?? [];
+    const seenAssets = new Set<string>();
+    const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
+    if (uniqueAssetIds.length === 0) {
+      notify('No video clips found in parent track');
+      return;
+    }
+
     notify('Starting cutout processing...');
+    updateEffectClipConfig(clipId, { maskStatus: 'processing' });
     try {
-      const { jobId } = await api.startCutout(clip.assetId);
-      updateEffect(clipId, 'cutout', { maskStatus: 'processing' });
+      const { jobId } = await api.startCutout(uniqueAssetIds[0]);
       api.pollJob(jobId, (j) => notify(`Cutout: ${j.progress}%`)).then(() => {
-        updateEffect(clipId, 'cutout', { maskStatus: 'done' });
+        updateEffectClipConfig(clipId, { maskStatus: 'done' });
         notify('Cutout done!');
         refreshAssets();
       }).catch((e) => {
-        updateEffect(clipId, 'cutout', { maskStatus: 'error' });
+        updateEffectClipConfig(clipId, { maskStatus: 'error' });
         notify(`Cutout failed: ${e.message}`);
       });
-    } catch (e: any) { notify(`Cutout error: ${e.message}`); }
+    } catch (e: any) {
+      updateEffectClipConfig(clipId, { maskStatus: 'error' });
+      notify(`Cutout error: ${e.message}`);
+    }
   };
 
   const handleStartHeadStabilization = async (clipId: string) => {
+    if (!project) return;
     const clip = findClip(clipId);
-    if (!clip) return;
-    const effect = clip.effects.find((e) => e.type === 'headStabilization') as any;
-    if (!effect) return;
+    if (!clip || !clip.effectConfig) return;
+
+    // Find parent video track and get assets to process
+    const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    const parentTrack = effectTrack?.parentTrackId
+      ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
+      : undefined;
+    const videoClips = parentTrack?.clips ?? [];
+    const seenAssets = new Set<string>();
+    const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
+    if (uniqueAssetIds.length === 0) {
+      notify('No video clips found in parent track');
+      return;
+    }
+
     notify('Starting head stabilization...');
+    updateEffectClipConfig(clipId, { stabilizationStatus: 'processing' });
     try {
-      updateEffect(clipId, 'headStabilization', { status: 'processing' });
-      const { jobId } = await api.startHeadStabilization(clip.assetId, {
-        smoothingX: effect.smoothingX ?? 0.7,
-        smoothingY: effect.smoothingY ?? 0.7,
-        smoothingZ: effect.smoothingZ ?? 0.0,
+      const { jobId } = await api.startHeadStabilization(uniqueAssetIds[0], {
+        smoothingX: clip.effectConfig.smoothingX ?? 0.7,
+        smoothingY: clip.effectConfig.smoothingY ?? 0.7,
+        smoothingZ: clip.effectConfig.smoothingZ ?? 0.0,
       });
       api.pollJob(jobId, (j) => notify(`Head stabilization: ${j.progress}%`)).then(() => {
-        updateEffect(clipId, 'headStabilization', { status: 'done' });
+        updateEffectClipConfig(clipId, { stabilizationStatus: 'done' });
         notify('Head stabilization done!');
         refreshAssets();
       }).catch((e) => {
-        updateEffect(clipId, 'headStabilization', { status: 'error' });
+        updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
         notify(`Head stabilization failed: ${e.message}`);
       });
     } catch (e: any) {
-      updateEffect(clipId, 'headStabilization', { status: 'error' });
+      updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
       notify(`Head stabilization error: ${e.message}`);
     }
   };
@@ -517,8 +548,8 @@ export default function Editor() {
           onDropAssetNewTrack={handleDropAssetNewTrack}
           onWorkAreaChange={handleWorkAreaChange}
           onTrackReorder={(fromIdx, toIdx) => reorderTrack(fromIdx, toIdx)}
-          onAddEffectTrack={(effectType, start, dur) => {
-            const clipId = addEffectTrack(effectType, start, dur);
+          onAddEffectTrack={(effectType, start, dur, parentTrackId) => {
+            const clipId = addEffectTrack(effectType, start, dur, parentTrackId);
             setSelectedClipId(clipId);
           }}
         />
@@ -532,9 +563,6 @@ export default function Editor() {
           selectedClipId={selectedClipId}
           assets={assets}
           onClipUpdate={updateClip}
-          onAddEffect={addEffect}
-          onRemoveEffect={removeEffect}
-          onUpdateEffect={updateEffect}
           onUpdateEffectClipConfig={updateEffectClipConfig}
           onUpdateProject={updateProject}
           masterAssetId={masterAssetId}

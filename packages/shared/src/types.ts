@@ -19,6 +19,8 @@ export interface Project {
   updatedAt: string;
 }
 
+export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon';
+
 export interface Track {
   id: string;
   type: 'video' | 'audio' | 'text' | 'effect';
@@ -26,7 +28,8 @@ export interface Track {
   name: string;
   muted?: boolean;
   clips: Clip[];
-  effectType?: 'beatZoom' | 'cutout'; // only for 'effect' tracks
+  effectType?: EffectType;    // only for 'effect' tracks
+  parentTrackId?: string;     // only for 'effect' tracks – which video track this applies to
 }
 
 export interface TextStyle {
@@ -62,7 +65,7 @@ export interface Clip {
 
 // Configuration stored on each clip that lives on an 'effect' track
 export interface EffectClipConfig {
-  effectType: 'beatZoom' | 'cutout';
+  effectType: EffectType;
   enabled: boolean;
   // beatZoom params
   intensity?: number;   // fraction e.g. 0.08 = +8%
@@ -71,6 +74,15 @@ export interface EffectClipConfig {
   // cutout params
   background?: BackgroundConfig;
   maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+  // headStabilization params
+  smoothingX?: number;  // 0-1: stabilization strength on X axis
+  smoothingY?: number;  // 0-1: stabilization strength on Y axis
+  smoothingZ?: number;  // 0-1: stabilization strength on Z/zoom axis
+  stabilizationStatus?: 'pending' | 'processing' | 'done' | 'error';
+  // cartoon params
+  edgeStrength?: number;        // 0-1: prominence of cartoon edges
+  colorSimplification?: number; // 0-1: how much to simplify/flatten colors
+  saturation?: number;          // 0-2: color saturation (1=normal)
 }
 
 export interface Transform {
