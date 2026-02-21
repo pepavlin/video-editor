@@ -1,6 +1,12 @@
 'use client';
 
-import type { CartoonEffect } from '@video-editor/shared';
+interface CartoonEffect {
+  type: 'cartoon';
+  enabled: boolean;
+  edgeStrength: number;
+  colorSimplification: number;
+  saturation: number;
+}
 
 interface Props {
   clipId: string;

@@ -1,7 +1,13 @@
 'use client';
 
-import type { CutoutEffect } from '@video-editor/shared';
 import { Row } from '../inspector/InspectorLayout';
+
+interface CutoutEffect {
+  type: 'cutout';
+  enabled: boolean;
+  background: { type: 'solid' | 'video'; color?: string; assetId?: string };
+  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+}
 
 interface Props {
   clipId: string;

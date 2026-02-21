@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
 Person cutout using rembg (background removal).
-Usage: python3 cutout.py <input_video_path> <output_mask_path>
+Usage: python3 cutout.py <input_video_path> <output_mask_path> [mode]
 
-Generates a mask video where white = person, black = background.
-Uses rembg with u2net_human_seg model for person segmentation.
+mode:
+  removeBg      (default) White = person, black = background.
+                           Apply as mask to keep person, replace background.
+  removePerson  Inverted:  White = background, black = person.
+                           Apply as mask to remove person, keep background.
+
+Generates a grayscale mask video using rembg with u2net_human_seg model.
 """
 
 import sys
@@ -13,11 +18,10 @@ import subprocess
 import tempfile
 
 
-def process_cutout(input_path: str, output_path: str) -> None:
+def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') -> None:
     try:
-        import rembg
         from rembg import remove, new_session
-        from PIL import Image
+        from PIL import Image, ImageOps
         import numpy as np
     except ImportError:
         print(
@@ -27,8 +31,10 @@ def process_cutout(input_path: str, output_path: str) -> None:
         )
         sys.exit(1)
 
+    invert_mask = (mode == 'removePerson')
     print(f"[cutout] Input: {input_path}")
     print(f"[cutout] Output: {output_path}")
+    print(f"[cutout] Mode: {mode} (invert={invert_mask})")
 
     # Create temp dirs
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -70,6 +76,10 @@ def process_cutout(input_path: str, output_path: str) -> None:
                 mask = output_img
             else:
                 mask = output_img.split()[-1]  # Alpha channel
+
+            # Invert mask when mode is 'removePerson' (keep background)
+            if invert_mask:
+                mask = ImageOps.invert(mask)
 
             mask.save(mask_path)
 
@@ -119,8 +129,13 @@ def process_cutout(input_path: str, output_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <input_video> <output_mask_mp4>", file=sys.stderr)
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        print(f"Usage: {sys.argv[0]} <input_video> <output_mask_mp4> [removeBg|removePerson]", file=sys.stderr)
         sys.exit(1)
 
-    process_cutout(sys.argv[1], sys.argv[2])
+    mode_arg = sys.argv[3] if len(sys.argv) == 4 else 'removeBg'
+    if mode_arg not in ('removeBg', 'removePerson'):
+        print(f"ERROR: Unknown mode '{mode_arg}'. Use 'removeBg' or 'removePerson'.", file=sys.stderr)
+        sys.exit(1)
+
+    process_cutout(sys.argv[1], sys.argv[2], mode_arg)

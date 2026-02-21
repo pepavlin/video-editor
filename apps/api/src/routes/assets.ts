@@ -321,7 +321,8 @@ export async function assetsRoutes(app: FastifyInstance) {
   });
 
   // POST /assets/:id/cutout - start cutout mask generation
-  app.post<{ Params: { id: string } }>('/assets/:id/cutout', async (req, reply) => {
+  // Body: { mode?: 'removeBg' | 'removePerson' }
+  app.post<{ Params: { id: string }; Body: { mode?: string } }>('/assets/:id/cutout', async (req, reply) => {
     const asset = ws.getAsset(req.params.id);
     if (!asset || asset.type !== 'video') {
       return reply.code(404).send({ error: 'Video asset not found' });
@@ -335,6 +336,8 @@ export async function assetsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Proxy not ready - import may still be processing' });
     }
 
+    const mode = req.body?.mode === 'removePerson' ? 'removePerson' : 'removeBg';
+
     const job = jq.createJob('cutout', asset.id);
     const maskOutputPath = path.join(ws.getAssetDir(asset.id), 'mask.mp4');
     const scriptPath = path.join(config.scriptsDir, 'cutout.py');
@@ -342,7 +345,7 @@ export async function assetsRoutes(app: FastifyInstance) {
     jq.runCommand(
       job.id,
       config.pythonBin,
-      [scriptPath, proxyPath, maskOutputPath],
+      [scriptPath, proxyPath, maskOutputPath, mode],
       {
         onDone: () => {
           const latestAsset = ws.getAsset(asset.id);

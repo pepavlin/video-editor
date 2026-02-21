@@ -46,8 +46,12 @@ export async function analyzeBeats(assetId: string): Promise<{ jobId: string }> 
   return apiFetch(`/assets/${assetId}/analyze-beats`, { method: 'POST' });
 }
 
-export async function startCutout(assetId: string): Promise<{ jobId: string }> {
-  return apiFetch(`/assets/${assetId}/cutout`, { method: 'POST' });
+export async function startCutout(assetId: string, mode?: 'removeBg' | 'removePerson'): Promise<{ jobId: string }> {
+  return apiFetch(`/assets/${assetId}/cutout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: mode ?? 'removeBg' }),
+  });
 }
 
 export async function startHeadStabilization(

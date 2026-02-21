@@ -269,6 +269,21 @@ export default function Inspector({
 
                 {cfg.effectType === 'cutout' && (
                   <>
+                    <Row label="Mode">
+                      <select
+                        value={cfg.cutoutMode ?? 'removeBg'}
+                        style={{ fontSize: 13 }}
+                        onChange={(e) =>
+                          update({
+                            cutoutMode: e.target.value as 'removeBg' | 'removePerson',
+                            maskStatus: 'pending',
+                          })
+                        }
+                      >
+                        <option value="removeBg">Remove background (keep person)</option>
+                        <option value="removePerson">Remove person (keep background)</option>
+                      </select>
+                    </Row>
                     <Row label="Status">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{
