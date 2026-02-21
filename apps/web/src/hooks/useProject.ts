@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Effect, Transform, TextStyle, EffectClipConfig } from '@video-editor/shared';
+import type { Project, Clip, Track, Effect, Transform, TextStyle, EffectClipConfig, EffectType } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 
@@ -80,23 +80,40 @@ export function useProject() {
   }, [setProject, recomputeDuration]);
 
   // Add an effect track with one default clip at timelineStart
+  // parentTrackId: if provided, the new effect track is inserted directly before that video track
   const addEffectTrack = useCallback(
-    (effectType: 'beatZoom' | 'cutout', timelineStart: number, duration: number): string => {
+    (effectType: EffectType, timelineStart: number, duration: number, parentTrackId?: string): string => {
       const trackId = genId('track');
       const clipId = genId('clip');
 
-      const defaultConfig: EffectClipConfig =
-        effectType === 'beatZoom'
-          ? { effectType: 'beatZoom', enabled: true, intensity: 0.08, durationMs: 150, easing: 'easeOut' }
-          : { effectType: 'cutout', enabled: true, background: { type: 'solid', color: '#000000' } };
+      const defaultConfig: EffectClipConfig = (() => {
+        switch (effectType) {
+          case 'beatZoom':
+            return { effectType: 'beatZoom', enabled: true, intensity: 0.08, durationMs: 150, easing: 'easeOut' as const };
+          case 'cutout':
+            return { effectType: 'cutout', enabled: true, background: { type: 'solid' as const, color: '#000000' }, maskStatus: 'pending' as const };
+          case 'headStabilization':
+            return { effectType: 'headStabilization', enabled: true, smoothingX: 0.7, smoothingY: 0.7, smoothingZ: 0.0, stabilizationStatus: 'pending' as const };
+          case 'cartoon':
+            return { effectType: 'cartoon', enabled: true, edgeStrength: 0.6, colorSimplification: 0.5, saturation: 1.5 };
+        }
+      })();
+
+      const effectNames: Record<EffectType, string> = {
+        beatZoom: 'Beat Zoom',
+        cutout: 'Cutout',
+        headStabilization: 'Head Stab',
+        cartoon: 'Cartoon',
+      };
 
       updateProject((p) => {
         const count = p.tracks.filter((t) => t.type === 'effect' && t.effectType === effectType).length;
-        const name = effectType === 'beatZoom' ? `Beat Zoom ${count + 1}` : `Cutout ${count + 1}`;
+        const name = `${effectNames[effectType]} ${count + 1}`;
         const newTrack: Track = {
           id: trackId,
           type: 'effect',
           effectType,
+          parentTrackId,
           name,
           muted: false,
           clips: [
@@ -113,7 +130,17 @@ export function useProject() {
             },
           ],
         };
-        return { ...p, tracks: [...p.tracks, newTrack] };
+
+        // Insert directly before the parent video track (visually above it)
+        const tracks = [...p.tracks];
+        if (parentTrackId) {
+          const parentIdx = tracks.findIndex((t) => t.id === parentTrackId);
+          if (parentIdx >= 0) {
+            tracks.splice(parentIdx, 0, newTrack);
+            return { ...p, tracks };
+          }
+        }
+        return { ...p, tracks: [...tracks, newTrack] };
       });
       return clipId;
     },

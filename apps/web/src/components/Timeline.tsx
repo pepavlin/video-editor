@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useEffect, useState } from 'react';
-import type { Project, Track, Clip, Asset, WaveformData, BeatsData } from '@video-editor/shared';
+import type { Project, Track, Clip, Asset, WaveformData, BeatsData, EffectType } from '@video-editor/shared';
 import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
 
 const TRACK_HEIGHT = 56;
@@ -46,7 +46,7 @@ interface Props {
   onDropAssetNewTrack: (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => void;
   onWorkAreaChange: (start: number, end: number) => void;
   onTrackReorder: (fromIdx: number, toIdx: number) => void;
-  onAddEffectTrack: (effectType: 'beatZoom' | 'cutout', timelineStart: number, duration: number) => void;
+  onAddEffectTrack: (effectType: EffectType, timelineStart: number, duration: number, parentTrackId?: string) => void;
 }
 
 type DragMode =
@@ -532,10 +532,16 @@ export default function Timeline({
         if (isEffectTrack) {
           // ─── Effect clip rendering (thin strip style) ───────────────────
           const cfg = clip.effectConfig;
-          const isBeatZoom = cfg?.effectType === 'beatZoom';
-          const effectColor = isBeatZoom ? 'rgba(251,146,60,0.85)' : 'rgba(217,70,239,0.85)';
-          const effectColorFill = isBeatZoom ? 'rgba(251,146,60,0.25)' : 'rgba(217,70,239,0.22)';
-          const effectColorBorder = isBeatZoom ? 'rgba(251,146,60,0.90)' : 'rgba(217,70,239,0.90)';
+          const effectPalette: Record<string, { color: string; fill: string; border: string }> = {
+            beatZoom:          { color: 'rgba(251,146,60,0.85)', fill: 'rgba(251,146,60,0.25)', border: 'rgba(251,146,60,0.90)' },
+            cutout:            { color: 'rgba(217,70,239,0.85)', fill: 'rgba(217,70,239,0.22)', border: 'rgba(217,70,239,0.90)' },
+            headStabilization: { color: 'rgba(56,189,248,0.85)', fill: 'rgba(56,189,248,0.22)', border: 'rgba(56,189,248,0.90)' },
+            cartoon:           { color: 'rgba(132,204,22,0.85)',  fill: 'rgba(132,204,22,0.22)', border: 'rgba(132,204,22,0.90)' },
+          };
+          const palette = effectPalette[cfg?.effectType ?? 'beatZoom'] ?? effectPalette.beatZoom;
+          const effectColor = palette.color;
+          const effectColorFill = palette.fill;
+          const effectColorBorder = palette.border;
 
           const visX = Math.max(clipX, HEADER_WIDTH);
           const visW = Math.min(clipX + clipW, W) - visX;
@@ -543,7 +549,7 @@ export default function Timeline({
           const clipH = trackH - 4;
 
           ctx.globalAlpha = (cfg?.enabled === false ? 0.4 : 1) * (isReorderSource ? 0.4 : 1);
-          ctx.fillStyle = isSelected ? (isBeatZoom ? 'rgba(251,146,60,0.40)' : 'rgba(217,70,239,0.38)') : effectColorFill;
+          ctx.fillStyle = isSelected ? effectColorFill.replace('0.2', '0.4') : effectColorFill;
           ctx.fillRect(visX, clipTop, visW, clipH);
 
           // Striped pattern for effect clips
@@ -551,7 +557,7 @@ export default function Timeline({
           ctx.beginPath();
           ctx.rect(visX, clipTop, visW, clipH);
           ctx.clip();
-          ctx.strokeStyle = isBeatZoom ? 'rgba(251,146,60,0.18)' : 'rgba(217,70,239,0.18)';
+          ctx.strokeStyle = effectColorFill;
           ctx.lineWidth = 1;
           for (let px = visX - clipH; px < visX + visW + clipH; px += 8) {
             ctx.beginPath();
@@ -561,7 +567,7 @@ export default function Timeline({
           }
           ctx.restore();
 
-          ctx.strokeStyle = isSelected ? effectColorBorder : (isBeatZoom ? 'rgba(251,146,60,0.65)' : 'rgba(217,70,239,0.65)');
+          ctx.strokeStyle = isSelected ? effectColorBorder : effectColorFill.replace('0.2', '0.6');
           ctx.lineWidth = isSelected ? 2 : 1;
           ctx.strokeRect(visX + 0.5, clipTop + 0.5, visW - 1, clipH - 1);
 
@@ -573,7 +579,13 @@ export default function Timeline({
           ctx.font = 'bold 9px sans-serif';
           ctx.textAlign = 'left';
           ctx.fillStyle = effectColor;
-          const effectLabel = isBeatZoom ? 'BeatZoom' : 'Cutout';
+          const effectLabelMap: Record<string, string> = {
+            beatZoom: 'BeatZoom',
+            cutout: 'Cutout',
+            headStabilization: 'HeadStab',
+            cartoon: 'Cartoon',
+          };
+          const effectLabel = effectLabelMap[cfg?.effectType ?? ''] ?? (cfg?.effectType ?? 'FX');
           ctx.fillText(effectLabel, visX + 4, clipTop + clipH / 2 + 3);
           ctx.restore();
 
@@ -707,15 +719,6 @@ export default function Timeline({
           ctx.fillText(label, visX + 4, trackY + 14);
           ctx.shadowBlur = 0;
 
-          if (clip.effects.length > 0) {
-            ctx.fillStyle = 'rgba(240,177,0,0.85)';
-            ctx.font = 'bold 9px sans-serif';
-            ctx.fillText(
-              clip.effects.map((e) => (e.type === 'beatZoom' ? 'BZ' : 'CUT')).join(' '),
-              visX + 4,
-              trackY + TRACK_HEIGHT - 8
-            );
-          }
 
           ctx.restore();
 
@@ -1288,16 +1291,36 @@ export default function Timeline({
                 boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
               }}
             >
-              {[
-                { type: 'beatZoom' as const, label: '⚡ Beat Zoom', desc: 'Zoom pulse on beats' },
-                { type: 'cutout' as const, label: '✂ Cutout', desc: 'Background removal' },
-              ].map(({ type, label, desc }) => (
+              {(
+                [
+                  { type: 'beatZoom' as const,          label: '⚡ Beat Zoom',      desc: 'Zoom pulse on beats' },
+                  { type: 'cutout' as const,             label: '✂ Cutout',          desc: 'Background removal' },
+                  { type: 'headStabilization' as const,  label: '⦿ Head Stabilize', desc: 'Face tracking stabilization' },
+                  { type: 'cartoon' as const,            label: '◈ Cartoon',         desc: 'Cartoon / comic art style' },
+                ] as { type: EffectType; label: string; desc: string }[]
+              ).map(({ type, label, desc }) => (
                 <button
                   key={type}
                   onClick={() => {
                     setShowEffectMenu(false);
                     const start = propsRef.current.currentTime;
-                    onAddEffectTrack(type, start, 3);
+                    // Determine parent video track from selected clip
+                    const { project, selectedClipId } = propsRef.current;
+                    let parentTrackId: string | undefined;
+                    if (project && selectedClipId) {
+                      for (const t of project.tracks) {
+                        if (t.type === 'video' && t.clips.some((c) => c.id === selectedClipId)) {
+                          parentTrackId = t.id;
+                          break;
+                        }
+                      }
+                    }
+                    // Fallback: first video track
+                    if (!parentTrackId && project) {
+                      const vt = project.tracks.find((t) => t.type === 'video');
+                      if (vt) parentTrackId = vt.id;
+                    }
+                    onAddEffectTrack(type, start, 3, parentTrackId);
                   }}
                   style={{
                     display: 'block',
