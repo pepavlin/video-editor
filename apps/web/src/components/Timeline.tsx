@@ -51,6 +51,9 @@ type DragMode =
   | { type: 'trimLeft'; clipId: string }
   | { type: 'trimRight'; clipId: string };
 
+/** Controls what positions clips snap to during drag */
+export type SnapMode = 'none' | 'beats' | 'clips';
+
 export default function Timeline({
   project,
   currentTime,
@@ -75,9 +78,13 @@ export default function Timeline({
   const [zoom, setZoom] = useState(80); // px/second
   const [scrollLeft, setScrollLeft] = useState(0);
   const [drag, setDrag] = useState<DragMode>({ type: 'none' });
+  const [snapMode, setSnapMode] = useState<SnapMode>('clips');
 
   const dragRef = useRef<DragMode>({ type: 'none' });
   dragRef.current = drag;
+
+  const snapModeRef = useRef<SnapMode>('clips');
+  snapModeRef.current = snapMode;
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -192,23 +199,31 @@ export default function Timeline({
     []
   );
 
-  // Get snap targets from clip edges + beat markers
+  // Get snap targets filtered by the current snap mode
   const getSnapTargets = useCallback(
     (excludeClipId?: string): number[] => {
+      const mode = snapModeRef.current;
+      if (mode === 'none') return [];
+
       const targets: number[] = [0];
       if (!project) return targets;
-      for (const track of project.tracks) {
-        for (const clip of track.clips) {
-          if (clip.id === excludeClipId) continue;
-          targets.push(clip.timelineStart, clip.timelineEnd);
+
+      if (mode === 'clips') {
+        for (const track of project.tracks) {
+          for (const clip of track.clips) {
+            if (clip.id === excludeClipId) continue;
+            targets.push(clip.timelineStart, clip.timelineEnd);
+          }
+        }
+      } else if (mode === 'beats') {
+        const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
+        const masterClip = masterTrack?.clips[0];
+        if (masterClip) {
+          const beats = beatsData.get(masterClip.assetId);
+          if (beats) targets.push(...beats.beats);
         }
       }
-      const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
-      const masterClip = masterTrack?.clips[0];
-      if (masterClip) {
-        const beats = beatsData.get(masterClip.assetId);
-        if (beats) targets.push(...beats.beats);
-      }
+
       return targets;
     },
     [project, beatsData]
@@ -859,11 +874,7 @@ export default function Timeline({
     const SL = scrollLeftRef.current;
 
     const rawT = Math.max(0, (x + SL - HEADER_WIDTH) / Z);
-    const snapTargets = propsRef.current.project
-      ? propsRef.current.project.tracks.flatMap((t) =>
-          t.clips.flatMap((c) => [c.timelineStart, c.timelineEnd])
-        )
-      : [0];
+    const snapTargets = getSnapTargets();
     const snappedT = snap(rawT, snapTargets, SNAP_THRESHOLD_PX / Z);
 
     const trackResult = getTrackAtY(y);
@@ -891,7 +902,7 @@ export default function Timeline({
     };
 
     draw();
-  }, [draggedAsset, getTrackAtY, draw]);
+  }, [draggedAsset, getTrackAtY, getSnapTargets, draw]);
 
   const handleDragLeave = useCallback(() => {
     ghostRef.current = null;
@@ -992,27 +1003,69 @@ export default function Timeline({
   const canvasHeight = RULER_HEIGHT + (numTracks + extraRow) * TRACK_HEIGHT + 8;
 
   return (
-    <div
-      ref={containerRef}
-      className="relative"
-      style={{
-        height: `${canvasHeight}px`,
-        background: '#0e1a2e',
-      }}
-    >
-      <canvas
-        ref={canvasRef}
-        style={{ cursor, display: 'block', width: '100%', height: '100%' }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={(e) => { handleMouseMove(e); handleMouseMoveForCursor(e); }}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onDoubleClick={handleDoubleClick}
-      />
+    <div style={{ background: '#0e1a2e', display: 'flex', flexDirection: 'column' }}>
+      {/* Snap mode toolbar */}
+      <div
+        style={{
+          height: 28,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          paddingLeft: 8,
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginRight: 4, userSelect: 'none' }}>
+          Magnet:
+        </span>
+        {(
+          [
+            { mode: 'none' as SnapMode, label: 'Off' },
+            { mode: 'beats' as SnapMode, label: 'Beats' },
+            { mode: 'clips' as SnapMode, label: 'Clips' },
+          ] as const
+        ).map(({ mode, label }) => (
+          <button
+            key={mode}
+            onClick={() => setSnapMode(mode)}
+            style={{
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 4,
+              border: snapMode === mode ? '1px solid rgba(0,212,160,0.6)' : '1px solid rgba(255,255,255,0.12)',
+              background: snapMode === mode ? 'rgba(0,212,160,0.15)' : 'transparent',
+              color: snapMode === mode ? 'rgba(0,212,160,0.95)' : 'rgba(255,255,255,0.45)',
+              cursor: 'pointer',
+              userSelect: 'none',
+              lineHeight: '16px',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Canvas */}
+      <div
+        ref={containerRef}
+        className="relative"
+        style={{ height: `${canvasHeight}px` }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ cursor, display: 'block', width: '100%', height: '100%' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={(e) => { handleMouseMove(e); handleMouseMoveForCursor(e); }}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onDoubleClick={handleDoubleClick}
+        />
+      </div>
     </div>
   );
 }
