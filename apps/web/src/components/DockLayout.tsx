@@ -864,6 +864,10 @@ function ResizeHandle({
   onSplitResize: (splitId: string, idx: number, direction: 'h' | 'v', container: HTMLElement, e: React.MouseEvent) => void;
 }) {
   const isH = direction === 'h';
+  // 1px visible centre line via gradient; expands to solid on hover
+  const dividerLine = isH
+    ? 'linear-gradient(to right, transparent 40%, var(--border-default) 40%, var(--border-default) 60%, transparent 60%)'
+    : 'linear-gradient(to bottom, transparent 40%, var(--border-default) 40%, var(--border-default) 60%, transparent 60%)';
   return (
     <div
       onMouseDown={(e) => {
@@ -873,7 +877,7 @@ function ResizeHandle({
         flexShrink: 0,
         width:  isH ? 5 : '100%',
         height: isH ? '100%' : 5,
-        background: 'rgba(15,23,42,0.06)',
+        background: dividerLine,
         cursor: isH ? 'col-resize' : 'row-resize',
         transition: 'background 0.12s',
         zIndex: 10,
@@ -885,7 +889,7 @@ function ResizeHandle({
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(15,23,42,0.06)';
+        el.style.background = dividerLine;
         el.style.boxShadow = '';
       }}
     />
