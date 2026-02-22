@@ -25,6 +25,7 @@ interface Props {
   onStartCutout: (clipId: string) => Promise<void>;
   onStartHeadStabilization: (clipId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
+  cutoutProgress?: number | null;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -132,6 +133,7 @@ export default function Inspector({
   onStartCutout,
   onStartHeadStabilization,
   onSyncAudio,
+  cutoutProgress,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
 
@@ -288,16 +290,39 @@ export default function Inspector({
                     </Row>
                     <Row label="Status">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{
-                          fontSize: 11,
-                          color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'processing' ? '#fbbf24' : 'var(--text-subtle)',
-                          flex: 1,
-                        }}>
-                          {cfg.maskStatus === 'done' && 'Mask ready'}
-                          {cfg.maskStatus === 'processing' && 'Processing...'}
-                          {cfg.maskStatus === 'error' && 'Error – retry'}
-                          {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
-                        </span>
+                        {cfg.maskStatus === 'processing' ? (
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
+                            <div style={{
+                              flex: 1,
+                              height: 4,
+                              borderRadius: 2,
+                              background: 'rgba(251,191,36,0.18)',
+                              overflow: 'hidden',
+                            }}>
+                              <div style={{
+                                height: '100%',
+                                borderRadius: 2,
+                                background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                                width: `${cutoutProgress ?? 0}%`,
+                                transition: 'width 0.3s ease',
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
+                              {cutoutProgress ?? 0}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{
+                            fontSize: 11,
+                            color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : 'var(--text-subtle)',
+                            flex: 1,
+                          }}>
+                            {cfg.maskStatus === 'done' && 'Mask ready'}
+                            {cfg.maskStatus === 'error' && 'Error – retry'}
+                            {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
+                          </span>
+                        )}
                         <button
                           className="btn btn-ghost"
                           style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.maskStatus === 'processing' ? 'var(--text-subtle)' : '#0d9488', opacity: cfg.maskStatus === 'processing' ? 0.5 : 1 }}
