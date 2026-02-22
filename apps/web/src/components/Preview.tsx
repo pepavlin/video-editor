@@ -65,6 +65,9 @@ interface EditingTextState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+const _ROTATE_CURSOR_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8C6.25 13.97 6 13.01 6 12c0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z' fill='%23111' stroke='white' stroke-width='1.5' paint-order='stroke'/></svg>`;
+const ROTATE_CURSOR = `url("data:image/svg+xml,${_ROTATE_CURSOR_SVG}") 12 12, grab`;
+
 const HANDLE_RADIUS = 7;
 const ROTATE_HANDLE_OFFSET = 28;
 const PREVIEW_SNAP_THRESHOLD = 12; // canvas pixels — snap to edges/center within this distance
@@ -1177,7 +1180,7 @@ export default function Preview({
       if (!canvas) return;
 
       if (drag.type !== 'none') {
-        if (drag.type === 'rotate') canvas.style.cursor = 'grabbing';
+        if (drag.type === 'rotate') canvas.style.cursor = ROTATE_CURSOR;
         else if (drag.type === 'scale') canvas.style.cursor = 'nwse-resize';
         else canvas.style.cursor = 'grabbing';
         return;
@@ -1204,7 +1207,7 @@ export default function Preview({
             const handles = getHandlePositions(bounds);
             const [rhx, rhy] = handles.rotate;
             if (dist(mx, my, rhx, rhy) <= HANDLE_RADIUS + 8) {
-              canvas.style.cursor = 'grab';
+              canvas.style.cursor = ROTATE_CURSOR;
               return;
             }
             for (const [handle, [hx, hy]] of Object.entries(handles) as [Handle, [number, number]][]) {
