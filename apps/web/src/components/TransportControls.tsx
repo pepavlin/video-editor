@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { formatTime, parseTime } from '@/lib/utils';
+import { useThemeContext } from '@/contexts/ThemeContext';
 
 interface Props {
   isPlaying: boolean;
@@ -31,6 +32,8 @@ export default function TransportControls({
   onWorkAreaChange,
   isMobile = false,
 }: Props) {
+  const { isDark } = useThemeContext();
+
   // Time displayed relative to work area start so 00:00 = start of interval
   const waStart = workArea?.start ?? 0;
   const waEnd = workArea?.end ?? duration;
@@ -117,10 +120,10 @@ export default function TransportControls({
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
-        background: 'rgba(255,255,255,0.92)',
+        background: 'var(--surface-panel)',
         backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(15,23,42,0.08)',
-        boxShadow: '0 1px 0 rgba(15,23,42,0.04)',
+        borderBottom: '1px solid var(--border-subtle)',
+        boxShadow: isDark ? '0 1px 0 rgba(226,232,240,0.04)' : '0 1px 0 rgba(15,23,42,0.04)',
         userSelect: 'none',
       }}
     >
@@ -224,24 +227,24 @@ export default function TransportControls({
             flexShrink: 0,
             background: isLooping
               ? 'rgba(13,148,136,0.10)'
-              : 'rgba(15,23,42,0.05)',
+              : isDark ? 'rgba(226,232,240,0.05)' : 'rgba(15,23,42,0.05)',
             boxShadow: isLooping
               ? 'inset 0 0 0 1.5px rgba(13,148,136,0.45)'
-              : 'inset 0 0 0 1px rgba(15,23,42,0.10)',
+              : isDark ? 'inset 0 0 0 1px rgba(226,232,240,0.10)' : 'inset 0 0 0 1px rgba(15,23,42,0.10)',
             border: 'none',
             cursor: 'pointer',
             transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
-            color: isLooping ? '#0d9488' : 'rgba(15,23,42,0.35)',
+            color: isLooping ? '#0d9488' : isDark ? 'rgba(226,232,240,0.40)' : 'rgba(15,23,42,0.35)',
           }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.background = isLooping
               ? 'rgba(13,148,136,0.16)'
-              : 'rgba(15,23,42,0.08)';
+              : isDark ? 'rgba(226,232,240,0.08)' : 'rgba(15,23,42,0.08)';
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = isLooping
               ? 'rgba(13,148,136,0.10)'
-              : 'rgba(15,23,42,0.05)';
+              : isDark ? 'rgba(226,232,240,0.05)' : 'rgba(15,23,42,0.05)';
           }}
           title={isLooping ? 'Loop: On' : 'Loop: Off'}
         >
@@ -276,7 +279,7 @@ export default function TransportControls({
             borderRadius: 6,
             cursor: 'pointer',
             height: isMobile ? 12 : 8,
-            background: 'rgba(15,23,42,0.08)',
+            background: 'var(--progress-track)',
             // Enlarge touch hit area vertically via padding
             paddingTop: isMobile ? 8 : 4,
             paddingBottom: isMobile ? 8 : 4,
@@ -348,7 +351,7 @@ export default function TransportControls({
               background: '#0d9488',
               borderRadius: '50%',
               boxShadow: '0 0 8px rgba(13,148,136,0.45)',
-              border: '2.5px solid rgba(255,255,255,0.95)',
+              border: isDark ? '2.5px solid rgba(30,41,59,0.95)' : '2.5px solid rgba(255,255,255,0.95)',
               transition: 'opacity 0.15s',
               opacity: isMobile ? 1 : undefined,
               zIndex: 2,
@@ -364,7 +367,7 @@ export default function TransportControls({
             minWidth: 80,
             textAlign: 'right',
             fontVariantNumeric: 'tabular-nums',
-            color: 'rgba(15,23,42,0.30)',
+            color: 'var(--text-subtle)',
           }}>
             {formatTime(displayDuration)}
           </span>
@@ -430,7 +433,7 @@ export default function TransportControls({
             title="Interval start (MM:SS.d)"
           />
 
-          <span style={{ color: 'rgba(15,23,42,0.30)', fontSize: 13, flexShrink: 0 }}>→</span>
+          <span style={{ color: 'var(--text-subtle)', fontSize: 13, flexShrink: 0 }}>→</span>
 
           {/* End input */}
           <input
@@ -470,7 +473,7 @@ export default function TransportControls({
           />
 
           {!isMobile && (
-            <span style={{ fontSize: 11, color: 'rgba(15,23,42,0.30)', marginLeft: 2 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-subtle)', marginLeft: 2 }}>
               ({formatTime(displayDuration)} total)
             </span>
           )}
