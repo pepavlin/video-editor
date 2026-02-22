@@ -71,6 +71,7 @@ export default function Editor() {
     reorderTrack,
     moveClipToTrack,
     moveClipToNewTrack,
+    moveClipToNewTrackAt,
   } = projectHook;
 
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -687,6 +688,7 @@ export default function Editor() {
           }}
           onMoveClipToTrack={(clipId, toTrackId, start, end) => moveClipToTrack(clipId, toTrackId, start, end)}
           onMoveClipToNewTrack={(clipId, newTrackType, start, end) => moveClipToNewTrack(clipId, newTrackType, start, end)}
+          onMoveClipToNewTrackAt={(clipId, newTrackType, start, end, idx) => moveClipToNewTrackAt(clipId, newTrackType, start, end, idx)}
         />
       </div>
     ),

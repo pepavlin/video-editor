@@ -453,9 +453,29 @@ export function useProject() {
     [updateProject]
   );
 
-  // Move clip to a brand-new track (creates a new track of the given type)
+  // Helper to build a new Track object for the given type
+  function buildNewTrack(newTrackType: Track['type'], existingTracks: Track[], foundClip: Clip): Track {
+    const newTrackId = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const count = existingTracks.filter((t) => t.type === newTrackType).length;
+    const baseName =
+      newTrackType === 'audio' ? 'Audio'
+      : newTrackType === 'text' ? 'Text'
+      : newTrackType === 'lyrics' ? 'Lyrics'
+      : 'Video';
+    const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
+    return {
+      id: newTrackId,
+      type: newTrackType,
+      name,
+      isMaster: false,
+      muted: false,
+      clips: [{ ...foundClip, trackId: newTrackId }],
+    };
+  }
+
+  // Move clip to a brand-new track appended at the end
   const moveClipToNewTrack = useCallback(
-    (clipId: string, newTrackType: 'video' | 'audio', timelineStart: number, timelineEnd: number) => {
+    (clipId: string, newTrackType: Track['type'], timelineStart: number, timelineEnd: number) => {
       updateProject((p) => {
         let movedClip: Clip | null = null;
         const tracksWithoutClip = p.tracks.map((t) => {
@@ -467,21 +487,32 @@ export function useProject() {
           return t;
         });
         if (!movedClip) return p;
-        const foundClip: Clip = movedClip;
-
-        const newTrackId = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        const count = p.tracks.filter((t) => t.type === newTrackType).length;
-        const baseName = newTrackType === 'audio' ? 'Audio' : 'Video';
-        const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
-        const newTrack: Track = {
-          id: newTrackId,
-          type: newTrackType,
-          name,
-          isMaster: false,
-          muted: false,
-          clips: [{ ...foundClip, trackId: newTrackId }],
-        };
+        const newTrack = buildNewTrack(newTrackType, p.tracks, movedClip);
         return { ...p, tracks: [...tracksWithoutClip, newTrack] };
+      });
+    },
+    [updateProject]
+  );
+
+  // Move clip to a brand-new track inserted at a specific index (insertAfterIdx = -1 means before all)
+  const moveClipToNewTrackAt = useCallback(
+    (clipId: string, newTrackType: Track['type'], timelineStart: number, timelineEnd: number, insertAfterIdx: number) => {
+      updateProject((p) => {
+        let movedClip: Clip | null = null;
+        const tracksWithoutClip = p.tracks.map((t) => {
+          const idx = t.clips.findIndex((c) => c.id === clipId);
+          if (idx >= 0) {
+            movedClip = { ...t.clips[idx], timelineStart, timelineEnd };
+            return { ...t, clips: t.clips.filter((c) => c.id !== clipId) };
+          }
+          return t;
+        });
+        if (!movedClip) return p;
+        const newTrack = buildNewTrack(newTrackType, p.tracks, movedClip);
+        const insertAt = Math.max(0, Math.min(insertAfterIdx + 1, tracksWithoutClip.length));
+        const newTracks = [...tracksWithoutClip];
+        newTracks.splice(insertAt, 0, newTrack);
+        return { ...p, tracks: newTracks };
       });
     },
     [updateProject]
@@ -507,5 +538,6 @@ export function useProject() {
     reorderTrack,
     moveClipToTrack,
     moveClipToNewTrack,
+    moveClipToNewTrackAt,
   };
 }
