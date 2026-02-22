@@ -14,6 +14,7 @@ import TransportControls from './TransportControls';
 import ProjectBar from './ProjectBar';
 import { DockLayout } from './DockLayout';
 import { MobileLayout } from './MobileLayout';
+import { useThemeContext } from '@/contexts/ThemeContext';
 
 // ─── Responsive breakpoint ────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ function pickLogLine(lines: string[]): string | null {
 
 export default function Editor() {
   const isMobile = useIsMobile();
+  const { isDark, toggleTheme } = useThemeContext();
   const projectHook = useProject();
   const {
     project,
@@ -412,20 +414,36 @@ export default function Editor() {
   // ── Project picker ─────────────────────────────────────────────────────────
   if (showProjectPicker) {
     return (
-      <div className="h-screen flex items-center justify-center px-4" style={{ background: 'inherit', position: 'relative', overflow: 'hidden' }}>
-        {/* Animated background orbs */}
-        <div className="bg-orb bg-orb-1" />
-        <div className="bg-orb bg-orb-2" />
-        <div className="bg-orb bg-orb-3" />
-
+      <div className="h-screen flex items-center justify-center px-4" style={{ background: 'var(--surface-bg)', position: 'relative', overflow: 'hidden' }}>
         {/* Subtle grid pattern */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: 'radial-gradient(circle, rgba(15,23,42,0.05) 1px, transparent 1px)',
+          backgroundImage: `radial-gradient(circle, ${isDark ? 'rgba(226,232,240,0.05)' : 'rgba(15,23,42,0.05)'} 1px, transparent 1px)`,
           backgroundSize: '40px 40px',
           pointerEvents: 'none',
           animation: 'fadeIn 1.2s ease forwards',
         }} />
+
+        {/* Theme toggle — top right */}
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            position: 'absolute', top: 16, right: 16,
+            width: 36, height: 36, borderRadius: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--surface-hover)',
+            border: '1px solid var(--border-subtle)',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <span className="theme-toggle-icon" style={{ fontSize: 16, lineHeight: 1 }}>
+            {isDark ? '☀' : '◑'}
+          </span>
+        </button>
 
         <div
           className="glass rounded-2xl w-full shadow-panel scale-in"
@@ -463,7 +481,7 @@ export default function Editor() {
               </div>
               <h1 className="text-3xl font-bold text-gradient">Video Editor</h1>
             </div>
-            <p className="text-sm" style={{ color: 'rgba(15,23,42,0.45)', paddingLeft: 48 }}>Craft your story, frame by frame</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)', paddingLeft: 48 }}>Craft your story, frame by frame</p>
           </div>
 
           {/* New project */}
@@ -506,7 +524,7 @@ export default function Editor() {
               {/* Divider */}
               <div style={{
                 height: 1,
-                background: 'linear-gradient(90deg, transparent, rgba(15,23,42,0.08), transparent)',
+                background: `linear-gradient(90deg, transparent, var(--border-default), transparent)`,
                 marginBottom: 20,
               }} />
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(13,148,136,0.75)', letterSpacing: '0.12em', marginBottom: 12 }}>Recent</p>
@@ -517,22 +535,22 @@ export default function Editor() {
                     className="w-full text-left rounded-xl stagger-item"
                     style={{
                       padding: '12px 14px',
-                      background: 'rgba(15,23,42,0.03)',
-                      border: '1px solid rgba(15,23,42,0.07)',
+                      background: 'var(--surface-overlay)',
+                      border: '1px solid var(--border-subtle)',
                       transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                       animationDelay: `${0.24 + idx * 0.06}s`,
                     }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLElement;
-                      el.style.background = 'rgba(13,148,136,0.06)';
+                      el.style.background = 'rgba(13,148,136,0.08)';
                       el.style.borderColor = 'rgba(13,148,136,0.22)';
                       el.style.transform = 'translateX(3px)';
                       el.style.boxShadow = '0 2px 8px rgba(15,23,42,0.06)';
                     }}
                     onMouseLeave={(e) => {
                       const el = e.currentTarget as HTMLElement;
-                      el.style.background = 'rgba(15,23,42,0.03)';
-                      el.style.borderColor = 'rgba(15,23,42,0.07)';
+                      el.style.background = 'var(--surface-overlay)';
+                      el.style.borderColor = 'var(--border-subtle)';
                       el.style.transform = '';
                       el.style.boxShadow = '';
                     }}
@@ -550,12 +568,12 @@ export default function Editor() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div className="text-sm font-semibold" style={{ color: '#0f172a' }}>{p.name}</div>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.35, flexShrink: 0 }}>
+                      <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{p.name}</div>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.35, flexShrink: 0, color: 'var(--text-primary)' }}>
                         <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: 'rgba(15,23,42,0.38)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--text-subtle)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
                   </button>
                 ))}
               </div>
@@ -682,10 +700,12 @@ export default function Editor() {
           height: isMobile ? 48 : 56,
           padding: isMobile ? '0 12px' : '0 20px',
           gap: isMobile ? 8 : 16,
-          background: 'rgba(255,255,255,0.95)',
+          background: 'var(--surface-topbar)',
           backdropFilter: 'blur(20px)',
-          borderColor: 'rgba(15,23,42,0.08)',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 2px 8px rgba(15,23,42,0.04)',
+          borderColor: 'var(--border-subtle)',
+          boxShadow: isDark
+            ? '0 1px 3px rgba(0,0,0,0.20), 0 2px 8px rgba(0,0,0,0.15)'
+            : '0 1px 3px rgba(15,23,42,0.06), 0 2px 8px rgba(15,23,42,0.04)',
         }}
       >
         {/* Logo mark + title */}
@@ -718,9 +738,9 @@ export default function Editor() {
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all"
             style={{
               fontSize: 12,
-              color: saving ? 'rgba(15,23,42,0.38)' : '#0d9488',
-              background: saving ? 'rgba(15,23,42,0.04)' : 'rgba(13,148,136,0.08)',
-              border: `1px solid ${saving ? 'rgba(15,23,42,0.08)' : 'rgba(13,148,136,0.22)'}`,
+              color: saving ? 'var(--text-muted)' : '#0d9488',
+              background: saving ? 'var(--surface-hover)' : 'rgba(13,148,136,0.08)',
+              border: `1px solid ${saving ? 'var(--border-subtle)' : 'rgba(13,148,136,0.22)'}`,
               letterSpacing: '0.01em',
               transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
               boxShadow: saving ? 'none' : '0 0 8px rgba(13,148,136,0.10)',
@@ -767,6 +787,29 @@ export default function Editor() {
 
         <div className="flex-1" />
 
+        {/* Theme toggle */}
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            width: isMobile ? 32 : 34,
+            height: isMobile ? 32 : 34,
+            borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--surface-hover)',
+            border: '1px solid var(--border-subtle)',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)',
+            flexShrink: 0,
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <span className="theme-toggle-icon" style={{ fontSize: 14, lineHeight: 1 }}>
+            {isDark ? '☀' : '◑'}
+          </span>
+        </button>
+
         {/* Projects button — always visible */}
         <button
           className="btn btn-ghost"
@@ -779,7 +822,7 @@ export default function Editor() {
         {/* Undo/Redo — hidden on mobile */}
         {!isMobile && (
           <>
-            <div className="w-px h-5" style={{ background: 'rgba(15,23,42,0.10)' }} />
+            <div className="w-px h-5" style={{ background: 'var(--border-default)' }} />
             <button
               className="btn btn-ghost disabled:opacity-25"
               style={{ fontSize: 18, padding: '4px 10px' }}
@@ -799,7 +842,7 @@ export default function Editor() {
               ↻
             </button>
 
-            <div className="w-px h-5" style={{ background: 'rgba(15,23,42,0.10)' }} />
+            <div className="w-px h-5" style={{ background: 'var(--border-default)' }} />
 
             <button
               className="btn btn-ghost"
@@ -872,7 +915,7 @@ export default function Editor() {
               style={{
                 width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 18, color: history.canUndo ? 'rgba(15,23,42,0.70)' : 'rgba(15,23,42,0.20)',
+                fontSize: 18, color: history.canUndo ? 'var(--text-secondary)' : 'var(--text-muted)',
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
               } as React.CSSProperties}
@@ -884,7 +927,7 @@ export default function Editor() {
               style={{
                 width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 18, color: history.canRedo ? 'rgba(15,23,42,0.70)' : 'rgba(15,23,42,0.20)',
+                fontSize: 18, color: history.canRedo ? 'var(--text-secondary)' : 'var(--text-muted)',
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
               } as React.CSSProperties}
@@ -916,7 +959,7 @@ export default function Editor() {
               className="glass rounded-xl shadow-panel toast-enter"
               style={{
                 minWidth: isMobile ? 'min(220px, calc(100vw - 24px))' : 296,
-                color: '#0f172a',
+                color: 'var(--text-primary)',
                 fontSize: 13,
                 padding: '12px 16px',
                 display: 'flex',
