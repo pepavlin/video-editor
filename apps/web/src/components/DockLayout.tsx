@@ -771,6 +771,21 @@ function RenderSplit({ node, dragState, panelRenderers, registerLeaf, onStartDra
     return hasVarLeft && hasVarRight;
   }
 
+  /**
+   * Normalize flex-grow values for variable panels so they always sum to 1.0.
+   *
+   * When fixed-height panels occupy a fraction of the `sizes` array their nominal
+   * fractions are ignored by CSS (flexGrow:0), but the variable panels' fractions
+   * can sum to less than 1. Per the CSS Flexbox spec (§9.7), if the sum of
+   * flex-grow factors is < 1 only that fraction of the positive free space is
+   * distributed, leaving a gap at the end of the container. Normalising removes
+   * this gap and ensures the variable panels always fill all available space.
+   */
+  const totalVarSize = node.sizes.reduce(
+    (sum, s, i) => ((fixedInfo?.[i] ?? false) ? sum : sum + s),
+    0,
+  );
+
   return (
     <div
       ref={containerRef}
@@ -787,7 +802,9 @@ function RenderSplit({ node, dragState, panelRenderers, registerLeaf, onStartDra
         const isFixed = fixedInfo?.[idx] ?? false;
 
         // Fixed-height panels use content-driven sizing (flexGrow/Shrink: 0, no explicit size).
-        // Variable panels continue to use proportional flex fractions.
+        // Variable panels use normalised flex fractions so they always sum to 1.0 and fill all
+        // available space (avoids the CSS spec behaviour where flex-grow < 1 leaves a gap).
+        const normalizedFlex = totalVarSize > 0 ? node.sizes[idx] / totalVarSize : node.sizes[idx];
         const wrapperStyle: React.CSSProperties = isFixed
           ? {
               flexShrink: 0,
@@ -798,7 +815,7 @@ function RenderSplit({ node, dragState, panelRenderers, registerLeaf, onStartDra
               overflow: 'hidden',
             }
           : {
-              flex: node.sizes[idx],
+              flex: normalizedFlex,
               display: 'flex',
               flexDirection: isH ? 'column' : 'row',
               minWidth: 0,
