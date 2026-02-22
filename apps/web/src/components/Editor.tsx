@@ -81,6 +81,8 @@ export default function Editor() {
   const [showProjectPicker, setShowProjectPicker] = useState(true);
   const [projects, setProjects] = useState<any[]>([]);
   const [newProjectName, setNewProjectName] = useState('My Short');
+  const [isEditingProjectName, setIsEditingProjectName] = useState(false);
+  const [editingProjectName, setEditingProjectName] = useState('');
   const [jobNotifications, setJobNotifications] = useState<string[]>([]);
   const [beatsProgress, setBeatsProgress] = useState<number | null>(null);
   const [beatsLogLine, setBeatsLogLine] = useState<string | null>(null);
@@ -762,9 +764,71 @@ export default function Editor() {
               </defs>
             </svg>
           </div>
-          <span className="font-bold text-gradient" style={{ fontSize: isMobile ? 14 : 15 }}>
-            {project?.name ?? 'Video Editor'}
-          </span>
+          {project && isEditingProjectName ? (
+            <input
+              autoFocus
+              value={editingProjectName}
+              onChange={(e) => setEditingProjectName(e.target.value)}
+              onBlur={() => {
+                const trimmed = editingProjectName.trim();
+                if (trimmed && trimmed !== project.name) {
+                  updateProject((p) => ({ ...p, name: trimmed }));
+                }
+                setIsEditingProjectName(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const trimmed = editingProjectName.trim();
+                  if (trimmed && trimmed !== project.name) {
+                    updateProject((p) => ({ ...p, name: trimmed }));
+                  }
+                  setIsEditingProjectName(false);
+                } else if (e.key === 'Escape') {
+                  setIsEditingProjectName(false);
+                }
+              }}
+              className="font-bold text-gradient"
+              style={{
+                fontSize: isMobile ? 14 : 15,
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '1px solid rgba(13,148,136,0.5)',
+                outline: 'none',
+                padding: '0 2px',
+                width: Math.max(80, editingProjectName.length * 9),
+                color: 'inherit',
+                fontFamily: 'inherit',
+              }}
+            />
+          ) : (
+            <span
+              className="font-bold text-gradient"
+              style={{
+                fontSize: isMobile ? 14 : 15,
+                cursor: project ? 'text' : 'default',
+                borderBottom: project ? '1px solid transparent' : 'none',
+                padding: '0 2px',
+                transition: 'border-color 0.2s',
+              }}
+              title={project ? 'Klikni pro přejmenování' : undefined}
+              onClick={() => {
+                if (project) {
+                  setEditingProjectName(project.name);
+                  setIsEditingProjectName(true);
+                }
+              }}
+              onMouseEnter={(e) => {
+                if (project) {
+                  (e.currentTarget as HTMLSpanElement).style.borderBottomColor = 'rgba(13,148,136,0.4)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLSpanElement).style.borderBottomColor = 'transparent';
+              }}
+            >
+              {project?.name ?? 'Video Editor'}
+            </span>
+          )}
         </div>
 
         {project && (
