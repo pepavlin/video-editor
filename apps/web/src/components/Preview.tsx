@@ -1264,6 +1264,32 @@ export default function Preview({
         >
           +
         </button>
+        <div
+          style={{
+            width: 1,
+            height: 14,
+            background: 'rgba(15,23,42,0.15)',
+            margin: '0 2px',
+          }}
+        />
+        <button
+          data-testid="view-center-btn"
+          onClick={resetView}
+          title="Reset view — přesune pohled zpět na video"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'rgba(15,23,42,0.55)',
+            cursor: 'pointer',
+            fontSize: 13,
+            lineHeight: 1,
+            padding: '0 2px',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          ⊡
+        </button>
       </div>
     </div>
   );
