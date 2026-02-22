@@ -1160,7 +1160,8 @@ export default function Preview({
         backgroundColor: '#1a1a2e',
         backgroundImage:
           'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
-        backgroundSize: '24px 24px',
+        backgroundSize: `${24 * viewZoom}px ${24 * viewZoom}px`,
+        backgroundPosition: `${viewPan.x}px ${viewPan.y}px`,
       }}
     >
       {/* Zoomable canvas wrapper — CSS transform for viewport zoom */}
