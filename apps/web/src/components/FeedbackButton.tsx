@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 const WEBHOOK_URL = 'https://n8n.pavlin.dev/webhook/c6169b15-e4d2-4515-a059-4f6306819e1c';
 const POLL_INTERVAL_MS = 15_000;
@@ -15,6 +15,21 @@ export default function FeedbackButton() {
   const [taskStats, setTaskStats] = useState<TaskStats>({ running: 0, queued: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch(WEBHOOK_URL, { method: 'GET' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const tasks: { status: string }[] = data.tasks ?? [];
+      setTaskStats({
+        running: tasks.filter((t) => t.status === 'running').length,
+        queued: tasks.filter((t) => t.status === 'queued').length,
+      });
+    } catch {
+      // silently ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (open && textareaRef.current) {
@@ -34,24 +49,10 @@ export default function FeedbackButton() {
   }, [open]);
 
   useEffect(() => {
-    async function fetchStats() {
-      try {
-        const res = await fetch(WEBHOOK_URL, { method: 'GET' });
-        if (!res.ok) return;
-        const data = await res.json();
-        const tasks: { status: string }[] = data.tasks ?? [];
-        setTaskStats({
-          running: tasks.filter((t) => t.status === 'running').length,
-          queued: tasks.filter((t) => t.status === 'queued').length,
-        });
-      } catch {
-        // silently ignore
-      }
-    }
     fetchStats();
     const id = setInterval(fetchStats, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [fetchStats]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,6 +67,7 @@ export default function FeedbackButton() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStatus('sent');
       setMessage('');
+      fetchStats();
       setTimeout(() => {
         setStatus('idle');
         setOpen(false);
