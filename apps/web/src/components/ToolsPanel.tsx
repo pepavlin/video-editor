@@ -63,8 +63,8 @@ export default function ToolsPanel({ project, currentTime, onAddText, onAddLyric
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '10px 6px',
-      gap: 2,
+      padding: '8px 4px',
+      gap: 1,
       overflowY: 'auto',
       overflowX: 'hidden',
     }}>
@@ -75,9 +75,9 @@ export default function ToolsPanel({ project, currentTime, onAddText, onAddLyric
         letterSpacing: '0.09em',
         textTransform: 'uppercase',
         color: 'var(--text-muted)',
-        padding: '2px 6px 8px',
+        padding: '0 6px 5px',
         borderBottom: '1px solid var(--border-subtle)',
-        marginBottom: 6,
+        marginBottom: 3,
         userSelect: 'none',
       }}>
         Přidat prvek
@@ -96,62 +96,58 @@ export default function ToolsPanel({ project, currentTime, onAddText, onAddLyric
       ))}
 
       {/* Divider */}
-      <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '8px 4px' }} />
+      <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '4px 4px' }} />
 
       {/* Video – drag hint */}
       <div style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 4,
-        padding: '10px 4px',
-        borderRadius: 8,
-        opacity: 0.55,
+        gap: 8,
+        padding: '4px 6px',
+        borderRadius: 6,
+        opacity: 0.5,
         userSelect: 'none',
         cursor: 'default',
       }}>
         <div style={{
-          width: 34,
-          height: 34,
+          width: 26,
+          height: 26,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: 8,
+          borderRadius: 6,
           background: 'var(--surface-hover)',
           border: '1px solid var(--border-subtle)',
           flexShrink: 0,
         }}>
           <VideoIcon />
         </div>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
-          Video
-        </span>
-        <span style={{
-          fontSize: 10,
-          color: 'var(--text-muted)',
-          lineHeight: 1.5,
-          textAlign: 'center',
-        }}>
-          Přetáhni<br />z Media panelu
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+            Video
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.3 }}>
+            Přetáhni z Media panelu
+          </span>
+        </div>
       </div>
 
       {/* No video warning */}
       {!hasVideoTrack && project && (
         <div style={{
           marginTop: 'auto',
-          padding: '8px 6px',
+          padding: '6px 6px',
           borderRadius: 6,
           background: 'rgba(234,179,8,0.08)',
           border: '1px solid rgba(234,179,8,0.20)',
           fontSize: 10,
           color: 'rgba(234,179,8,0.85)',
           textAlign: 'center',
-          lineHeight: 1.5,
+          lineHeight: 1.4,
           userSelect: 'none',
         }}>
-          Nejprve přidej<br />video do timeline
+          Nejprve přidej video do timeline
         </div>
       )}
     </div>
@@ -184,31 +180,30 @@ function ToolButton({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
-        padding: '10px 4px',
-        borderRadius: 8,
+        gap: 8,
+        padding: '4px 6px',
+        borderRadius: 6,
         border: `1px solid ${hovered && enabled ? 'var(--border-default)' : 'transparent'}`,
         background: hovered && enabled ? 'var(--surface-hover)' : 'transparent',
         cursor: enabled ? 'pointer' : 'not-allowed',
         opacity: enabled ? 1 : 0.35,
         transition: 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
         width: '100%',
-        minHeight: 62,
         color: hovered && enabled ? 'var(--text-primary)' : 'var(--text-secondary)',
         userSelect: 'none',
         WebkitTapHighlightColor: 'transparent',
+        textAlign: 'left',
       } as React.CSSProperties}
     >
       <div style={{
-        width: 34,
-        height: 34,
+        width: 26,
+        height: 26,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 8,
+        borderRadius: 6,
         background: hovered && enabled ? 'var(--surface-base)' : 'var(--surface-hover)',
         border: '1px solid var(--border-subtle)',
         transition: 'background 0.15s ease',
@@ -216,9 +211,14 @@ function ToolButton({
       }}>
         {icon}
       </div>
-      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em' }}>
-        {label}
-      </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', lineHeight: 1.2 }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.2 }}>
+          {description}
+        </span>
+      </div>
     </button>
   );
 }
