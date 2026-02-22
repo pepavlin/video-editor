@@ -224,6 +224,34 @@ const PANEL_LABELS: Record<string, string> = {
   'project-bar':  'Project',
 };
 
+/**
+ * Panels that have a fixed height in vertical splits.
+ * These panels use their intrinsic (content-driven) height and cannot be resized vertically.
+ */
+const FIXED_HEIGHT_PANELS = new Set(['project-bar', 'transport']);
+
+/** Returns true if this node is a fixed-height panel in vertical splits. */
+function isFixedHeightPanel(node: DockNode): boolean {
+  return node.type === 'leaf' && FIXED_HEIGHT_PANELS.has(node.panelId);
+}
+
+/**
+ * Find the index of the nearest non-fixed child, searching forward or backward from `start`.
+ * Returns -1 if no variable panel is found.
+ */
+function nearestVarIdx(children: DockNode[], start: number, forward: boolean): number {
+  if (forward) {
+    for (let i = start; i < children.length; i++) {
+      if (!isFixedHeightPanel(children[i])) return i;
+    }
+  } else {
+    for (let i = start; i >= 0; i--) {
+      if (!isFixedHeightPanel(children[i])) return i;
+    }
+  }
+  return -1;
+}
+
 // ─── Default layout (mirrors original layout) ─────────────────────────────────
 
 export const DEFAULT_LAYOUT: DockNode = {
@@ -421,12 +449,21 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
     direction: 'h' | 'v',
     containerEl: HTMLElement,
     e: React.MouseEvent,
+    /** Index of the variable panel to resize on the left/above side. Defaults to idx. */
+    varLeftIdx?: number,
+    /** Index of the variable panel to resize on the right/below side. Defaults to idx + 1. */
+    varRightIdx?: number,
   ) => {
     e.preventDefault();
     e.stopPropagation();
 
     const initialSizes = findSizes(layoutRef.current, splitId);
     if (!initialSizes) return;
+
+    // When varLeftIdx/varRightIdx are provided (fixed-panel layout), resize those panels.
+    // Otherwise fall back to the two panels immediately adjacent to the handle.
+    const leftIdx  = varLeftIdx  ?? idx;
+    const rightIdx = varRightIdx ?? (idx + 1);
 
     const startPos = direction === 'h' ? e.clientX : e.clientY;
     const containerRect = containerEl.getBoundingClientRect();
@@ -438,11 +475,11 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
 
     const onMove = (ev: MouseEvent) => {
       const delta = ((direction === 'h' ? ev.clientX : ev.clientY) - startPos) / containerSize;
-      const total = sizes[idx] + sizes[idx + 1];
-      const newA = Math.max(0.05, Math.min(total - 0.05, sizes[idx] + delta));
+      const total = sizes[leftIdx] + sizes[rightIdx];
+      const newA = Math.max(0.05, Math.min(total - 0.05, sizes[leftIdx] + delta));
       const newSizes = [...sizes];
-      newSizes[idx] = newA;
-      newSizes[idx + 1] = total - newA;
+      newSizes[leftIdx] = newA;
+      newSizes[rightIdx] = total - newA;
       setLayout(prev => updateSizes(prev, splitId, newSizes));
     };
 
@@ -537,7 +574,7 @@ interface NodeProps {
   panelRenderers: PanelRenderers;
   registerLeaf: (nodeId: string, panelId: PanelId, el: HTMLElement | null) => void;
   onStartDrag: (panelId: PanelId, x: number, y: number) => void;
-  onSplitResize: (splitId: string, idx: number, direction: 'h' | 'v', container: HTMLElement, e: React.MouseEvent) => void;
+  onSplitResize: (splitId: string, idx: number, direction: 'h' | 'v', container: HTMLElement, e: React.MouseEvent, varLeftIdx?: number, varRightIdx?: number) => void;
 }
 
 function RenderNode(props: NodeProps) {
@@ -582,6 +619,11 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
   const dropZone       = isDropTarget ? dragState.target!.zone : null;
   const renderer       = panelRenderers[node.panelId];
 
+  // Fixed-height panels (project-bar, transport) must NOT use flex:1 on their outer div,
+  // as that would cause height collapse when the wrapper has no explicit height.
+  // Instead they use content-driven sizing so the component's intrinsic height is respected.
+  const isFixed = FIXED_HEIGHT_PANELS.has(node.panelId);
+
   return (
     <div
       ref={setRef}
@@ -589,11 +631,11 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={{
-        flex: 1,
+        // Variable panels fill their flex wrapper; fixed panels size to their content.
+        ...(isFixed ? { width: '100%' } : { flex: 1, minHeight: 0 }),
         display: 'flex',
         flexDirection: 'column',
         minWidth: 0,
-        minHeight: 0,
         position: 'relative',
         overflow: 'hidden',
         opacity: isBeingDragged ? 0.30 : 1,
@@ -637,8 +679,14 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
         <GripDots />
       </div>
 
-      {/* Panel content – takes full height since header is absolute */}
-      <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* Panel content – fixed panels size to content; variable panels fill available space */}
+      <div style={{
+        ...(isFixed ? { width: '100%' } : { flex: 1, minHeight: 0 }),
+        minWidth: 0,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
         {renderer
           ? renderer()
           : (
@@ -705,6 +753,22 @@ function RenderSplit({ node, dragState, panelRenderers, registerLeaf, onStartDra
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isH = node.direction === 'h';
 
+  // For vertical splits, track which children are fixed-height panels.
+  // Horizontal splits always use proportional flex sizing for all children.
+  const fixedInfo = !isH ? node.children.map(c => isFixedHeightPanel(c)) : null;
+
+  /**
+   * A resize handle between child[idx] and child[idx+1] is shown only when there is at least
+   * one variable (non-fixed) panel on each side of the handle. This ensures fixed-height panels
+   * cannot be directly resized while still allowing the user to adjust the variable panels.
+   */
+  function shouldShowHandle(idx: number): boolean {
+    if (!fixedInfo) return true; // horizontal splits: always show all handles
+    const hasVarLeft  = fixedInfo.slice(0, idx + 1).some(fixed => !fixed);
+    const hasVarRight = fixedInfo.slice(idx + 1).some(fixed => !fixed);
+    return hasVarLeft && hasVarRight;
+  }
+
   return (
     <div
       ref={containerRef}
@@ -717,41 +781,68 @@ function RenderSplit({ node, dragState, panelRenderers, registerLeaf, onStartDra
         overflow: 'hidden',
       }}
     >
-      {node.children.map((child, idx) => (
-        <React.Fragment key={child.id}>
-          {/* Child wrapper – flex value acts as the size ratio */}
-          <div
-            style={{
+      {node.children.map((child, idx) => {
+        const isFixed = fixedInfo?.[idx] ?? false;
+
+        // Fixed-height panels use content-driven sizing (flexGrow/Shrink: 0, no explicit size).
+        // Variable panels continue to use proportional flex fractions.
+        const wrapperStyle: React.CSSProperties = isFixed
+          ? {
+              flexShrink: 0,
+              flexGrow: 0,
+              display: 'flex',
+              flexDirection: isH ? 'column' : 'row',
+              minWidth: 0,
+              overflow: 'hidden',
+            }
+          : {
               flex: node.sizes[idx],
               display: 'flex',
               flexDirection: isH ? 'column' : 'row',
               minWidth: 0,
               minHeight: 0,
               overflow: 'hidden',
-            }}
-          >
-            <RenderNode
-              node={child}
-              dragState={dragState}
-              panelRenderers={panelRenderers}
-              registerLeaf={registerLeaf}
-              onStartDrag={onStartDrag}
-              onSplitResize={onSplitResize}
-            />
-          </div>
+            };
 
-          {/* Resize handle between siblings */}
-          {idx < node.children.length - 1 && (
-            <ResizeHandle
-              direction={node.direction}
-              splitId={node.id}
-              idx={idx}
-              containerRef={containerRef}
-              onSplitResize={onSplitResize}
-            />
-          )}
-        </React.Fragment>
-      ))}
+        const show = idx < node.children.length - 1 && shouldShowHandle(idx);
+
+        // When a handle sits adjacent to a fixed panel, find the nearest variable panels on
+        // each side so the resize adjusts those panels instead of the fixed ones.
+        const handleResize = show && fixedInfo
+          ? (splitId: string, i: number, dir: 'h' | 'v', container: HTMLElement, e: React.MouseEvent) => {
+              const varLeft  = nearestVarIdx(node.children, idx,     false);
+              const varRight = nearestVarIdx(node.children, idx + 1, true);
+              onSplitResize(splitId, i, dir, container, e, varLeft, varRight);
+            }
+          : onSplitResize;
+
+        return (
+          <React.Fragment key={child.id}>
+            {/* Child wrapper – fixed panels use content height; variable panels use flex ratio */}
+            <div style={wrapperStyle}>
+              <RenderNode
+                node={child}
+                dragState={dragState}
+                panelRenderers={panelRenderers}
+                registerLeaf={registerLeaf}
+                onStartDrag={onStartDrag}
+                onSplitResize={onSplitResize}
+              />
+            </div>
+
+            {/* Resize handle – only shown where both sides have at least one variable panel */}
+            {show && (
+              <ResizeHandle
+                direction={node.direction}
+                splitId={node.id}
+                idx={idx}
+                containerRef={containerRef}
+                onSplitResize={handleResize}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -769,6 +860,7 @@ function ResizeHandle({
   splitId: string;
   idx: number;
   containerRef: React.RefObject<HTMLDivElement | null>;
+  /** Called when drag starts. Signature matches NodeProps.onSplitResize but without optional var params. */
   onSplitResize: (splitId: string, idx: number, direction: 'h' | 'v', container: HTMLElement, e: React.MouseEvent) => void;
 }) {
   const isH = direction === 'h';
