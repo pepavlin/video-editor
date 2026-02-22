@@ -111,36 +111,23 @@ function getCartoonCanvases(iw: number, ih: number) {
 }
 
 /**
- * Draw a cartoon-styled video frame onto ctx at the given bounds.
- * Relies on the caller to have set ctx.globalAlpha and any rotation transform.
+ * Process a cartoon frame into the offscreen base canvas and return it.
+ * Does NOT blit to the main canvas — callers decide what to do with the result.
  *
- * The pipeline mirrors the FFmpeg export:
- *   1. Blur + saturate the video onto an offscreen base canvas
- *   2. Run Sobel edge-detection at ½ resolution on a second canvas
- *   3. Multiply the edge mask onto the base (dark edges darken the colour)
- *   4. Blit the result to the main canvas
- *
- * If step 2 fails (e.g. SecurityError from getImageData) the function falls
- * back to showing the blurred/saturated base without edge lines — still
- * visually different from unprocessed video.
+ * Returns null if the offscreen context could not be obtained (extremely rare).
  */
-function applyCartoonEffectToCtx(
-  ctx: CanvasRenderingContext2D,
+function processCartoonFrame(
   videoEl: HTMLVideoElement,
   bounds: Bounds,
   effect: import('@video-editor/shared').EffectClipConfig
-): void {
+): HTMLCanvasElement | null {
   const iw = Math.max(2, Math.round(bounds.w));
   const ih = Math.max(2, Math.round(bounds.h));
 
   const { base, edge, ew, eh } = getCartoonCanvases(iw, ih);
   const baseCtx = base.getContext('2d');
   const edgeCtx = edge.getContext('2d');
-  if (!baseCtx || !edgeCtx) {
-    // Should never happen for plain 2D canvases, but guard anyway
-    ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
-    return;
-  }
+  if (!baseCtx || !edgeCtx) return null;
 
   // ── 1. Color-simplified base: blur + saturation ───────────────────────────
   const colorSimplification = effect.colorSimplification ?? 0.3;
@@ -156,9 +143,6 @@ function applyCartoonEffectToCtx(
   baseCtx.filter = 'none';
 
   // ── 2. Edge detection at half resolution (Sobel) ─────────────────────────
-  // Wrapped in try/catch: getImageData throws a SecurityError if the canvas
-  // is tainted by a cross-origin video without proper CORS headers.  In that
-  // case we fall back gracefully to just the blur+saturation base.
   try {
     edgeCtx.clearRect(0, 0, ew, eh);
     edgeCtx.drawImage(videoEl, 0, 0, ew, eh);
@@ -167,20 +151,17 @@ function applyCartoonEffectToCtx(
     const edgeImageData = edgeCtx.createImageData(ew, eh);
     const dst = edgeImageData.data;
 
-    // Grayscale pre-pass
     const gray = new Float32Array(ew * eh);
     for (let i = 0; i < ew * eh; i++) {
       const p = i * 4;
       gray[i] = 0.299 * srcData[p] + 0.587 * srcData[p + 1] + 0.114 * srcData[p + 2];
     }
 
-    // edgeStrength=0 → rawThreshold=200 (almost no edges)
-    // edgeStrength=1 → rawThreshold=0   (all gradients become edges)
     const rawThreshold = (1 - edgeStrengthVal) * 200;
 
     for (let y = 0; y < eh; y++) {
       for (let x = 0; x < ew; x++) {
-        let edgeVal = 255; // white = transparent in multiply blend
+        let edgeVal = 255;
         if (y > 0 && y < eh - 1 && x > 0 && x < ew - 1) {
           const tl = gray[(y - 1) * ew + (x - 1)];
           const tm = gray[(y - 1) * ew + x];
@@ -194,7 +175,6 @@ function applyCartoonEffectToCtx(
           const gy = -tl - 2 * tm - tr + bl + 2 * bm + br;
           const mag = Math.sqrt(gx * gx + gy * gy);
           if (mag > rawThreshold) {
-            // Darker = stronger edge; scale by edgeStrength
             edgeVal = Math.max(0, 255 - (mag - rawThreshold) * edgeStrengthVal * 4);
           }
         }
@@ -206,19 +186,155 @@ function applyCartoonEffectToCtx(
     edgeCtx.putImageData(edgeImageData, 0, 0);
 
     // ── 3. Multiply edges onto base ─────────────────────────────────────────
-    // White pixels (no edge) leave base unchanged; dark pixels darken the base.
     baseCtx.save();
     baseCtx.globalCompositeOperation = 'multiply';
     baseCtx.drawImage(edge, 0, 0, ew, eh, 0, 0, iw, ih);
     baseCtx.restore();
   } catch (err) {
-    // Edge detection failed (e.g. SecurityError).  The base canvas still holds
-    // the blurred + saturated frame, so we continue to blit it below.
     console.warn('[Preview] Cartoon edge detection failed, falling back to blur/saturation:', err);
   }
 
-  // ── 4. Blit result to main canvas (inherits caller's globalAlpha + transform) ──
+  return base;
+}
+
+/**
+ * Draw a cartoon-styled video frame onto ctx at the given bounds.
+ * Relies on the caller to have set ctx.globalAlpha and any rotation transform.
+ */
+function applyCartoonEffectToCtx(
+  ctx: CanvasRenderingContext2D,
+  videoEl: HTMLVideoElement,
+  bounds: Bounds,
+  effect: import('@video-editor/shared').EffectClipConfig
+): void {
+  const base = processCartoonFrame(videoEl, bounds, effect);
+  if (!base) {
+    ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
+    return;
+  }
   ctx.drawImage(base, bounds.x, bounds.y, bounds.w, bounds.h);
+}
+
+// ─── Color grade effect (canvas preview) ──────────────────────────────────────
+//
+// Applies contrast / brightness / saturation / hue-rotate via CSS canvas filter
+// (fast path), plus optional shadows / highlights via per-pixel manipulation
+// (slow path — only activated when those params differ from their neutral values).
+//
+// Mirrors the color-grade parameters stored in EffectClipConfig:
+//   contrast         0-2  (1 = no change)
+//   brightness       0-2  (1 = no change)
+//   colorSaturation  0-2  (1 = no change)
+//   hue              -180..180 degrees (0 = no change)
+//   shadows          -1..1  (0 = no change)  — lifts/crushes dark pixels
+//   highlights       -1..1  (0 = no change)  — boosts/reduces bright pixels
+
+let _colorGradeCanvas: HTMLCanvasElement | null = null;
+
+function getColorGradeCanvas(iw: number, ih: number): HTMLCanvasElement {
+  if (!_colorGradeCanvas || _colorGradeCanvas.width !== iw || _colorGradeCanvas.height !== ih) {
+    _colorGradeCanvas = document.createElement('canvas');
+    _colorGradeCanvas.width = iw;
+    _colorGradeCanvas.height = ih;
+  }
+  return _colorGradeCanvas;
+}
+
+/**
+ * Build a CSS filter string for the basic color-grade adjustments.
+ * Returns an empty string when all params are at their neutral values
+ * (avoids setting a no-op filter which has a small but nonzero cost).
+ */
+function buildColorGradeCssFilter(
+  contrast: number,
+  brightness: number,
+  colorSaturation: number,
+  hue: number
+): string {
+  const parts: string[] = [];
+  if (contrast !== 1) parts.push(`contrast(${contrast})`);
+  if (brightness !== 1) parts.push(`brightness(${brightness})`);
+  if (colorSaturation !== 1) parts.push(`saturate(${colorSaturation})`);
+  if (hue !== 0) parts.push(`hue-rotate(${hue}deg)`);
+  return parts.join(' ');
+}
+
+/**
+ * Draw a color-graded frame onto ctx at the given bounds.
+ * `source` can be a HTMLVideoElement or an HTMLCanvasElement (for chaining with cartoon).
+ *
+ * Fast path (no shadows/highlights): applies CSS filter directly.
+ * Slow path: draws to an offscreen canvas, applies pixel manipulation, then blits.
+ */
+function applyColorGradeEffectToCtx(
+  ctx: CanvasRenderingContext2D,
+  source: HTMLVideoElement | HTMLCanvasElement,
+  bounds: Bounds,
+  effect: import('@video-editor/shared').EffectClipConfig
+): void {
+  const contrast = effect.contrast ?? 1;
+  const brightness = effect.brightness ?? 1;
+  const colorSaturation = effect.colorSaturation ?? 1;
+  const hue = effect.hue ?? 0;
+  const shadows = effect.shadows ?? 0;
+  const highlights = effect.highlights ?? 0;
+
+  const cssFilter = buildColorGradeCssFilter(contrast, brightness, colorSaturation, hue);
+  const needsPixels = shadows !== 0 || highlights !== 0;
+
+  if (!needsPixels) {
+    // ── Fast path: CSS filter only ────────────────────────────────────────────
+    if (cssFilter) {
+      ctx.filter = cssFilter;
+      ctx.drawImage(source, bounds.x, bounds.y, bounds.w, bounds.h);
+      ctx.filter = 'none';
+    } else {
+      ctx.drawImage(source, bounds.x, bounds.y, bounds.w, bounds.h);
+    }
+    return;
+  }
+
+  // ── Slow path: offscreen canvas + pixel manipulation ──────────────────────
+  const iw = Math.max(2, Math.round(bounds.w));
+  const ih = Math.max(2, Math.round(bounds.h));
+  const offCanvas = getColorGradeCanvas(iw, ih);
+  const offCtx = offCanvas.getContext('2d');
+  if (!offCtx) {
+    ctx.drawImage(source, bounds.x, bounds.y, bounds.w, bounds.h);
+    return;
+  }
+
+  // Draw source with CSS filter to offscreen
+  offCtx.clearRect(0, 0, iw, ih);
+  if (cssFilter) offCtx.filter = cssFilter;
+  offCtx.drawImage(source, 0, 0, iw, ih);
+  offCtx.filter = 'none';
+
+  // Apply shadows / highlights per-pixel
+  // shadows > 0  → lift darks (dark pixels get brighter)
+  // shadows < 0  → crush darks (dark pixels get darker)
+  // highlights > 0 → boost brights (bright pixels get brighter)
+  // highlights < 0 → reduce brights (bright pixels get darker)
+  // Weight functions: quadratic so the effect is strongest at the extremes and
+  // falls off smoothly toward the mid-tones (matches typical LUT curve behavior).
+  try {
+    const imageData = offCtx.getImageData(0, 0, iw, ih);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        let v = data[i + c] / 255;
+        if (shadows !== 0) v += shadows * (1 - v) * (1 - v);
+        if (highlights !== 0) v += highlights * v * v;
+        data[i + c] = Math.max(0, Math.min(255, Math.round(v * 255)));
+      }
+    }
+    offCtx.putImageData(imageData, 0, 0);
+  } catch (err) {
+    // SecurityError from CORS-tainted canvas — blit without pixel pass
+    console.warn('[Preview] Color grade pixel manipulation failed (CORS?):', err);
+  }
+
+  ctx.drawImage(offCanvas, bounds.x, bounds.y, bounds.w, bounds.h);
 }
 
 // ─── Video element cache ──────────────────────────────────────────────────────
@@ -685,9 +801,26 @@ export default function Preview({
           const cartoonEff = cartoonEffectTrack?.clips.find(
             (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
           )?.effectConfig;
+
+          const colorGradeEffectTrack = project.tracks.find(
+            (t) => t.type === 'effect' && t.effectType === 'colorGrade' && t.parentTrackId === track.id
+          );
+          const colorGradeEff = colorGradeEffectTrack?.clips.find(
+            (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
+          )?.effectConfig;
+
           try {
-            if (cartoonEff?.enabled) {
-              applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff);
+            const cartoonActive = cartoonEff?.enabled ?? false;
+            const colorGradeActive = colorGradeEff?.enabled ?? false;
+
+            if (cartoonActive && colorGradeActive) {
+              // Chain: render cartoon to offscreen first, then apply color grade on top
+              const cartoonCanvas = processCartoonFrame(videoEl, bounds, cartoonEff!);
+              applyColorGradeEffectToCtx(ctx, cartoonCanvas ?? videoEl, bounds, colorGradeEff!);
+            } else if (cartoonActive) {
+              applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff!);
+            } else if (colorGradeActive) {
+              applyColorGradeEffectToCtx(ctx, videoEl, bounds, colorGradeEff!);
             } else {
               ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
             }
