@@ -3,6 +3,7 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import type { Project, Track, Clip, Asset, WaveformData, BeatsData, EffectType } from '@video-editor/shared';
 import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
+import { useThemeContext } from '@/contexts/ThemeContext';
 
 const TRACK_HEIGHT = 56;
 const EFFECT_TRACK_HEIGHT = 26; // effect tracks are thin strips
@@ -86,6 +87,10 @@ export default function Timeline({
   onTrackReorder,
   onAddEffectTrack,
 }: Props) {
+  const { isDark } = useThemeContext();
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -314,8 +319,19 @@ export default function Timeline({
     const Z = zoomRef.current;
     const SL = scrollLeftRef.current;
 
+    // ─── Theme colours ─────────────────────────────────────────────────────
+    const dark = isDarkRef.current;
+    const canvasBg         = dark ? '#0f172a' : '#f8fafc';
+    const rulerBg          = dark ? '#1e293b' : '#f1f5f9';
+    const trackHeaderBg    = dark ? '#1e293b' : '#f1f5f9';
+    const effectHeaderBg   = dark ? 'rgba(60,40,15,0.95)' : 'rgba(255,247,237,0.95)';
+    const trackSeparator   = dark ? 'rgba(226,232,240,0.08)' : 'rgba(15,23,42,0.07)';
+    const gridLine         = dark ? 'rgba(226,232,240,0.05)' : 'rgba(15,23,42,0.05)';
+    const workAreaPreDim   = dark ? 'rgba(0,0,0,0.20)'       : 'rgba(15,23,42,0.12)';
+    const workAreaTrackDim = dark ? 'rgba(0,0,0,0.35)'       : 'rgba(15,23,42,0.10)';
+
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, W, H);
 
     if (!project) {
@@ -334,7 +350,7 @@ export default function Timeline({
       const waS = workArea.start * Z - SL + HEADER_WIDTH;
       const waE = workArea.end * Z - SL + HEADER_WIDTH;
 
-      ctx.fillStyle = 'rgba(15,23,42,0.12)';
+      ctx.fillStyle = workAreaPreDim;
       ctx.fillRect(HEADER_WIDTH, 0, timeWidth, WORK_BAR_H);
 
       const wsX = Math.max(HEADER_WIDTH, waS);
@@ -368,7 +384,7 @@ export default function Timeline({
     }
 
     // ─── Ruler ────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#f1f5f9';
+    ctx.fillStyle = rulerBg;
     ctx.fillRect(HEADER_WIDTH, WORK_BAR_H, timeWidth, RULER_HEIGHT - WORK_BAR_H);
 
     const secondsVisible = timeWidth / Z;
@@ -450,12 +466,12 @@ export default function Timeline({
 
       // Track header
       const headerBg = isEffectTrack
-        ? 'rgba(255,247,237,0.95)'
+        ? effectHeaderBg
         : isReorderTarget
         ? 'rgba(13,148,136,0.12)'
         : isGhostTrack
         ? 'rgba(13,148,136,0.07)'
-        : '#f1f5f9';
+        : trackHeaderBg;
       ctx.fillStyle = headerBg;
       ctx.globalAlpha = isReorderSource ? 0.4 : 1;
       ctx.fillRect(0, trackY, HEADER_WIDTH, trackH);
@@ -525,13 +541,13 @@ export default function Timeline({
       ctx.globalAlpha = 1;
 
       // Track separator
-      ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.15)' : 'rgba(15,23,42,0.07)';
+      ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.15)' : trackSeparator;
       ctx.fillRect(HEADER_WIDTH, trackY + trackH - 1, timeWidth, 1);
 
       // Grid lines
       for (let s = startSec; s <= endSec; s += tickInterval) {
         const x = s * Z - SL + HEADER_WIDTH;
-        ctx.strokeStyle = 'rgba(15,23,42,0.05)';
+        ctx.strokeStyle = gridLine;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, trackY);
@@ -848,7 +864,7 @@ export default function Timeline({
       const waE = workArea.end * Z - SL + HEADER_WIDTH;
       const totalTrackH = getTotalTracksHeight(tracks);
 
-      ctx.fillStyle = 'rgba(15,23,42,0.10)';
+      ctx.fillStyle = workAreaTrackDim;
 
       const leftEnd = Math.min(Math.max(waS, HEADER_WIDTH), W);
       if (leftEnd > HEADER_WIDTH) {
@@ -1412,7 +1428,7 @@ export default function Timeline({
   const canvasHeight = RULER_HEIGHT + totalTracksH + (extraRow ? TRACK_HEIGHT : 0) + 8;
 
   return (
-    <div style={{ background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: 'var(--surface-bg)', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
       <div
         style={{
@@ -1423,11 +1439,11 @@ export default function Timeline({
           gap: 4,
           paddingLeft: 8,
           paddingRight: 8,
-          borderBottom: '1px solid rgba(15,23,42,0.07)',
+          borderBottom: '1px solid var(--border-subtle)',
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 10, color: 'rgba(15,23,42,0.45)', marginRight: 4, userSelect: 'none' }}>
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4, userSelect: 'none' }}>
           Magnet:
         </span>
         {(
@@ -1444,9 +1460,9 @@ export default function Timeline({
               fontSize: 11,
               padding: '5px 10px',
               borderRadius: 6,
-              border: snapMode === mode ? '1px solid rgba(13,148,136,0.55)' : '1px solid rgba(15,23,42,0.12)',
+              border: snapMode === mode ? '1px solid rgba(13,148,136,0.55)' : '1px solid var(--border-default)',
               background: snapMode === mode ? 'rgba(13,148,136,0.10)' : 'transparent',
-              color: snapMode === mode ? '#0d9488' : 'rgba(15,23,42,0.45)',
+              color: snapMode === mode ? '#0d9488' : 'var(--text-muted)',
               cursor: 'pointer',
               userSelect: 'none',
               lineHeight: '18px',
@@ -1497,13 +1513,13 @@ export default function Timeline({
                 top: '100%',
                 right: 0,
                 marginTop: 3,
-                background: '#ffffff',
+                background: 'var(--surface-raised)',
                 border: '1px solid rgba(251,146,60,0.35)',
                 borderRadius: 6,
                 padding: '4px 0',
                 zIndex: 100,
                 minWidth: 148,
-                boxShadow: '0 4px 16px rgba(15,23,42,0.12)',
+                boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.40)' : '0 4px 16px rgba(15,23,42,0.12)',
               }}
             >
               {(
@@ -1554,7 +1570,7 @@ export default function Timeline({
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
                   <div>{label}</div>
-                  <div style={{ fontSize: 9, color: 'rgba(15,23,42,0.40)', marginTop: 1 }}>{desc}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>{desc}</div>
                 </button>
               ))}
             </div>
