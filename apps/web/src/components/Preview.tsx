@@ -535,8 +535,10 @@ export default function Preview({
       ? masterBeatData.beats.map((b) => masterClip.timelineStart + (b - masterClip.sourceStart))
       : undefined;
 
-    // ── Render all non-audio tracks in order (respects z-index from track order) ──
-    for (const track of project.tracks) {
+    // ── Render all non-audio tracks in reverse order so that tracks higher in
+    // the timeline (lower array index) appear on top in the preview, matching
+    // the visual timeline order (top track = on top in preview).
+    for (const track of [...project.tracks].reverse()) {
       if (track.type === 'audio' || track.muted) continue;
 
       for (const clip of track.clips) {
@@ -1022,9 +1024,11 @@ export default function Preview({
       }
 
       // ── Step 2: Hit-test all clips at current time (topmost first) ─────────
-      // Build list of all visible clips (in track order, last = topmost z-index)
+      // Build list of all visible clips. Tracks are now rendered in reverse order
+      // (index 0 = top of timeline = rendered last = visually on top), so we
+      // collect in reverse order and test forward (first = topmost on screen).
       const clipsAtTime: Clip[] = [];
-      for (const track of project.tracks) {
+      for (const track of [...project.tracks].reverse()) {
         if (track.type === 'audio' || track.muted) continue;
         for (const clip of track.clips) {
           if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
@@ -1033,8 +1037,8 @@ export default function Preview({
         }
       }
 
-      // Test in reverse (topmost rendered = last in array)
-      for (let i = clipsAtTime.length - 1; i >= 0; i--) {
+      // Test forward (topmost rendered = first in list, since we reversed above)
+      for (let i = 0; i < clipsAtTime.length; i++) {
         const clip = clipsAtTime[i];
         const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
         const bounds = getClipBounds(clip, transform, W, H, ctx);

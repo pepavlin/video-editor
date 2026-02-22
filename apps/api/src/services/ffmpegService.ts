@@ -290,8 +290,10 @@ export function buildExportCommand(
   filterParts.push(`color=c=black:s=${W}x${H}:r=30[base]`);
   let prevPad = 'base';
 
-  // Video clips
-  for (const track of videoTracks) {
+  // Video clips — iterate in reverse so that tracks higher in the timeline
+  // (lower array index) are overlaid last and therefore appear on top,
+  // matching the preview rendering order.
+  for (const track of [...videoTracks].reverse()) {
     for (const clip of track.clips) {
       const inputIdx = assetInputIdxMap.get(clip.assetId);
       if (inputIdx === undefined) continue;
