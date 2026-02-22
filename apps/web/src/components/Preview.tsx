@@ -524,7 +524,7 @@ export default function Preview({
     const W = canvas.width;
     const H = canvas.height;
 
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, H);
 
     // Master beats for beat zoom effect
@@ -1152,8 +1152,16 @@ export default function Preview({
   return (
     <div
       ref={containerRef}
-      className="flex-1 flex items-center justify-center bg-black"
-      style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}
+      className="flex-1 flex items-center justify-center"
+      style={{
+        minHeight: 0,
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: '#1a1a2e',
+        backgroundImage:
+          'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
+        backgroundSize: '24px 24px',
+      }}
     >
       {/* Zoomable canvas wrapper — CSS transform for viewport zoom */}
       <div
