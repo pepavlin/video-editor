@@ -286,6 +286,19 @@ export default function Editor() {
     } catch (e: any) { notify(`Lyrics alignment failed: ${e.message}`); }
   };
 
+  const handleTranscribeLyricsClip = async (clipId: string) => {
+    if (!project) return;
+    notify('Auto-detecting lyrics...');
+    try {
+      const { jobId } = await api.transcribeLyricsClip(project.id, clipId, masterAssetId);
+      await api.pollJob(jobId, (j) => notify(`Transcribing: ${j.progress}%`));
+      // Reload project to get detected lyricsContent + lyricsWords on the clip
+      const { project: updated } = await api.loadProject(project.id);
+      setProject(updated);
+      notify('Lyrics detected! Edit the text below if needed, then re-align.');
+    } catch (e: any) { notify(`Lyrics detection failed: ${e.message}`); }
+  };
+
   const handleStartCutout = async (clipId: string) => {
     if (!project) return;
     const clip = findClip(clipId);
@@ -704,6 +717,7 @@ export default function Editor() {
           onUpdateProject={updateProject}
           masterAssetId={masterAssetId}
           onAlignLyricsClip={handleAlignLyricsClip}
+          onTranscribeLyricsClip={handleTranscribeLyricsClip}
           onStartCutout={handleStartCutout}
           onStartHeadStabilization={handleStartHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}

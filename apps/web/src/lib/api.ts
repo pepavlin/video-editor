@@ -128,6 +128,18 @@ export async function alignLyricsClip(
   });
 }
 
+export async function transcribeLyricsClip(
+  projectId: string,
+  clipId: string,
+  audioAssetId?: string
+): Promise<{ jobId: string }> {
+  return apiFetch(`/projects/${projectId}/clips/${clipId}/transcribe-lyrics`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioAssetId }),
+  });
+}
+
 export async function exportProject(
   projectId: string,
   opts?: { width?: number; height?: number; crf?: number; preset?: string; startTime?: number; endTime?: number }

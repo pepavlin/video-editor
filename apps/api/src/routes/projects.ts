@@ -251,6 +251,93 @@ export async function projectsRoutes(app: FastifyInstance) {
     return reply.code(202).send({ jobId: job.id });
   });
 
+  // POST /projects/:id/clips/:clipId/transcribe-lyrics
+  // Auto-transcribes sung lyrics using Whisper (no pre-written lyrics required).
+  // Updates clip.lyricsContent with the detected text AND clip.lyricsWords with word timestamps.
+  app.post<{
+    Params: { id: string; clipId: string };
+    Body: { audioAssetId?: string };
+  }>('/projects/:id/clips/:clipId/transcribe-lyrics', async (req, reply) => {
+    const project = ws.readProject(req.params.id);
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    // Find the clip
+    let targetClip: Clip | undefined;
+    for (const track of project.tracks) {
+      const found = track.clips.find((c) => c.id === req.params.clipId);
+      if (found) { targetClip = found; break; }
+    }
+    if (!targetClip) return reply.code(404).send({ error: 'Clip not found' });
+
+    // Find master audio wav
+    let audioWavPath: string | null = null;
+    const masterTrack = project.tracks.find((t) => t.type === 'audio' && t.isMaster);
+    const masterClip = masterTrack?.clips[0];
+    const targetAssetId = req.body?.audioAssetId ?? masterClip?.assetId;
+
+    if (targetAssetId) {
+      const asset = ws.getAsset(targetAssetId);
+      if (asset?.audioPath) {
+        const wavPath = path.join(ws.getWorkspaceDir(), asset.audioPath);
+        if (fs.existsSync(wavPath)) audioWavPath = wavPath;
+      }
+    }
+
+    if (!audioWavPath) {
+      return reply.code(400).send({ error: 'No audio WAV available. Import and wait for a master audio track.' });
+    }
+
+    const projectDir = ws.getProjectDir(project.id);
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const clipId = req.params.clipId;
+    const job = jq.createJob('lyrics', project.id);
+    const transcribeOutputPath = path.join(projectDir, `transcribe_${clipId}.json`);
+
+    const scriptPath = path.join(config.scriptsDir, 'transcribe_lyrics.py');
+
+    jq.runCommand(
+      job.id,
+      config.pythonBin,
+      [scriptPath, audioWavPath, transcribeOutputPath],
+      {
+        onDone: () => {
+          try {
+            const result = JSON.parse(fs.readFileSync(transcribeOutputPath, 'utf8'));
+            const detectedText: string = result.text ?? '';
+            const words = result.words ?? [];
+            const proj = ws.readProject(project.id);
+            if (proj) {
+              const updatedProject: Project = {
+                ...proj,
+                tracks: proj.tracks.map((t) => ({
+                  ...t,
+                  clips: t.clips.map((c) =>
+                    c.id === clipId
+                      ? {
+                          ...c,
+                          lyricsContent: detectedText,
+                          lyricsWords: words,
+                          lyricsAlignStatus: 'done' as const,
+                        }
+                      : c
+                  ),
+                })),
+                updatedAt: new Date().toISOString(),
+              };
+              ws.writeProject(updatedProject);
+            }
+          } catch (e) {
+            ws.appendJobLog(job.id, `Failed to update clip with transcription: ${e}`);
+          }
+        },
+        outputPath: transcribeOutputPath,
+      }
+    );
+
+    return reply.code(202).send({ jobId: job.id });
+  });
+
   // POST /projects/:id/clips/:clipId/sync-audio
   // Finds where the clip's audio best aligns within the master audio using cross-correlation.
   // Returns { offset, confidence, newTimelineStart } without modifying the project.
