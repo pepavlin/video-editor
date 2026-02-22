@@ -12,6 +12,7 @@ import Timeline from './Timeline';
 import Inspector from './Inspector';
 import TransportControls from './TransportControls';
 import ProjectBar from './ProjectBar';
+import ToolsPanel from './ToolsPanel';
 import { DockLayout } from './DockLayout';
 import { MobileLayout } from './MobileLayout';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -687,6 +688,21 @@ export default function Editor() {
         />
       </div>
     ),
+
+    tools: () => (
+      <ToolsPanel
+        project={project}
+        currentTime={playback.currentTime}
+        onAddText={(start, duration, text) => {
+          const clipId = addTextTrack(start, duration, text);
+          setSelectedClipId(clipId);
+        }}
+        onAddLyrics={(start, duration) => {
+          const clipId = addLyricsTrack(start, duration);
+          setSelectedClipId(clipId);
+        }}
+      />
+    ),
   };
 
   // ── Main editor layout ─────────────────────────────────────────────────────
@@ -841,76 +857,12 @@ export default function Editor() {
             >
               ↻
             </button>
-
-            <div className="w-px h-5" style={{ background: 'var(--border-default)' }} />
-
-            <button
-              className="btn btn-ghost"
-              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
-              disabled={!project}
-              title="Add a text element to the timeline"
-              onClick={() => {
-                if (!project) return;
-                const start = playback.currentTime;
-                const duration = 3;
-                const clipId = addTextTrack(start, duration, 'Text');
-                setSelectedClipId(clipId);
-              }}
-            >
-              <span style={{ fontSize: 15, fontWeight: 700 }}>T</span>
-              Add Text
-            </button>
           </>
         )}
 
-        {/* Desktop: Add Lyrics button (Add Text is already in the !isMobile block above) */}
-        {!isMobile && (
-          <button
-            className="btn btn-ghost"
-            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: project ? 1 : 0.4 }}
-            disabled={!project}
-            title="Add a lyrics track to the timeline"
-            onClick={() => {
-              if (!project) return;
-              const start = playback.currentTime;
-              const duration = 10;
-              const clipId = addLyricsTrack(start, duration);
-              setSelectedClipId(clipId);
-            }}
-          >
-            <span style={{
-              fontSize: 14, fontWeight: 700,
-              background: 'linear-gradient(135deg, #c084fc, #818cf8)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}>♪</span>
-            Add Lyrics
-          </button>
-        )}
-
-        {/* Mobile: compact Add Text + undo/redo icons */}
+        {/* Mobile: undo/redo icons */}
         {isMobile && (
           <>
-            {/* Add Text — compact icon button */}
-            <button
-              style={{
-                width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: project ? 'rgba(13,148,136,0.08)' : 'none',
-                border: project ? '1px solid rgba(13,148,136,0.22)' : 'none',
-                cursor: 'pointer',
-                fontSize: 14, fontWeight: 700, color: project ? '#0d9488' : 'rgba(15,23,42,0.20)',
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-              } as React.CSSProperties}
-              disabled={!project}
-              title="Add Text"
-              onClick={() => {
-                if (!project) return;
-                const start = playback.currentTime;
-                const clipId = addTextTrack(start, 3, 'Text');
-                setSelectedClipId(clipId);
-              }}
-            >T</button>
             <button
               style={{
                 width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',

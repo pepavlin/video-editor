@@ -217,6 +217,7 @@ const ZONE_STYLE: Record<DropZone, React.CSSProperties> = {
 
 const PANEL_LABELS: Record<string, string> = {
   media:          'Media',
+  tools:          'Tools',
   preview:        'Preview',
   inspector:      'Inspector',
   timeline:       'Timeline',
@@ -260,6 +261,7 @@ export const DEFAULT_LAYOUT: DockNode = {
   direction: 'h',
   children: [
     { type: 'leaf', id: 'leaf_media',      panelId: 'media' },
+    { type: 'leaf', id: 'leaf_tools',      panelId: 'tools' },
     {
       type: 'split',
       id: 'center',
@@ -274,10 +276,10 @@ export const DEFAULT_LAYOUT: DockNode = {
     },
     { type: 'leaf', id: 'leaf_inspector',  panelId: 'inspector' },
   ],
-  sizes: [0.20, 0.56, 0.24],
+  sizes: [0.18, 0.08, 0.50, 0.24],
 };
 
-const STORAGE_KEY = 've-dock-layout';
+const STORAGE_KEY = 've-dock-layout-v2';
 
 function loadLayout(): DockNode {
   try {
