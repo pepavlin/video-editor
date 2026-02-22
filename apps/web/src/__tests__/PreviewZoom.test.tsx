@@ -68,6 +68,7 @@ describe('Preview zoom controls', () => {
     expect(screen.getByTestId('zoom-in-btn')).toBeDefined();
     expect(screen.getByTestId('zoom-out-btn')).toBeDefined();
     expect(screen.getByTestId('zoom-reset-btn')).toBeDefined();
+    expect(screen.getByTestId('view-center-btn')).toBeDefined();
   });
 
   it('shows 100% zoom level by default', () => {
@@ -120,5 +121,23 @@ describe('Preview zoom controls', () => {
     // After zoom-in the scale should be > 1
     expect(wrapper.style.transform).not.toContain('scale(1)');
     expect(wrapper.style.transform).toMatch(/scale\(1\.[1-9]/);
+  });
+
+  it('view-center-btn resets zoom to 100% after zooming in', () => {
+    render(<Preview {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('zoom-in-btn'));
+    fireEvent.click(screen.getByTestId('zoom-in-btn'));
+    expect(parseInt(screen.getByTestId('zoom-reset-btn').textContent ?? '', 10)).toBeGreaterThan(100);
+    fireEvent.click(screen.getByTestId('view-center-btn'));
+    expect(screen.getByTestId('zoom-reset-btn').textContent).toBe('100%');
+  });
+
+  it('view-center-btn resets transform scale to 1 after panning/zooming', () => {
+    render(<Preview {...defaultProps} />);
+    const wrapper = screen.getByTestId('preview-zoom-wrapper');
+    fireEvent.click(screen.getByTestId('zoom-in-btn'));
+    fireEvent.click(screen.getByTestId('view-center-btn'));
+    expect(wrapper.style.transform).toContain('scale(1)');
+    expect(wrapper.style.transform).toContain('translate(0px, 0px)');
   });
 });
