@@ -21,6 +21,7 @@ interface Props {
   onUpdateProject: (updater: (p: Project) => Project) => void;
   masterAssetId?: string;
   onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
+  onTranscribeLyricsClip: (clipId: string) => Promise<void>;
   onStartCutout: (clipId: string) => Promise<void>;
   onStartHeadStabilization: (clipId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
@@ -127,6 +128,7 @@ export default function Inspector({
   onUpdateProject,
   masterAssetId,
   onAlignLyricsClip,
+  onTranscribeLyricsClip,
   onStartCutout,
   onStartHeadStabilization,
   onSyncAudio,
@@ -671,6 +673,7 @@ export default function Inspector({
               clip={selectedClip}
               onClipUpdate={onClipUpdate}
               onAlignLyricsClip={onAlignLyricsClip}
+              onTranscribeLyricsClip={onTranscribeLyricsClip}
             />
           )}
 
@@ -759,12 +762,15 @@ function LyricsClipInspector({
   clip,
   onClipUpdate,
   onAlignLyricsClip,
+  onTranscribeLyricsClip,
 }: {
   clip: Clip;
   onClipUpdate: (clipId: string, updates: Partial<Clip>) => void;
   onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
+  onTranscribeLyricsClip: (clipId: string) => Promise<void>;
 }) {
   const [aligning, setAligning] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const style = clip.lyricsStyle ?? {
     fontSize: 48,
     color: '#ffffff',
@@ -791,11 +797,41 @@ function LyricsClipInspector({
     }
   };
 
+  const handleTranscribe = async () => {
+    setTranscribing(true);
+    onClipUpdate(clip.id, { lyricsAlignStatus: 'aligning' });
+    try {
+      await onTranscribeLyricsClip(clip.id);
+      onClipUpdate(clip.id, { lyricsAlignStatus: 'done' });
+    } catch {
+      onClipUpdate(clip.id, { lyricsAlignStatus: 'error' });
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const busy = aligning || transcribing;
+
   return (
     <>
       <Section title="Lyrics">
+        <button
+          className="btn btn-ghost"
+          style={{
+            border: '1px solid rgba(99,102,241,0.40)',
+            width: '100%',
+            fontSize: 13,
+            color: busy ? 'var(--text-muted)' : '#818cf8',
+            opacity: busy ? 0.6 : 1,
+            marginBottom: 6,
+          }}
+          disabled={busy}
+          onClick={handleTranscribe}
+        >
+          {transcribing ? 'Detecting lyrics...' : 'Auto-detect lyrics'}
+        </button>
         <textarea
-          placeholder="Paste lyrics text here..."
+          placeholder="Paste lyrics here, or use Auto-detect above..."
           value={clip.lyricsContent ?? ''}
           rows={5}
           style={{ width: '100%', resize: 'none', fontSize: 13 }}
@@ -807,21 +843,22 @@ function LyricsClipInspector({
             border: '1px solid rgba(13,148,136,0.28)',
             width: '100%',
             fontSize: 13,
-            color: aligning ? 'var(--text-muted)' : '#0d9488',
-            opacity: aligning || !clip.lyricsContent?.trim() ? 0.6 : 1,
+            color: busy ? 'var(--text-muted)' : '#0d9488',
+            opacity: busy || !clip.lyricsContent?.trim() ? 0.6 : 1,
+            marginTop: 4,
           }}
-          disabled={aligning || !clip.lyricsContent?.trim()}
+          disabled={busy || !clip.lyricsContent?.trim()}
           onClick={handleAlign}
         >
-          {aligning ? 'Aligning with Whisper...' : 'Align with Whisper'}
+          {aligning ? 'Aligning with Whisper...' : 'Re-align with Whisper'}
         </button>
         {clip.lyricsWords && clip.lyricsWords.length > 0 && (
-          <p style={{ fontSize: 12, color: '#4ade80', marginTop: 2 }}>
+          <p style={{ fontSize: 12, color: '#4ade80', marginTop: 4 }}>
             {clip.lyricsWords.length} words aligned
           </p>
         )}
         {clip.lyricsAlignStatus === 'error' && (
-          <p style={{ fontSize: 12, color: '#f87171', marginTop: 2 }}>Alignment failed – try again</p>
+          <p style={{ fontSize: 12, color: '#f87171', marginTop: 4 }}>Operation failed – try again</p>
         )}
       </Section>
 
