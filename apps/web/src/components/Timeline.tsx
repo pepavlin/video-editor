@@ -53,6 +53,8 @@ interface Props {
   onWorkAreaChange: (start: number, end: number) => void;
   onTrackReorder: (fromIdx: number, toIdx: number) => void;
   onAddEffectTrack: (effectType: EffectType, timelineStart: number, duration: number, parentTrackId?: string) => void;
+  onMoveClipToTrack: (clipId: string, toTrackId: string, timelineStart: number, timelineEnd: number) => void;
+  onMoveClipToNewTrack: (clipId: string, newTrackType: 'video' | 'audio', timelineStart: number, timelineEnd: number) => void;
 }
 
 type DragMode =
@@ -86,6 +88,8 @@ export default function Timeline({
   onWorkAreaChange,
   onTrackReorder,
   onAddEffectTrack,
+  onMoveClipToTrack,
+  onMoveClipToNewTrack,
 }: Props) {
   const { isDark } = useThemeContext();
   const isDarkRef = useRef(isDark);
@@ -148,6 +152,15 @@ export default function Timeline({
     clip: Clip;
     half: 'left' | 'right';
     blocked: boolean;
+  } | null>(null);
+
+  // Cross-track drag state: tracks the "current" track during a moveClip drag
+  // '__new__' means cursor is in the zone below all tracks (new track will be created on drop)
+  const clipDragStateRef = useRef<{
+    currentTrackId: string; // '__new__' when in new-track zone
+    sourceTrackType: 'video' | 'audio'; // type of the source track (for new-track creation)
+    leftAdjacentId: string | null;
+    rightAdjacentId: string | null;
   } | null>(null);
 
   const propsRef = useRef({ project, currentTime, assets, waveforms, beatsData, selectedClipId, workArea });
@@ -482,11 +495,19 @@ export default function Timeline({
       const isReorderTarget = trackDragOverIdx === trackIdx && trackDragFromIdx !== null && trackDragFromIdx !== trackIdx;
       const isReorderSource = trackDragFromIdx === trackIdx;
 
+      // Highlight if a clip is being dragged onto this track
+      const clipDragDs = clipDragStateRef.current;
+      const isClipDragTarget = clipDragDs !== null &&
+        clipDragDs.currentTrackId === track.id &&
+        dragRef.current.type === 'moveClip';
+
       // Track header
       const headerBg = isEffectTrack
         ? effectHeaderBg
         : isReorderTarget
         ? 'rgba(13,148,136,0.12)'
+        : isClipDragTarget
+        ? 'rgba(14,165,233,0.14)'
         : isGhostTrack
         ? 'rgba(13,148,136,0.07)'
         : trackHeaderBg;
@@ -497,12 +518,25 @@ export default function Timeline({
         ? 'rgba(251,146,60,0.45)'
         : isReorderTarget
         ? 'rgba(13,148,136,0.85)'
+        : isClipDragTarget
+        ? 'rgba(14,165,233,0.80)'
         : isGhostTrack
         ? 'rgba(13,148,136,0.50)'
         : 'rgba(13,148,136,0.15)';
-      ctx.lineWidth = isEffectTrack || isReorderTarget || isGhostTrack ? 1 : 1;
+      ctx.lineWidth = isEffectTrack || isReorderTarget || isClipDragTarget || isGhostTrack ? 1 : 1;
       ctx.strokeRect(0, trackY, HEADER_WIDTH, trackH);
       ctx.globalAlpha = 1;
+
+      // Clip-drag target highlight: full-width border on the track body
+      if (isClipDragTarget) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(14,165,233,0.65)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeRect(HEADER_WIDTH + 1, trackY + 1, W - HEADER_WIDTH - 2, trackH - 2);
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
 
       // Draw reorder indicator line above target row
       if (isReorderTarget && trackDragFromIdx !== null) {
@@ -876,6 +910,35 @@ export default function Timeline({
       drawGhostClip(ctx, ghost, Z, SL, newTrackY, TRACK_HEIGHT, HEADER_WIDTH, W);
     }
 
+    // ─── New-track zone indicator during clip cross-track drag ─────────────
+    {
+      const cds = clipDragStateRef.current;
+      if (cds && cds.currentTrackId === '__new__' && dragRef.current.type === 'moveClip') {
+        const newTrackY = RULER_HEIGHT - ST + getTotalTracksHeight(tracks);
+        const isAudio = cds.sourceTrackType === 'audio';
+
+        ctx.fillStyle = isAudio ? 'rgba(13,148,136,0.08)' : 'rgba(14,165,233,0.07)';
+        ctx.fillRect(0, newTrackY, HEADER_WIDTH, TRACK_HEIGHT);
+        ctx.strokeStyle = isAudio ? 'rgba(13,148,136,0.45)' : 'rgba(14,165,233,0.45)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(1, newTrackY + 1, HEADER_WIDTH - 2, TRACK_HEIGHT - 2);
+        ctx.setLineDash([]);
+        ctx.fillStyle = isAudio ? 'rgba(13,148,136,0.65)' : 'rgba(14,165,233,0.65)';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('+ NEW', HEADER_WIDTH / 2, newTrackY + TRACK_HEIGHT / 2 + 4);
+
+        ctx.fillStyle = isAudio ? 'rgba(13,148,136,0.04)' : 'rgba(14,165,233,0.03)';
+        ctx.fillRect(HEADER_WIDTH, newTrackY, timeWidth, TRACK_HEIGHT);
+        ctx.strokeStyle = isAudio ? 'rgba(13,148,136,0.22)' : 'rgba(14,165,233,0.22)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(HEADER_WIDTH + 0.5, newTrackY + 0.5, timeWidth - 1, TRACK_HEIGHT - 1);
+        ctx.setLineDash([]);
+      }
+    }
+
     // ─── Work area dim overlay on tracks ──────────────────────────────────
     if (workArea) {
       const waS = workArea.start * Z - SL + HEADER_WIDTH;
@@ -1024,6 +1087,9 @@ export default function Timeline({
           (c) => c.id !== clip.id && Math.abs(c.timelineStart - clip.timelineEnd) < 0.001
         )?.id ?? null;
         setDrag({ type: 'moveClip', clipId: clip.id, trackId: track.id, offsetSeconds, leftAdjacentId, rightAdjacentId });
+        // Initialise cross-track drag state
+        const srcType = (track.type === 'audio') ? 'audio' : 'video';
+        clipDragStateRef.current = { currentTrackId: track.id, sourceTrackType: srcType, leftAdjacentId, rightAdjacentId };
       }
       return true;
     },
@@ -1089,7 +1155,54 @@ export default function Timeline({
         t = snap(t + dur, snapTargets, snapThreshold) - dur;
         t = Math.max(0, t);
 
-        // ── Half-hover detection ──────────────────────────────────────────
+        // ── Cross-track detection ─────────────────────────────────────────
+        const ds = clipDragStateRef.current;
+        const currentTrackId = ds?.currentTrackId ?? d.trackId;
+        const targetResult = getTrackAtY(y);
+
+        if (targetResult && targetResult.track.id !== currentTrackId) {
+          // Cursor moved to a different existing track – move the clip there immediately
+          if (ds) {
+            ds.currentTrackId = targetResult.track.id;
+            ds.leftAdjacentId = null;
+            ds.rightAdjacentId = null;
+          }
+          clipHoverRef.current = null;
+          onMoveClipToTrack(d.clipId, targetResult.track.id, t, t + dur);
+          draw();
+          return;
+        }
+
+        if (!targetResult && y > RULER_HEIGHT) {
+          // Cursor is below all existing tracks → new-track zone
+          // Don't move the clip yet; mark intent and update X position only
+          if (ds && currentTrackId !== '__new__') {
+            ds.currentTrackId = '__new__';
+            ds.leftAdjacentId = null;
+            ds.rightAdjacentId = null;
+          }
+          clipHoverRef.current = null;
+          onClipUpdate(d.clipId, { timelineStart: t, timelineEnd: t + dur });
+          draw();
+          return;
+        }
+
+        // If we just moved back from '__new__' zone into an existing track
+        if (targetResult && currentTrackId === '__new__') {
+          if (ds) {
+            ds.currentTrackId = targetResult.track.id;
+            ds.leftAdjacentId = null;
+            ds.rightAdjacentId = null;
+          }
+          clipHoverRef.current = null;
+          onMoveClipToTrack(d.clipId, targetResult.track.id, t, t + dur);
+          draw();
+          return;
+        }
+
+        // ── Half-hover detection (same track) ────────────────────────────
+        const leftAdjacentId = ds?.leftAdjacentId ?? d.leftAdjacentId;
+        const rightAdjacentId = ds?.rightAdjacentId ?? d.rightAdjacentId;
         const cursorTime = (x + SL - HEADER_WIDTH) / Z;
         const hoveredClip = clipTrack.clips.find(
           (c) => c.id !== d.clipId && cursorTime >= c.timelineStart && cursorTime <= c.timelineEnd
@@ -1098,8 +1211,8 @@ export default function Timeline({
           const midpoint = (hoveredClip.timelineStart + hoveredClip.timelineEnd) / 2;
           const half: 'left' | 'right' = cursorTime < midpoint ? 'left' : 'right';
           const blocked =
-            (half === 'left' && hoveredClip.id === d.rightAdjacentId) ||
-            (half === 'right' && hoveredClip.id === d.leftAdjacentId);
+            (half === 'left' && hoveredClip.id === rightAdjacentId) ||
+            (half === 'right' && hoveredClip.id === leftAdjacentId);
           clipHoverRef.current = { clip: hoveredClip, half, blocked };
           if (!blocked) {
             if (half === 'left') {
@@ -1161,7 +1274,7 @@ export default function Timeline({
         return;
       }
     },
-    [project, assets, getSnapTargets, onClipUpdate, onSeek, onWorkAreaChange, draw]
+    [project, assets, getSnapTargets, onClipUpdate, onMoveClipToTrack, onSeek, onWorkAreaChange, draw, getTrackAtY, getTotalTracksHeight]
   );
 
   const handleMouseMove = useCallback(
@@ -1174,8 +1287,24 @@ export default function Timeline({
 
   const handleMouseUp = useCallback(() => {
     clipHoverRef.current = null;
+    // If the clip was dragged into the new-track zone, commit the move now
+    const ds = clipDragStateRef.current;
+    const d = dragRef.current;
+    if (ds && d.type === 'moveClip' && ds.currentTrackId === '__new__') {
+      // Find clip to get its current position and determine track type
+      if (project) {
+        for (const tr of project.tracks) {
+          const c = tr.clips.find((cl) => cl.id === d.clipId);
+          if (c) {
+            onMoveClipToNewTrack(d.clipId, ds.sourceTrackType, c.timelineStart, c.timelineEnd);
+            break;
+          }
+        }
+      }
+    }
+    clipDragStateRef.current = null;
     setDrag({ type: 'none' });
-  }, []);
+  }, [project, onMoveClipToNewTrack]);
 
   // ─── Touch handlers ────────────────────────────────────────────────────────
 
@@ -1271,12 +1400,26 @@ export default function Timeline({
       if (e.touches.length === 0) {
         pinchStartDistRef.current = null;
         touchModeRef.current = 'none';
-        // End any active drag
+        // End any active drag – same new-track logic as mouse up
         clipHoverRef.current = null;
+        const ds = clipDragStateRef.current;
+        const d = dragRef.current;
+        if (ds && d.type === 'moveClip' && ds.currentTrackId === '__new__') {
+          if (project) {
+            for (const tr of project.tracks) {
+              const c = tr.clips.find((cl) => cl.id === d.clipId);
+              if (c) {
+                onMoveClipToNewTrack(d.clipId, ds.sourceTrackType, c.timelineStart, c.timelineEnd);
+                break;
+              }
+            }
+          }
+        }
+        clipDragStateRef.current = null;
         setDrag({ type: 'none' });
       }
     },
-    []
+    [project, onMoveClipToNewTrack]
   );
 
   const handleWheel = useCallback((e: React.WheelEvent) => {

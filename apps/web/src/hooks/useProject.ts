@@ -428,6 +428,65 @@ export function useProject() {
     [updateProject]
   );
 
+  // Move clip from its current track to a different existing track
+  const moveClipToTrack = useCallback(
+    (clipId: string, toTrackId: string, timelineStart: number, timelineEnd: number) => {
+      updateProject((p) => {
+        let movedClip: Clip | null = null;
+        const tracksWithoutClip = p.tracks.map((t) => {
+          const idx = t.clips.findIndex((c) => c.id === clipId);
+          if (idx >= 0) {
+            movedClip = { ...t.clips[idx], trackId: toTrackId, timelineStart, timelineEnd };
+            return { ...t, clips: t.clips.filter((c) => c.id !== clipId) };
+          }
+          return t;
+        });
+        if (!movedClip) return p;
+        return {
+          ...p,
+          tracks: tracksWithoutClip.map((t) =>
+            t.id === toTrackId ? { ...t, clips: [...t.clips, movedClip!] } : t
+          ),
+        };
+      });
+    },
+    [updateProject]
+  );
+
+  // Move clip to a brand-new track (creates a new track of the given type)
+  const moveClipToNewTrack = useCallback(
+    (clipId: string, newTrackType: 'video' | 'audio', timelineStart: number, timelineEnd: number) => {
+      updateProject((p) => {
+        let movedClip: Clip | null = null;
+        const tracksWithoutClip = p.tracks.map((t) => {
+          const idx = t.clips.findIndex((c) => c.id === clipId);
+          if (idx >= 0) {
+            movedClip = { ...t.clips[idx], timelineStart, timelineEnd };
+            return { ...t, clips: t.clips.filter((c) => c.id !== clipId) };
+          }
+          return t;
+        });
+        if (!movedClip) return p;
+        const foundClip: Clip = movedClip;
+
+        const newTrackId = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const count = p.tracks.filter((t) => t.type === newTrackType).length;
+        const baseName = newTrackType === 'audio' ? 'Audio' : 'Video';
+        const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
+        const newTrack: Track = {
+          id: newTrackId,
+          type: newTrackType,
+          name,
+          isMaster: false,
+          muted: false,
+          clips: [{ ...foundClip, trackId: newTrackId }],
+        };
+        return { ...p, tracks: [...tracksWithoutClip, newTrack] };
+      });
+    },
+    [updateProject]
+  );
+
   return {
     project,
     setProject,
@@ -446,5 +505,7 @@ export function useProject() {
     splitClip,
     findClip,
     reorderTrack,
+    moveClipToTrack,
+    moveClipToNewTrack,
   };
 }
