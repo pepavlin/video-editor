@@ -20,11 +20,12 @@ interface ToolItem {
   onClick: () => void;
 }
 
-const EFFECT_OPTIONS: { type: EffectType; label: string; desc: string; icon: string }[] = [
-  { type: 'beatZoom',           label: 'Beat Zoom',      desc: 'Zoom pulse on beats',         icon: '⚡' },
-  { type: 'cutout',             label: 'Cutout',          desc: 'Background removal',          icon: '✂' },
-  { type: 'headStabilization',  label: 'Head Stabilize',  desc: 'Face tracking stabilization', icon: '⦿' },
-  { type: 'cartoon',            label: 'Cartoon',         desc: 'Cartoon / comic art style',   icon: '◈' },
+const EFFECT_OPTIONS: { type: EffectType; label: string; icon: string; color: string }[] = [
+  { type: 'beatZoom',          label: 'Zoom',    icon: '⚡', color: 'rgba(251,191,36,0.85)' },
+  { type: 'cutout',            label: 'Cutout',  icon: '✂',  color: 'rgba(52,211,153,0.85)' },
+  { type: 'headStabilization', label: 'Stabilize', icon: '⦿', color: 'rgba(129,140,248,0.85)' },
+  { type: 'cartoon',           label: 'Cartoon', icon: '◈',  color: 'rgba(251,146,60,0.85)' },
+  { type: 'colorGrade',        label: 'Color',   icon: '◑',  color: 'rgba(248,113,113,0.85)' },
 ];
 
 export default function ToolsPanel({
@@ -37,7 +38,6 @@ export default function ToolsPanel({
 }: ToolsPanelProps) {
   const [showEffects, setShowEffects] = React.useState(false);
 
-  // Tools are only enabled when there's at least one video track with a real video clip
   const hasVideoTrack = project?.tracks.some(
     (t) => t.type === 'video' && t.clips.some((c) => !!c.assetId)
   ) ?? false;
@@ -46,7 +46,7 @@ export default function ToolsPanel({
     {
       id: 'text',
       icon: (
-        <span style={{ fontSize: 17, fontWeight: 800, fontFamily: 'serif', color: 'inherit' }}>
+        <span style={{ fontSize: 18, fontWeight: 800, fontFamily: 'serif', color: 'inherit', lineHeight: 1 }}>
           T
         </span>
       ),
@@ -58,7 +58,7 @@ export default function ToolsPanel({
       id: 'lyrics',
       icon: (
         <span style={{
-          fontSize: 16,
+          fontSize: 17,
           fontWeight: 700,
           background: 'linear-gradient(135deg, #c084fc, #818cf8)',
           WebkitBackgroundClip: 'text',
@@ -100,8 +100,8 @@ export default function ToolsPanel({
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '8px 4px',
-      gap: 1,
+      padding: '8px 6px',
+      gap: 6,
       overflowY: 'auto',
       overflowX: 'hidden',
     }}>
@@ -112,27 +112,32 @@ export default function ToolsPanel({
         letterSpacing: '0.09em',
         textTransform: 'uppercase',
         color: 'var(--text-muted)',
-        padding: '0 6px 5px',
+        padding: '0 2px 4px',
         borderBottom: '1px solid var(--border-subtle)',
-        marginBottom: 3,
         userSelect: 'none',
       }}>
-        Přidat prvek
+        Přidat
       </div>
 
-      {/* Tool buttons */}
-      {tools.map((tool) => (
-        <ToolButton
-          key={tool.id}
-          icon={tool.icon}
-          label={tool.label}
-          description={tool.description}
-          enabled={hasVideoTrack}
-          onClick={tool.onClick}
-        />
-      ))}
+      {/* Tool buttons – 2-column icon grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 4,
+      }}>
+        {tools.map((tool) => (
+          <IconToolButton
+            key={tool.id}
+            icon={tool.icon}
+            label={tool.label}
+            description={tool.description}
+            enabled={hasVideoTrack}
+            onClick={tool.onClick}
+          />
+        ))}
+      </div>
 
-      {/* Effect button */}
+      {/* Effect button – full width, expands effects grid below */}
       <EffectToolButton
         enabled={hasVideoTrack}
         expanded={showEffects}
@@ -141,58 +146,52 @@ export default function ToolsPanel({
       />
 
       {/* Divider */}
-      <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '4px 4px' }} />
+      <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '2px 0' }} />
 
       {/* Video – drag hint */}
       <div style={{
         display: 'flex',
-        flexDirection: 'row',
+        flexDirection: 'column',
         alignItems: 'center',
-        gap: 8,
-        padding: '4px 6px',
-        borderRadius: 6,
-        opacity: 0.5,
+        gap: 4,
+        padding: '8px 4px',
+        borderRadius: 8,
+        opacity: 0.4,
         userSelect: 'none',
         cursor: 'default',
       }}>
         <div style={{
-          width: 26,
-          height: 26,
+          width: 30,
+          height: 30,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: 6,
+          borderRadius: 7,
           background: 'var(--surface-hover)',
           border: '1px solid var(--border-subtle)',
-          flexShrink: 0,
         }}>
           <VideoIcon />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
-            Video
-          </span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.3 }}>
-            Přetáhni z Media panelu
-          </span>
-        </div>
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.3 }}>
+          Video
+        </span>
       </div>
 
       {/* No video warning */}
       {!hasVideoTrack && project && (
         <div style={{
           marginTop: 'auto',
-          padding: '6px 6px',
+          padding: '6px 4px',
           borderRadius: 6,
           background: 'rgba(234,179,8,0.08)',
           border: '1px solid rgba(234,179,8,0.20)',
-          fontSize: 10,
+          fontSize: 9,
           color: 'rgba(234,179,8,0.85)',
           textAlign: 'center',
           lineHeight: 1.4,
           userSelect: 'none',
         }}>
-          Nejprve přidej video do timeline
+          Nejprve přidej video
         </div>
       )}
     </div>
@@ -217,6 +216,7 @@ function EffectToolButton({
 
   return (
     <div style={{ width: '100%' }}>
+      {/* Effect toggle button */}
       <button
         disabled={!enabled}
         onClick={onToggle}
@@ -228,15 +228,15 @@ function EffectToolButton({
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 5,
-          padding: '10px 4px',
+          gap: 4,
+          padding: '8px 4px',
           borderRadius: expanded ? '8px 8px 0 0' : 8,
           border: `1px solid ${
             expanded && enabled
               ? 'rgba(251,146,60,0.55)'
               : hovered && enabled
               ? 'var(--border-default)'
-              : 'transparent'
+              : 'var(--border-subtle)'
           }`,
           borderBottom: expanded && enabled ? '1px solid rgba(251,146,60,0.20)' : undefined,
           background: expanded && enabled
@@ -248,7 +248,6 @@ function EffectToolButton({
           opacity: enabled ? 1 : 0.35,
           transition: 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
           width: '100%',
-          minHeight: 62,
           color: expanded && enabled
             ? 'rgba(251,146,60,0.95)'
             : hovered && enabled
@@ -259,8 +258,8 @@ function EffectToolButton({
         } as React.CSSProperties}
       >
         <div style={{
-          width: 34,
-          height: 34,
+          width: 32,
+          height: 32,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -280,21 +279,24 @@ function EffectToolButton({
             lineHeight: 1,
           }}>✦</span>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em' }}>
+        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.01em' }}>
           Effect
         </span>
       </button>
 
-      {/* Expanded effect options */}
+      {/* Expanded effects – 2-column icon grid */}
       {expanded && enabled && (
         <div style={{
           background: 'rgba(251,146,60,0.06)',
           border: '1px solid rgba(251,146,60,0.30)',
           borderTop: 'none',
           borderRadius: '0 0 8px 8px',
-          overflow: 'hidden',
+          padding: '6px 4px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 4,
         }}>
-          {EFFECT_OPTIONS.map(({ type, label, desc, icon }) => (
+          {EFFECT_OPTIONS.map(({ type, label, icon, color }) => (
             <button
               key={type}
               onClick={() => onSelectEffect(type)}
@@ -302,36 +304,29 @@ function EffectToolButton({
               onMouseLeave={() => setHoveredEffect(null)}
               style={{
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: 7,
-                width: '100%',
-                padding: '7px 10px',
-                background: hoveredEffect === type ? 'rgba(251,146,60,0.14)' : 'transparent',
-                border: 'none',
-                borderBottom: '1px solid rgba(251,146,60,0.12)',
+                justifyContent: 'center',
+                gap: 3,
+                padding: '7px 2px',
+                background: hoveredEffect === type ? 'rgba(251,146,60,0.18)' : 'rgba(251,146,60,0.06)',
+                border: `1px solid ${hoveredEffect === type ? 'rgba(251,146,60,0.40)' : 'rgba(251,146,60,0.15)'}`,
+                borderRadius: 7,
                 cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'background 0.12s ease',
+                transition: 'background 0.12s ease, border-color 0.12s ease',
                 WebkitTapHighlightColor: 'transparent',
               } as React.CSSProperties}
             >
               <span style={{
-                fontSize: 13,
-                width: 18,
-                textAlign: 'center',
-                flexShrink: 0,
-                color: 'rgba(251,146,60,0.85)',
+                fontSize: 15,
+                color,
+                lineHeight: 1,
               }}>
                 {icon}
               </span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(251,146,60,0.90)', lineHeight: 1.3 }}>
-                  {label}
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.3, marginTop: 1 }}>
-                  {desc}
-                </div>
-              </div>
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(251,146,60,0.85)', lineHeight: 1 }}>
+                {label}
+              </span>
             </button>
           ))}
         </div>
@@ -340,9 +335,9 @@ function EffectToolButton({
   );
 }
 
-// ─── ToolButton ───────────────────────────────────────────────────────────────
+// ─── IconToolButton ────────────────────────────────────────────────────────────
 
-function ToolButton({
+function IconToolButton({
   icon,
   label,
   description,
@@ -366,30 +361,31 @@ function ToolButton({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
-        flexDirection: 'row',
+        flexDirection: 'column',
         alignItems: 'center',
-        gap: 8,
-        padding: '4px 6px',
-        borderRadius: 6,
-        border: `1px solid ${hovered && enabled ? 'var(--border-default)' : 'transparent'}`,
+        justifyContent: 'center',
+        gap: 4,
+        padding: '8px 4px',
+        borderRadius: 8,
+        border: `1px solid ${hovered && enabled ? 'var(--border-default)' : 'var(--border-subtle)'}`,
         background: hovered && enabled ? 'var(--surface-hover)' : 'transparent',
         cursor: enabled ? 'pointer' : 'not-allowed',
         opacity: enabled ? 1 : 0.35,
         transition: 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
-        width: '100%',
         color: hovered && enabled ? 'var(--text-primary)' : 'var(--text-secondary)',
         userSelect: 'none',
         WebkitTapHighlightColor: 'transparent',
-        textAlign: 'left',
+        width: '100%',
+        minHeight: 58,
       } as React.CSSProperties}
     >
       <div style={{
-        width: 26,
-        height: 26,
+        width: 32,
+        height: 32,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 6,
+        borderRadius: 8,
         background: hovered && enabled ? 'var(--surface-base)' : 'var(--surface-hover)',
         border: '1px solid var(--border-subtle)',
         transition: 'background 0.15s ease',
@@ -397,14 +393,9 @@ function ToolButton({
       }}>
         {icon}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', lineHeight: 1.2 }}>
-          {label}
-        </span>
-        <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.2 }}>
-          {description}
-        </span>
-      </div>
+      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.01em', lineHeight: 1, textAlign: 'center' }}>
+        {label}
+      </span>
     </button>
   );
 }

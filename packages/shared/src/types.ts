@@ -19,7 +19,7 @@ export interface Project {
   updatedAt: string;
 }
 
-export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon';
+export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon' | 'colorGrade';
 
 export interface Track {
   id: string;
@@ -89,6 +89,13 @@ export interface EffectClipConfig {
   edgeStrength?: number;        // 0-1: prominence of cartoon edges
   colorSimplification?: number; // 0-1: how much to simplify/flatten colors
   saturation?: number;          // 0-2: color saturation (1=normal)
+  // colorGrade params
+  contrast?: number;            // 0-2: image contrast (1=normal)
+  brightness?: number;          // 0-2: image brightness (1=normal)
+  colorSaturation?: number;     // 0-2: color saturation for color grade (1=normal)
+  hue?: number;                 // -180 to 180: hue rotation degrees (0=no change)
+  shadows?: number;             // -1 to 1: shadow lift/push (0=no change)
+  highlights?: number;          // -1 to 1: highlight boost/reduce (0=no change)
 }
 
 export interface Transform {
@@ -123,6 +130,17 @@ export interface HeadStabilizationEffect {
   smoothingY: number;
   smoothingZ: number;
   status?: 'pending' | 'processing' | 'done' | 'error';
+}
+
+export interface ColorGradeEffect {
+  type: 'colorGrade';
+  enabled: boolean;
+  contrast: number;         // 0-2, default 1
+  brightness: number;       // 0-2, default 1
+  colorSaturation: number;  // 0-2, default 1
+  hue: number;              // -180 to 180, default 0
+  shadows: number;          // -1 to 1, default 0
+  highlights: number;       // -1 to 1, default 0
 }
 
 // ─── Background config (used by cutout effect in EffectClipConfig) ──────────

@@ -181,6 +181,7 @@ export default function Inspector({
                   {selectedClip.effectConfig.effectType === 'cutout' && '✂ Cutout'}
                   {selectedClip.effectConfig.effectType === 'headStabilization' && '⦿ Head Stabilize'}
                   {selectedClip.effectConfig.effectType === 'cartoon' && '◈ Cartoon'}
+                  {selectedClip.effectConfig.effectType === 'colorGrade' && '◑ Color Grade'}
                 </span>
               </Row>
             )}
@@ -442,6 +443,59 @@ export default function Inspector({
                           onChange={(e) => update({ saturation: parseFloat(e.target.value) })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
+                      </div>
+                    </Row>
+                  </>
+                )}
+
+                {cfg.effectType === 'colorGrade' && (
+                  <>
+                    <Row label="Contrast">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={2} step={0.05} value={cfg.contrast ?? 1} style={{ width: '100%' }}
+                          onChange={(e) => update({ contrast: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.contrast ?? 1).toFixed(2)}</span>
+                      </div>
+                    </Row>
+                    <Row label="Brightness">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={2} step={0.05} value={cfg.brightness ?? 1} style={{ width: '100%' }}
+                          onChange={(e) => update({ brightness: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.brightness ?? 1).toFixed(2)}</span>
+                      </div>
+                    </Row>
+                    <Row label="Saturation">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={0} max={2} step={0.05} value={cfg.colorSaturation ?? 1} style={{ width: '100%' }}
+                          onChange={(e) => update({ colorSaturation: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.colorSaturation ?? 1).toFixed(2)}</span>
+                      </div>
+                    </Row>
+                    <Row label="Hue">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={-180} max={180} step={1} value={cfg.hue ?? 0} style={{ width: '100%' }}
+                          onChange={(e) => update({ hue: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.hue ?? 0).toFixed(0)}°</span>
+                      </div>
+                    </Row>
+                    <Row label="Shadows">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={-1} max={1} step={0.05} value={cfg.shadows ?? 0} style={{ width: '100%' }}
+                          onChange={(e) => update({ shadows: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.shadows ?? 0) >= 0 ? '+' : ''}{(cfg.shadows ?? 0).toFixed(2)}</span>
+                      </div>
+                    </Row>
+                    <Row label="Highlights">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="range" min={-1} max={1} step={0.05} value={cfg.highlights ?? 0} style={{ width: '100%' }}
+                          onChange={(e) => update({ highlights: parseFloat(e.target.value) })}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.highlights ?? 0) >= 0 ? '+' : ''}{(cfg.highlights ?? 0).toFixed(2)}</span>
                       </div>
                     </Row>
                   </>
