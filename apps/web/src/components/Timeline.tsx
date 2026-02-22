@@ -1627,8 +1627,9 @@ export default function Timeline({
                 style={{
                   height: getTrackH(track),
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: 'flex-end',
                   justifyContent: 'center',
+                  paddingBottom: '3px',
                   pointerEvents: 'auto',
                   cursor: 'grab',
                   opacity: trackDragFromIdx === idx ? 0 : 1,
