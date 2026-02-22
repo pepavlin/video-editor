@@ -119,11 +119,11 @@ export default function ToolsPanel({
         Přidat
       </div>
 
-      {/* Tool buttons – 2-column icon grid */}
+      {/* Tool buttons – vertical list */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 4,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
       }}>
         {tools.map((tool) => (
           <IconToolButton
@@ -151,28 +151,30 @@ export default function ToolsPanel({
       {/* Video – drag hint */}
       <div style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        padding: '8px 4px',
+        gap: 8,
+        padding: '6px 8px',
         borderRadius: 8,
         opacity: 0.4,
         userSelect: 'none',
         cursor: 'default',
+        border: '1px solid var(--border-subtle)',
       }}>
         <div style={{
-          width: 30,
-          height: 30,
+          width: 28,
+          height: 28,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: 7,
           background: 'var(--surface-hover)',
           border: '1px solid var(--border-subtle)',
+          flexShrink: 0,
         }}>
           <VideoIcon />
         </div>
-        <span style={{ fontSize: 9, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.3 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.3, fontWeight: 600 }}>
           Video
         </span>
       </div>
@@ -225,11 +227,10 @@ function EffectToolButton({
         onMouseLeave={() => setHovered(false)}
         style={{
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: 4,
-          padding: '8px 4px',
+          gap: 8,
+          padding: '6px 8px',
           borderRadius: expanded ? '8px 8px 0 0' : 8,
           border: `1px solid ${
             expanded && enabled
@@ -248,6 +249,7 @@ function EffectToolButton({
           opacity: enabled ? 1 : 0.35,
           transition: 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
           width: '100%',
+          textAlign: 'left',
           color: expanded && enabled
             ? 'rgba(251,146,60,0.95)'
             : hovered && enabled
@@ -258,12 +260,12 @@ function EffectToolButton({
         } as React.CSSProperties}
       >
         <div style={{
-          width: 32,
-          height: 32,
+          width: 28,
+          height: 28,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: 8,
+          borderRadius: 7,
           background: expanded && enabled
             ? 'rgba(251,146,60,0.18)'
             : hovered && enabled
@@ -279,22 +281,22 @@ function EffectToolButton({
             lineHeight: 1,
           }}>✦</span>
         </div>
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.01em' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em' }}>
           Effect
         </span>
       </button>
 
-      {/* Expanded effects – 2-column icon grid */}
+      {/* Expanded effects – vertical list */}
       {expanded && enabled && (
         <div style={{
           background: 'rgba(251,146,60,0.06)',
           border: '1px solid rgba(251,146,60,0.30)',
           borderTop: 'none',
           borderRadius: '0 0 8px 8px',
-          padding: '6px 4px',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 4,
+          padding: '4px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 3,
         }}>
           {EFFECT_OPTIONS.map(({ type, label, icon, color }) => (
             <button
@@ -304,27 +306,31 @@ function EffectToolButton({
               onMouseLeave={() => setHoveredEffect(null)}
               style={{
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
-                gap: 3,
-                padding: '7px 2px',
+                gap: 8,
+                padding: '5px 8px',
                 background: hoveredEffect === type ? 'rgba(251,146,60,0.18)' : 'rgba(251,146,60,0.06)',
                 border: `1px solid ${hoveredEffect === type ? 'rgba(251,146,60,0.40)' : 'rgba(251,146,60,0.15)'}`,
                 borderRadius: 7,
                 cursor: 'pointer',
                 transition: 'background 0.12s ease, border-color 0.12s ease',
                 WebkitTapHighlightColor: 'transparent',
+                width: '100%',
+                textAlign: 'left',
               } as React.CSSProperties}
             >
               <span style={{
-                fontSize: 15,
+                fontSize: 14,
                 color,
                 lineHeight: 1,
+                flexShrink: 0,
+                width: 16,
+                textAlign: 'center',
               }}>
                 {icon}
               </span>
-              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(251,146,60,0.85)', lineHeight: 1 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(251,146,60,0.85)', lineHeight: 1 }}>
                 {label}
               </span>
             </button>
@@ -361,11 +367,10 @@ function IconToolButton({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 4,
-        padding: '8px 4px',
+        gap: 8,
+        padding: '6px 8px',
         borderRadius: 8,
         border: `1px solid ${hovered && enabled ? 'var(--border-default)' : 'var(--border-subtle)'}`,
         background: hovered && enabled ? 'var(--surface-hover)' : 'transparent',
@@ -376,16 +381,16 @@ function IconToolButton({
         userSelect: 'none',
         WebkitTapHighlightColor: 'transparent',
         width: '100%',
-        minHeight: 58,
+        textAlign: 'left',
       } as React.CSSProperties}
     >
       <div style={{
-        width: 32,
-        height: 32,
+        width: 28,
+        height: 28,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 8,
+        borderRadius: 7,
         background: hovered && enabled ? 'var(--surface-base)' : 'var(--surface-hover)',
         border: '1px solid var(--border-subtle)',
         transition: 'background 0.15s ease',
@@ -393,7 +398,7 @@ function IconToolButton({
       }}>
         {icon}
       </div>
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.01em', lineHeight: 1, textAlign: 'center' }}>
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', lineHeight: 1 }}>
         {label}
       </span>
     </button>
