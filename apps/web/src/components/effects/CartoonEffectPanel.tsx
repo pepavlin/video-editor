@@ -18,8 +18,8 @@ interface Props {
 
 export function CartoonEffectPanel({ clipId, effect, onRemove, onUpdate }: Omit<Props, 'onAdd'>) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(13,148,136,0.25)' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(15,23,42,0.60)', cursor: 'pointer' }}>
         <input
           type="checkbox"
           checked={effect.enabled}
@@ -35,7 +35,7 @@ export function CartoonEffectPanel({ clipId, effect, onRemove, onUpdate }: Omit<
         ] as const
       ).map(({ key, label, min, max, format }) => (
         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', width: 70, flexShrink: 0 }}>{label}</span>
+          <span style={{ fontSize: 13, color: 'rgba(15,23,42,0.45)', width: 70, flexShrink: 0 }}>{label}</span>
           <input
             type="range"
             min={min}
@@ -47,7 +47,7 @@ export function CartoonEffectPanel({ clipId, effect, onRemove, onUpdate }: Omit<
               onUpdate(clipId, 'cartoon', { [key]: parseFloat(e.target.value) })
             }
           />
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 36, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.45)', width: 36, flexShrink: 0 }}>
             {format(effect[key])}
           </span>
         </div>
@@ -70,7 +70,7 @@ export function CartoonEffectAddButton({ clipId, onAdd }: Pick<Props, 'clipId' |
   return (
     <button
       className="btn btn-ghost"
-      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
+      style={{ fontSize: 12, border: '1px solid rgba(15,23,42,0.12)', padding: '4px 10px' }}
       onClick={() =>
         onAdd(clipId, {
           type: 'cartoon',

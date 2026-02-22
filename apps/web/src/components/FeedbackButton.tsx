@@ -108,13 +108,13 @@ export default function FeedbackButton() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
-                background: 'rgba(14,26,46,0.92)',
-                border: '1px solid rgba(0,212,160,0.35)',
+                background: 'rgba(255,255,255,0.95)',
+                border: '1px solid rgba(13,148,136,0.28)',
                 borderRadius: '20px',
                 padding: '3px 9px 3px 7px',
                 fontSize: '11px',
                 fontWeight: 600,
-                color: '#00d4a0',
+                color: '#0d9488',
                 backdropFilter: 'blur(12px)',
                 whiteSpace: 'nowrap',
               }}
@@ -124,7 +124,7 @@ export default function FeedbackButton() {
                   width: '7px',
                   height: '7px',
                   borderRadius: '50%',
-                  background: '#00d4a0',
+                  background: '#0d9488',
                   display: 'inline-block',
                   animation: 'taskPulse 1.4s ease-in-out infinite',
                   flexShrink: 0,
@@ -139,8 +139,8 @@ export default function FeedbackButton() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
-                background: 'rgba(14,26,46,0.92)',
-                border: '1px solid rgba(250,180,50,0.35)',
+                background: 'rgba(255,255,255,0.95)',
+                border: '1px solid rgba(250,180,50,0.40)',
                 borderRadius: '20px',
                 padding: '3px 9px 3px 7px',
                 fontSize: '11px',
@@ -184,19 +184,19 @@ export default function FeedbackButton() {
           height: '52px',
           borderRadius: '50%',
           background: open
-            ? 'linear-gradient(135deg, #05e8b0, #45caff)'
-            : 'linear-gradient(135deg, #00d4a0, #38bdf8)',
-          border: '1px solid rgba(0,212,160,0.40)',
+            ? '#0f766e'
+            : '#0d9488',
+          border: '1px solid rgba(13,148,136,0.25)',
           boxShadow: open
-            ? '0 0 30px rgba(0,212,160,0.60), 0 4px 20px rgba(0,0,0,0.40)'
-            : '0 0 18px rgba(0,212,160,0.35), 0 4px 14px rgba(0,0,0,0.35)',
+            ? '0 4px 16px rgba(13,148,136,0.40)'
+            : '0 2px 8px rgba(13,148,136,0.25), 0 1px 4px rgba(15,23,42,0.08)',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           transition: 'all 0.18s cubic-bezier(0.4,0,0.2,1)',
-          transform: open ? 'scale(1.08)' : 'scale(1)',
-          color: '#040a08',
+          transform: open ? 'scale(1.06)' : 'scale(1)',
+          color: '#ffffff',
         }}
       >
         {open ? (
@@ -226,15 +226,15 @@ export default function FeedbackButton() {
               minWidth: '18px',
               height: '18px',
               borderRadius: '9px',
-              background: taskStats.running > 0 ? '#00d4a0' : '#fab432',
-              color: '#040a08',
+              background: taskStats.running > 0 ? '#0d9488' : '#d97706',
+              color: '#ffffff',
               fontSize: '10px',
               fontWeight: 800,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               padding: '0 4px',
-              border: '2px solid rgba(4,10,8,0.85)',
+              border: '2px solid rgba(255,255,255,0.90)',
               lineHeight: 1,
               animation: taskStats.running > 0 ? 'taskPulse 1.4s ease-in-out infinite' : 'none',
             }}
@@ -255,11 +255,11 @@ export default function FeedbackButton() {
             zIndex: 9998,
             width: '320px',
             borderRadius: '16px',
-            background: 'rgba(14, 26, 46, 0.96)',
-            backdropFilter: 'blur(32px) saturate(1.6) brightness(1.04)',
-            WebkitBackdropFilter: 'blur(32px) saturate(1.6) brightness(1.04)',
-            border: '1px solid rgba(0,212,160,0.25)',
-            boxShadow: '0 0 40px rgba(0,212,160,0.18), 0 20px 60px rgba(0,0,0,0.55)',
+            background: 'rgba(255, 255, 255, 0.97)',
+            backdropFilter: 'blur(24px) saturate(1.4)',
+            WebkitBackdropFilter: 'blur(24px) saturate(1.4)',
+            border: '1px solid rgba(15,23,42,0.08)',
+            boxShadow: '0 4px 24px rgba(15,23,42,0.12), 0 1px 4px rgba(15,23,42,0.06)',
             animation: 'feedbackPanelIn 0.22s cubic-bezier(0.4,0,0.2,1) forwards',
             overflow: 'hidden',
           }}
@@ -268,7 +268,7 @@ export default function FeedbackButton() {
           <div
             style={{
               padding: '14px 16px 10px',
-              borderBottom: '1px solid rgba(255,255,255,0.07)',
+              borderBottom: '1px solid rgba(15,23,42,0.07)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -276,17 +276,14 @@ export default function FeedbackButton() {
           >
             <span
               style={{
-                background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
+                color: '#0d9488',
                 fontWeight: 700,
                 fontSize: '14px',
               }}
             >
               Napsat návrh
             </span>
-            <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginLeft: 'auto' }}>
+            <span style={{ color: 'rgba(15,23,42,0.38)', fontSize: '12px', marginLeft: 'auto' }}>
               Ctrl+Enter pro odeslání
             </span>
           </div>
@@ -301,13 +298,13 @@ export default function FeedbackButton() {
                   alignItems: 'center',
                   gap: '10px',
                   padding: '20px 0',
-                  color: '#00d4a0',
+                  color: '#0d9488',
                   textAlign: 'center',
                 }}
               >
                 <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-                  <circle cx="18" cy="18" r="17" stroke="#00d4a0" strokeWidth="2" opacity="0.4"/>
-                  <path d="M11 18l5 5 9-9" stroke="#00d4a0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="18" cy="18" r="17" stroke="#0d9488" strokeWidth="2" opacity="0.4"/>
+                  <path d="M11 18l5 5 9-9" stroke="#0d9488" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 <span style={{ fontWeight: 600, fontSize: '14px' }}>
                   Návrh byl poslán k implementaci
@@ -325,26 +322,26 @@ export default function FeedbackButton() {
                   disabled={status === 'sending'}
                   style={{
                     resize: 'none',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.10)',
+                    background: '#ffffff',
+                    border: '1px solid rgba(15,23,42,0.12)',
                     borderRadius: '10px',
                     padding: '10px 12px',
                     fontSize: '13px',
-                    color: '#d8f0ea',
+                    color: '#0f172a',
                     outline: 'none',
                     width: '100%',
                     transition: 'border-color 0.15s, box-shadow 0.15s',
                     fontFamily: 'inherit',
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(0,212,160,0.45)';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(0,212,160,0.10)';
-                    e.target.style.background = 'rgba(0,212,160,0.04)';
+                    e.target.style.borderColor = 'rgba(13,148,136,0.50)';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(13,148,136,0.10)';
+                    e.target.style.background = '#ffffff';
                   }}
                   onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.10)';
+                    e.target.style.borderColor = 'rgba(15,23,42,0.12)';
                     e.target.style.boxShadow = 'none';
-                    e.target.style.background = 'rgba(255,255,255,0.05)';
+                    e.target.style.background = '#ffffff';
                   }}
                 />
                 {status === 'error' && (
@@ -358,14 +355,14 @@ export default function FeedbackButton() {
                   style={{
                     background:
                       !message.trim() || status === 'sending'
-                        ? 'rgba(0,212,160,0.25)'
-                        : 'linear-gradient(135deg, #00d4a0, #38bdf8)',
-                    border: '1px solid rgba(0,212,160,0.40)',
+                        ? 'rgba(13,148,136,0.20)'
+                        : '#0d9488',
+                    border: '1px solid rgba(13,148,136,0.25)',
                     borderRadius: '9px',
                     padding: '9px 16px',
                     fontSize: '13px',
                     fontWeight: 700,
-                    color: !message.trim() || status === 'sending' ? 'rgba(255,255,255,0.35)' : '#040a08',
+                    color: !message.trim() || status === 'sending' ? 'rgba(13,148,136,0.45)' : '#ffffff',
                     cursor: !message.trim() || status === 'sending' ? 'not-allowed' : 'pointer',
                     transition: 'all 0.15s',
                     display: 'flex',

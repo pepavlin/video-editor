@@ -358,7 +358,7 @@ function updateSelectionSvg(
     rect.setAttribute('width', String(w));
     rect.setAttribute('height', String(h));
     rect.setAttribute('fill', 'none');
-    rect.setAttribute('stroke', 'rgba(0,212,160,0.35)');
+    rect.setAttribute('stroke', 'rgba(13,148,136,0.35)');
     rect.setAttribute('stroke-width', '1');
     rect.setAttribute('stroke-dasharray', '4,4');
     g.appendChild(rect);
@@ -373,7 +373,7 @@ function updateSelectionSvg(
   rect.setAttribute('width', String(w));
   rect.setAttribute('height', String(h));
   rect.setAttribute('fill', 'none');
-  rect.setAttribute('stroke', '#00d4a0');
+  rect.setAttribute('stroke', '#0d9488');
   rect.setAttribute('stroke-width', '1.5');
   rect.setAttribute('stroke-dasharray', '5,3');
   g.appendChild(rect);
@@ -384,7 +384,7 @@ function updateSelectionSvg(
   line.setAttribute('y1', String(y));
   line.setAttribute('x2', String(cx));
   line.setAttribute('y2', String(y - ROTATE_HANDLE_OFFSET));
-  line.setAttribute('stroke', '#00d4a0');
+  line.setAttribute('stroke', '#0d9488');
   line.setAttribute('stroke-width', '1.5');
   g.appendChild(line);
 
@@ -395,8 +395,8 @@ function updateSelectionSvg(
     circle.setAttribute('cx', String(hx));
     circle.setAttribute('cy', String(hy));
     circle.setAttribute('r', String(HANDLE_RADIUS));
-    circle.setAttribute('fill', handle === 'rotate' ? '#00d4a0' : '#ffffff');
-    circle.setAttribute('stroke', '#00d4a0');
+    circle.setAttribute('fill', handle === 'rotate' ? '#0d9488' : '#ffffff');
+    circle.setAttribute('stroke', '#0d9488');
     circle.setAttribute('stroke-width', '1.5');
     g.appendChild(circle);
   }
@@ -640,7 +640,7 @@ export default function Preview({
     const snapLines = snapLinesRef.current;
     if (dragRef.current.type === 'move' && (snapLines.x.length > 0 || snapLines.y.length > 0)) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(0,212,160,0.85)';
+      ctx.strokeStyle = 'rgba(13,148,136,0.85)';
       ctx.lineWidth = 1;
       ctx.setLineDash([6, 4]);
       for (const sx of snapLines.x) {
@@ -1198,7 +1198,7 @@ export default function Preview({
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          background: 'rgba(0,0,0,0.65)',
+          background: 'rgba(255,255,255,0.90)',
           borderRadius: 6,
           padding: '3px 6px',
           userSelect: 'none',
@@ -1212,7 +1212,7 @@ export default function Preview({
           style={{
             background: 'none',
             border: 'none',
-            color: '#ccc',
+            color: 'rgba(15,23,42,0.55)',
             cursor: 'pointer',
             fontSize: 16,
             lineHeight: 1,
@@ -1228,7 +1228,7 @@ export default function Preview({
           style={{
             background: 'none',
             border: 'none',
-            color: '#ccc',
+            color: 'rgba(15,23,42,0.55)',
             cursor: 'pointer',
             fontSize: 11,
             fontFamily: 'monospace',
@@ -1246,7 +1246,7 @@ export default function Preview({
           style={{
             background: 'none',
             border: 'none',
-            color: '#ccc',
+            color: 'rgba(15,23,42,0.55)',
             cursor: 'pointer',
             fontSize: 16,
             lineHeight: 1,

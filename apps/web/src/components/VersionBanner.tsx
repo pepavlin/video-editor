@@ -16,11 +16,11 @@ const BANNER_BASE_STYLE: React.CSSProperties = {
   gap: '10px',
   padding: '10px 16px',
   borderRadius: '12px',
-  background: 'rgba(14, 26, 46, 0.96)',
-  backdropFilter: 'blur(24px) saturate(1.5)',
-  WebkitBackdropFilter: 'blur(24px) saturate(1.5)',
-  border: '1px solid rgba(0,212,160,0.30)',
-  boxShadow: '0 0 32px rgba(0,212,160,0.18), 0 8px 32px rgba(0,0,0,0.50)',
+  background: 'rgba(255, 255, 255, 0.96)',
+  backdropFilter: 'blur(20px) saturate(1.4)',
+  WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
+  border: '1px solid rgba(13,148,136,0.25)',
+  boxShadow: '0 1px 3px rgba(15,23,42,0.08), 0 4px 16px rgba(15,23,42,0.06)',
   animation: 'versionBannerIn 0.25s cubic-bezier(0.4,0,0.2,1) forwards',
   whiteSpace: 'nowrap',
 };
@@ -28,7 +28,7 @@ const BANNER_BASE_STYLE: React.CSSProperties = {
 const DISMISS_BTN_STYLE: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: 'rgba(255,255,255,0.40)',
+  color: 'rgba(15,23,42,0.40)',
   cursor: 'pointer',
   fontSize: '18px',
   lineHeight: 1,
@@ -48,8 +48,8 @@ const KEYFRAMES = `
 function IconClock() {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <circle cx="8" cy="8" r="7" stroke="#00d4a0" strokeWidth="1.5" opacity="0.55" />
-      <path d="M8 4.5v3.5l2 2" stroke="#00d4a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="7" stroke="#0d9488" strokeWidth="1.5" opacity="0.55" />
+      <path d="M8 4.5v3.5l2 2" stroke="#0d9488" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -57,8 +57,8 @@ function IconClock() {
 function IconCheck() {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <circle cx="8" cy="8" r="7" stroke="#00d4a0" strokeWidth="1.5" opacity="0.55" />
-      <path d="M5 8l2.5 2.5L11 5.5" stroke="#00d4a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="7" stroke="#0d9488" strokeWidth="1.5" opacity="0.55" />
+      <path d="M5 8l2.5 2.5L11 5.5" stroke="#0d9488" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -82,19 +82,19 @@ export default function VersionBanner() {
       <div role="status" aria-live="polite" style={BANNER_BASE_STYLE}>
         <style>{KEYFRAMES}</style>
         <IconClock />
-        <span style={{ color: 'rgba(216,240,234,0.90)', fontSize: '13px', fontWeight: 500 }}>
+        <span style={{ color: '#0f172a', fontSize: '13px', fontWeight: 500 }}>
           Dostupná nová verze
         </span>
         <button
           onClick={() => { dismiss(); window.location.reload(); }}
           style={{
-            background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
+            background: '#0d9488',
             border: 'none',
             borderRadius: '7px',
             padding: '5px 13px',
             fontSize: '12px',
             fontWeight: 700,
-            color: '#040a08',
+            color: '#ffffff',
             cursor: 'pointer',
             flexShrink: 0,
           }}
@@ -113,7 +113,7 @@ export default function VersionBanner() {
     <div role="status" aria-live="polite" style={BANNER_BASE_STYLE}>
       <style>{KEYFRAMES}</style>
       <IconCheck />
-      <span style={{ color: 'rgba(216,240,234,0.90)', fontSize: '13px', fontWeight: 500 }}>
+      <span style={{ color: '#0f172a', fontSize: '13px', fontWeight: 500 }}>
         Vítejte v nové verzi!
       </span>
       <button onClick={dismiss} aria-label="Zavřít" style={DISMISS_BTN_STYLE}>

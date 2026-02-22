@@ -114,7 +114,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
         justifyContent: 'space-between',
         padding: '14px 16px',
         gap: 8,
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        borderBottom: '1px solid rgba(15,23,42,0.08)',
         flexShrink: 0,
       }}>
         <span style={{
@@ -122,7 +122,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
           fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.10em',
-          color: 'rgba(0,212,160,0.80)',
+          color: 'rgba(13,148,136,0.80)',
           flex: 1,
         }}>Media</span>
         {mediaFiles !== null && (
@@ -131,8 +131,8 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
             style={{
               fontSize: 12,
               padding: '5px 10px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.10)',
+              background: 'rgba(15,23,42,0.04)',
+              border: '1px solid rgba(15,23,42,0.10)',
             }}
             onClick={() => setShowBrowser((v) => !v)}
             title="Browse files from the mounted local media directory"
@@ -160,22 +160,22 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
 
       {/* Local media browser panel */}
       {showBrowser && mediaFiles !== null && (
-        <div className="border-b fade-up" style={{ borderColor: 'rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.025)', flexShrink: 0 }}>
+        <div className="border-b fade-up" style={{ borderColor: 'rgba(15,23,42,0.08)', background: 'rgba(15,23,42,0.02)', flexShrink: 0 }}>
           <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.50)', fontWeight: 500 }}>Local files</span>
+            <span style={{ fontSize: 13, color: 'rgba(15,23,42,0.55)', fontWeight: 500 }}>Local files</span>
             <button
-              style={{ fontSize: 14, color: 'rgba(255,255,255,0.28)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.28)'; }}
+              style={{ fontSize: 14, color: 'rgba(15,23,42,0.30)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(15,23,42,0.65)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(15,23,42,0.30)'; }}
               onClick={() => setShowBrowser(false)}
             >✕</button>
           </div>
           {mediaFiles.length === 0 ? (
-            <p style={{ padding: '0 16px 14px', fontSize: 13, color: 'rgba(255,255,255,0.28)' }}>
+            <p style={{ padding: '0 16px 14px', fontSize: 13, color: 'rgba(15,23,42,0.45)' }}>
               No files found. Put media files in the mounted directory or set{' '}
-              <code style={{ fontSize: 12, color: 'rgba(0,212,160,0.6)' }}>LOCAL_MEDIA_DIR</code>{' '}
+              <code style={{ fontSize: 12, color: '#0d9488' }}>LOCAL_MEDIA_DIR</code>{' '}
               in your{' '}
-              <code style={{ fontSize: 12, color: 'rgba(0,212,160,0.6)' }}>.env</code>.
+              <code style={{ fontSize: 12, color: '#0d9488' }}>.env</code>.
             </p>
           ) : (
             <div style={{ maxHeight: 200, overflowY: 'auto' }}>
@@ -187,7 +187,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
                     textAlign: 'left',
                     padding: '8px 16px',
                     fontSize: 13,
-                    color: '#c0ddd6',
+                    color: '#0f172a',
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
@@ -197,13 +197,13 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
                     whiteSpace: 'nowrap',
                     transition: 'background 0.1s',
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,160,0.07)'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(13,148,136,0.06)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                   onClick={() => handleLinkFile(f.name)}
                   title={f.name}
                 >
                   {f.name}
-                  <span style={{ marginLeft: 6, color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
+                  <span style={{ marginLeft: 6, color: 'rgba(15,23,42,0.30)', fontSize: 12 }}>
                     ({(f.size / 1024 / 1024).toFixed(1)} MB)
                   </span>
                 </button>
@@ -224,9 +224,9 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
             height: '100%',
             gap: 12,
             padding: 24,
-            color: 'rgba(255,255,255,0.18)',
+            color: 'rgba(15,23,42,0.30)',
           }}>
-            <div className="animate-float" style={{ color: 'rgba(0,212,160,0.30)' }}>
+            <div className="animate-float" style={{ color: 'rgba(13,148,136,0.40)' }}>
               <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
@@ -244,29 +244,29 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
               <div key={assetId} className="fade-up" style={{
                 borderRadius: 12,
                 padding: '10px 12px',
-                background: 'rgba(0,212,160,0.06)',
-                border: '1px solid rgba(0,212,160,0.14)',
-                boxShadow: '0 0 12px rgba(0,212,160,0.06)',
+                background: 'rgba(13,148,136,0.05)',
+                border: '1px solid rgba(13,148,136,0.12)',
+                boxShadow: 'none',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(0,212,160,0.80)', fontSize: 13 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(13,148,136,0.85)', fontSize: 13 }}>
                     <span style={{
-                      width: 7, height: 7, borderRadius: '50%', background: '#00d4a0',
+                      width: 7, height: 7, borderRadius: '50%', background: '#0d9488',
                       display: 'inline-block',
                       animation: 'dotBlink 1.2s ease-in-out infinite',
                     }} />
                     Importing...
                   </span>
-                  <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#5ee8c8', fontSize: 13 }}>{progress}%</span>
+                  <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#0d9488', fontSize: 13 }}>{progress}%</span>
                 </div>
-                <div style={{ position: 'relative', height: 4, borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,0.07)' }}>
+                <div style={{ position: 'relative', height: 4, borderRadius: 4, overflow: 'hidden', background: 'rgba(15,23,42,0.08)' }}>
                   <div
                     style={{
                       position: 'absolute',
                       inset: 0,
                       right: `${100 - Math.max(3, progress)}%`,
-                      background: 'linear-gradient(90deg, #00d4a0, #38bdf8)',
-                      boxShadow: '0 0 6px rgba(0,212,160,0.5)',
+                      background: 'linear-gradient(90deg, #0d9488, #0ea5e9)',
+                      boxShadow: 'none',
                       borderRadius: 4,
                       transition: 'right 0.35s cubic-bezier(0.4,0,0.2,1)',
                     }}
@@ -335,10 +335,10 @@ function AssetItem({
       onMouseEnter={(e) => {
         if (!isReady || onAddToTimeline) return;
         const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(255,255,255,0.06)';
-        el.style.borderColor = 'rgba(0,212,160,0.22)';
+        el.style.background = 'rgba(15,23,42,0.03)';
+        el.style.borderColor = 'rgba(13,148,136,0.18)';
         el.style.transform = 'translateX(2px) translateY(-1px)';
-        el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+        el.style.boxShadow = '0 2px 8px rgba(15,23,42,0.06)';
       }}
       onMouseLeave={(e) => {
         if (onAddToTimeline) return;
@@ -368,8 +368,8 @@ function AssetItem({
         justifyContent: 'center',
         flexShrink: 0,
         overflow: 'hidden',
-        background: 'rgba(255,255,255,0.07)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(15,23,42,0.05)',
+        border: '1px solid rgba(15,23,42,0.08)',
       }}>
         {isVideo ? (
           asset.proxyPath ? (
@@ -399,13 +399,13 @@ function AssetItem({
         <div style={{
           fontSize: 13,
           fontWeight: 500,
-          color: '#d8ece6',
+          color: '#0f172a',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           marginBottom: 3,
         }}>{asset.name}</div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.30)' }}>
+        <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)' }}>
           {formatTime(asset.duration)}
           {!isReady && ' · processing...'}
         </div>
@@ -413,7 +413,7 @@ function AssetItem({
 
       {/* Resolution (hidden on mobile to save space) */}
       {isVideo && asset.width && !onAddToTimeline && (
-        <span style={{ fontSize: 11, flexShrink: 0, color: 'rgba(255,255,255,0.22)' }}>
+        <span style={{ fontSize: 11, flexShrink: 0, color: 'rgba(15,23,42,0.30)' }}>
           {asset.width}×{asset.height}
         </span>
       )}
@@ -431,10 +431,10 @@ function AssetItem({
             alignItems: 'center',
             justifyContent: 'center',
             background: added
-              ? 'rgba(0,212,160,0.20)'
-              : 'rgba(0,212,160,0.10)',
-            border: `1px solid ${added ? 'rgba(0,212,160,0.55)' : 'rgba(0,212,160,0.25)'}`,
-            color: added ? '#00d4a0' : 'rgba(0,212,160,0.70)',
+              ? 'rgba(13,148,136,0.12)'
+              : 'rgba(13,148,136,0.07)',
+            border: `1px solid ${added ? 'rgba(13,148,136,0.40)' : 'rgba(13,148,136,0.20)'}`,
+            color: added ? '#0d9488' : 'rgba(13,148,136,0.70)',
             cursor: 'pointer',
             transition: 'all 0.15s ease',
             fontSize: 18,

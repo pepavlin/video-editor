@@ -7,14 +7,14 @@ import { useState } from 'react';
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+    <div style={{ borderBottom: '1px solid rgba(15,23,42,0.07)' }}>
       <button
         className="flex items-center justify-between w-full text-left"
         style={{
           padding: '14px 16px',
           transition: 'background 0.15s ease',
         }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(15,23,42,0.03)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
         onClick={() => setOpen((o) => !o)}
       >
@@ -23,12 +23,12 @@ export function Section({ title, children }: { title: string; children: React.Re
           fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.10em',
-          color: 'rgba(0,212,160,0.80)',
+          color: 'rgba(13,148,136,0.80)',
         }}>
           {title}
         </span>
         <span style={{
-          color: 'rgba(0,212,160,0.40)',
+          color: 'rgba(13,148,136,0.45)',
           display: 'inline-block',
           fontSize: 14,
           transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
@@ -57,12 +57,12 @@ export function Row({ label, children }: { label: string; children: React.ReactN
         margin: '0 -8px',
         transition: 'background 0.12s ease',
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(15,23,42,0.03)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
     >
       <span style={{
         fontSize: 13,
-        color: 'rgba(255,255,255,0.35)',
+        color: 'rgba(15,23,42,0.45)',
         width: 80,
         flexShrink: 0,
       }}>{label}</span>

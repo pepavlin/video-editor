@@ -421,7 +421,7 @@ export default function Editor() {
         {/* Subtle grid pattern */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: 'radial-gradient(circle, rgba(0,212,160,0.06) 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(circle, rgba(15,23,42,0.05) 1px, transparent 1px)',
           backgroundSize: '40px 40px',
           pointerEvents: 'none',
           animation: 'fadeIn 1.2s ease forwards',
@@ -434,7 +434,7 @@ export default function Editor() {
           {/* Card inner glow accent */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-            background: 'linear-gradient(90deg, transparent, rgba(0,212,160,0.6), rgba(56,189,248,0.5), transparent)',
+            background: 'linear-gradient(90deg, transparent, rgba(13,148,136,0.40), rgba(14,165,233,0.35), transparent)',
             borderRadius: '16px 16px 0 0',
           }} />
 
@@ -444,8 +444,8 @@ export default function Editor() {
               {/* Animated logo mark */}
               <div style={{
                 width: 36, height: 36,
-                background: 'linear-gradient(135deg, rgba(0,212,160,0.2), rgba(56,189,248,0.2))',
-                border: '1px solid rgba(0,212,160,0.35)',
+                background: 'linear-gradient(135deg, rgba(13,148,136,0.12), rgba(14,165,233,0.12))',
+                border: '1px solid rgba(13,148,136,0.22)',
                 borderRadius: 10,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 animation: 'breathe 3s ease-in-out infinite',
@@ -455,20 +455,20 @@ export default function Editor() {
                   <polygon points="5,3 15,9 5,15" fill="url(#logoGrad)" />
                   <defs>
                     <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#00d4a0" />
-                      <stop offset="100%" stopColor="#38bdf8" />
+                      <stop offset="0%" stopColor="#0d9488" />
+                      <stop offset="100%" stopColor="#0ea5e9" />
                     </linearGradient>
                   </defs>
                 </svg>
               </div>
               <h1 className="text-3xl font-bold text-gradient">Video Editor</h1>
             </div>
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.38)', paddingLeft: 48 }}>Craft your story, frame by frame</p>
+            <p className="text-sm" style={{ color: 'rgba(15,23,42,0.45)', paddingLeft: 48 }}>Craft your story, frame by frame</p>
           </div>
 
           {/* New project */}
           <div className="stagger-item" style={{ animationDelay: '0.12s', marginBottom: 28 }}>
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.7)', letterSpacing: '0.12em', marginBottom: 12 }}>New Project</p>
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(13,148,136,0.75)', letterSpacing: '0.12em', marginBottom: 12 }}>New Project</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input
                 type="text"
@@ -506,10 +506,10 @@ export default function Editor() {
               {/* Divider */}
               <div style={{
                 height: 1,
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)',
+                background: 'linear-gradient(90deg, transparent, rgba(15,23,42,0.08), transparent)',
                 marginBottom: 20,
               }} />
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,212,160,0.7)', letterSpacing: '0.12em', marginBottom: 12 }}>Recent</p>
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(13,148,136,0.75)', letterSpacing: '0.12em', marginBottom: 12 }}>Recent</p>
               <div className="space-y-2 max-h-56 overflow-y-auto" style={{ paddingRight: 2 }}>
                 {projects.map((p, idx) => (
                   <button
@@ -517,22 +517,22 @@ export default function Editor() {
                     className="w-full text-left rounded-xl stagger-item"
                     style={{
                       padding: '12px 14px',
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.07)',
+                      background: 'rgba(15,23,42,0.03)',
+                      border: '1px solid rgba(15,23,42,0.07)',
                       transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                       animationDelay: `${0.24 + idx * 0.06}s`,
                     }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLElement;
-                      el.style.background = 'rgba(0,212,160,0.09)';
-                      el.style.borderColor = 'rgba(0,212,160,0.30)';
+                      el.style.background = 'rgba(13,148,136,0.06)';
+                      el.style.borderColor = 'rgba(13,148,136,0.22)';
                       el.style.transform = 'translateX(3px)';
-                      el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(0,212,160,0.1)';
+                      el.style.boxShadow = '0 2px 8px rgba(15,23,42,0.06)';
                     }}
                     onMouseLeave={(e) => {
                       const el = e.currentTarget as HTMLElement;
-                      el.style.background = 'rgba(255,255,255,0.04)';
-                      el.style.borderColor = 'rgba(255,255,255,0.07)';
+                      el.style.background = 'rgba(15,23,42,0.03)';
+                      el.style.borderColor = 'rgba(15,23,42,0.07)';
                       el.style.transform = '';
                       el.style.boxShadow = '';
                     }}
@@ -550,12 +550,12 @@ export default function Editor() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div className="text-sm font-semibold" style={{ color: '#d0ece6' }}>{p.name}</div>
+                      <div className="text-sm font-semibold" style={{ color: '#0f172a' }}>{p.name}</div>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.35, flexShrink: 0 }}>
                         <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.28)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'rgba(15,23,42,0.38)' }}>{new Date(p.updatedAt).toLocaleDateString()}</div>
                   </button>
                 ))}
               </div>
@@ -682,18 +682,18 @@ export default function Editor() {
           height: isMobile ? 48 : 56,
           padding: isMobile ? '0 12px' : '0 20px',
           gap: isMobile ? 8 : 16,
-          background: 'rgba(8,16,30,0.97)',
-          backdropFilter: 'blur(24px)',
-          borderColor: 'rgba(255,255,255,0.07)',
-          boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.08), 0 2px 16px rgba(0,0,0,0.3)',
+          background: 'rgba(255,255,255,0.95)',
+          backdropFilter: 'blur(20px)',
+          borderColor: 'rgba(15,23,42,0.08)',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 2px 8px rgba(15,23,42,0.04)',
         }}
       >
         {/* Logo mark + title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 24, height: 24,
-            background: 'linear-gradient(135deg, rgba(0,212,160,0.18), rgba(56,189,248,0.18))',
-            border: '1px solid rgba(0,212,160,0.28)',
+            background: 'linear-gradient(135deg, rgba(13,148,136,0.12), rgba(14,165,233,0.12))',
+            border: '1px solid rgba(13,148,136,0.22)',
             borderRadius: 6,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
@@ -702,8 +702,8 @@ export default function Editor() {
               <polygon points="3,2 9,5.5 3,9" fill="url(#topLogoGrad)" />
               <defs>
                 <linearGradient id="topLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#00d4a0" />
-                  <stop offset="100%" stopColor="#38bdf8" />
+                  <stop offset="0%" stopColor="#0d9488" />
+                  <stop offset="100%" stopColor="#0ea5e9" />
                 </linearGradient>
               </defs>
             </svg>
@@ -718,12 +718,12 @@ export default function Editor() {
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all"
             style={{
               fontSize: 12,
-              color: saving ? 'rgba(255,255,255,0.45)' : 'rgba(0,212,160,0.85)',
-              background: saving ? 'rgba(255,255,255,0.05)' : 'rgba(0,212,160,0.08)',
-              border: `1px solid ${saving ? 'rgba(255,255,255,0.08)' : 'rgba(0,212,160,0.22)'}`,
+              color: saving ? 'rgba(15,23,42,0.38)' : '#0d9488',
+              background: saving ? 'rgba(15,23,42,0.04)' : 'rgba(13,148,136,0.08)',
+              border: `1px solid ${saving ? 'rgba(15,23,42,0.08)' : 'rgba(13,148,136,0.22)'}`,
               letterSpacing: '0.01em',
               transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
-              boxShadow: saving ? 'none' : '0 0 8px rgba(0,212,160,0.12)',
+              boxShadow: saving ? 'none' : '0 0 8px rgba(13,148,136,0.10)',
             }}
           >
             {saving ? (
@@ -736,7 +736,7 @@ export default function Editor() {
                       style={{
                         display: 'inline-block', width: 3, height: 3,
                         borderRadius: '50%',
-                        background: 'rgba(255,255,255,0.45)',
+                        background: 'rgba(15,23,42,0.35)',
                         animation: `dotBlink 1.2s ease-in-out infinite`,
                         animationDelay: `${i * 0.2}s`,
                       }}
@@ -779,7 +779,7 @@ export default function Editor() {
         {/* Undo/Redo — hidden on mobile */}
         {!isMobile && (
           <>
-            <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
+            <div className="w-px h-5" style={{ background: 'rgba(15,23,42,0.10)' }} />
             <button
               className="btn btn-ghost disabled:opacity-25"
               style={{ fontSize: 18, padding: '4px 10px' }}
@@ -799,7 +799,7 @@ export default function Editor() {
               ↻
             </button>
 
-            <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.10)' }} />
+            <div className="w-px h-5" style={{ background: 'rgba(15,23,42,0.10)' }} />
 
             <button
               className="btn btn-ghost"
@@ -852,10 +852,10 @@ export default function Editor() {
             <button
               style={{
                 width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: project ? 'rgba(0,212,160,0.10)' : 'none',
-                border: project ? '1px solid rgba(0,212,160,0.25)' : 'none',
+                background: project ? 'rgba(13,148,136,0.08)' : 'none',
+                border: project ? '1px solid rgba(13,148,136,0.22)' : 'none',
                 cursor: 'pointer',
-                fontSize: 14, fontWeight: 700, color: project ? 'rgba(0,212,160,0.85)' : 'rgba(255,255,255,0.20)',
+                fontSize: 14, fontWeight: 700, color: project ? '#0d9488' : 'rgba(15,23,42,0.20)',
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
               } as React.CSSProperties}
@@ -872,7 +872,7 @@ export default function Editor() {
               style={{
                 width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 18, color: history.canUndo ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.20)',
+                fontSize: 18, color: history.canUndo ? 'rgba(15,23,42,0.70)' : 'rgba(15,23,42,0.20)',
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
               } as React.CSSProperties}
@@ -884,7 +884,7 @@ export default function Editor() {
               style={{
                 width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 18, color: history.canRedo ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.20)',
+                fontSize: 18, color: history.canRedo ? 'rgba(15,23,42,0.70)' : 'rgba(15,23,42,0.20)',
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
               } as React.CSSProperties}
@@ -916,13 +916,13 @@ export default function Editor() {
               className="glass rounded-xl shadow-panel toast-enter"
               style={{
                 minWidth: isMobile ? 'min(220px, calc(100vw - 24px))' : 296,
-                color: '#c8e8e0',
+                color: '#0f172a',
                 fontSize: 13,
                 padding: '12px 16px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                borderLeft: '2px solid rgba(0,212,160,0.50)',
+                borderLeft: '2px solid rgba(13,148,136,0.50)',
                 pointerEvents: 'auto',
               }}
             >
@@ -933,7 +933,7 @@ export default function Editor() {
                     display: 'inline-block',
                     width: 8, height: 8,
                     borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
+                    background: 'linear-gradient(135deg, #0d9488, #0ea5e9)',
                   }}
                 />
                 <span
@@ -941,7 +941,7 @@ export default function Editor() {
                     position: 'absolute',
                     inset: -3,
                     borderRadius: '50%',
-                    border: '1.5px solid rgba(0,212,160,0.5)',
+                    border: '1.5px solid rgba(13,148,136,0.5)',
                     animation: 'ripple 1.6s ease-out infinite',
                   }}
                 />

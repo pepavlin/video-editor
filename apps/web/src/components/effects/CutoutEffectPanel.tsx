@@ -19,8 +19,8 @@ interface Props {
 
 export function CutoutEffectPanel({ clipId, effect, onRemove, onUpdate }: Omit<Props, 'onAdd'>) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.38)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(13,148,136,0.25)' }}>
+      <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.45)' }}>
         Mask: {effect.maskStatus ?? 'unknown'}
       </div>
       <Row label="BG Type">
@@ -72,7 +72,7 @@ export function CutoutEffectAddButton({ clipId, onAdd }: Pick<Props, 'clipId' | 
   return (
     <button
       className="btn btn-ghost"
-      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
+      style={{ fontSize: 12, border: '1px solid rgba(15,23,42,0.12)', padding: '4px 10px' }}
       onClick={async () => {
         await onAdd(clipId, {
           type: 'cutout',
