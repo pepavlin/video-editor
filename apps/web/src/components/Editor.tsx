@@ -713,12 +713,17 @@ export default function Editor() {
       <ToolsPanel
         project={project}
         currentTime={playback.currentTime}
+        selectedClipId={selectedClipId}
         onAddText={(start, duration, text) => {
           const clipId = addTextTrack(start, duration, text);
           setSelectedClipId(clipId);
         }}
         onAddLyrics={(start, duration) => {
           const clipId = addLyricsTrack(start, duration);
+          setSelectedClipId(clipId);
+        }}
+        onAddEffect={(effectType, start, duration, parentTrackId) => {
+          const clipId = addEffectTrack(effectType, start, duration, parentTrackId);
           setSelectedClipId(clipId);
         }}
       />

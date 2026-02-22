@@ -103,8 +103,6 @@ export default function Timeline({
   const [scrollTop, setScrollTop] = useState(0);
   const [drag, setDrag] = useState<DragMode>({ type: 'none' });
   const [snapMode, setSnapMode] = useState<SnapMode>('clips');
-  const [showEffectMenu, setShowEffectMenu] = useState(false);
-
   // Track reorder drag state
   const [trackDragFromIdx, setTrackDragFromIdx] = useState<number | null>(null);
   const [trackDragOverIdx, setTrackDragOverIdx] = useState<number | null>(null);
@@ -1661,109 +1659,6 @@ export default function Timeline({
           </button>
         ))}
 
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* Add Effect Track dropdown */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setShowEffectMenu((v) => !v)}
-            title="Add a new effect track to the timeline"
-            style={{
-              fontSize: 11,
-              padding: '5px 10px',
-              borderRadius: 6,
-              border: showEffectMenu
-                ? '1px solid rgba(251,146,60,0.70)'
-                : '1px solid rgba(251,146,60,0.38)',
-              background: showEffectMenu
-                ? 'rgba(251,146,60,0.22)'
-                : 'rgba(251,146,60,0.10)',
-              color: 'rgba(251,146,60,0.95)',
-              cursor: 'pointer',
-              userSelect: 'none',
-              lineHeight: '18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent',
-            } as React.CSSProperties}
-          >
-            <span style={{ fontSize: 11 }}>✦</span> Add Effect
-          </button>
-
-          {showEffectMenu && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: 3,
-                background: 'var(--surface-raised)',
-                border: '1px solid rgba(251,146,60,0.35)',
-                borderRadius: 6,
-                padding: '4px 0',
-                zIndex: 100,
-                minWidth: 148,
-                boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.40)' : '0 4px 16px rgba(15,23,42,0.12)',
-              }}
-            >
-              {(
-                [
-                  { type: 'beatZoom' as const,          label: '⚡ Beat Zoom',      desc: 'Zoom pulse on beats' },
-                  { type: 'cutout' as const,             label: '✂ Cutout',          desc: 'Background removal' },
-                  { type: 'headStabilization' as const,  label: '⦿ Head Stabilize', desc: 'Face tracking stabilization' },
-                  { type: 'cartoon' as const,            label: '◈ Cartoon',         desc: 'Cartoon / comic art style' },
-                ] as { type: EffectType; label: string; desc: string }[]
-              ).map(({ type, label, desc }) => (
-                <button
-                  key={type}
-                  onClick={() => {
-                    setShowEffectMenu(false);
-                    const start = propsRef.current.currentTime;
-                    // Determine parent video track from selected clip
-                    const { project, selectedClipId } = propsRef.current;
-                    let parentTrackId: string | undefined;
-                    if (project && selectedClipId) {
-                      for (const t of project.tracks) {
-                        if (t.type === 'video' && t.clips.some((c) => c.id === selectedClipId)) {
-                          parentTrackId = t.id;
-                          break;
-                        }
-                      }
-                    }
-                    // Fallback: prefer video track with actual clips, then any video track
-                    if (!parentTrackId && project) {
-                      const vt = project.tracks.find((t) => t.type === 'video' && t.clips.some((c) => c.assetId))
-                        ?? project.tracks.find((t) => t.type === 'video');
-                      if (vt) parentTrackId = vt.id;
-                    }
-                    onAddEffectTrack(type, start, 3, parentTrackId);
-                  }}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '10px 12px',
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'rgba(251,146,60,0.90)',
-                    fontSize: 12,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    touchAction: 'manipulation',
-                    WebkitTapHighlightColor: 'transparent',
-                  } as React.CSSProperties}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(251,146,60,0.12)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <div>{label}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>{desc}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Canvas – fills remaining height; internal scrollTop handles vertical panning */}
