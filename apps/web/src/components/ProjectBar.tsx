@@ -70,13 +70,13 @@ export default function ProjectBar({
         gap: isMobile ? 8 : 12,
         padding: isMobile ? '0 12px' : '0 20px',
         flexShrink: 0,
-        borderBottom: '1px solid rgba(15,23,42,0.08)',
+        borderBottom: '1px solid var(--border-subtle)',
         userSelect: 'none',
         overflowX: 'auto',
         minHeight: isMobile ? 44 : 48,
-        background: 'rgba(255,255,255,0.90)',
+        background: 'var(--surface-projectbar)',
         backdropFilter: 'blur(16px)',
-        boxShadow: '0 1px 0 rgba(15,23,42,0.06)',
+        boxShadow: '0 1px 0 var(--border-subtle)',
         // Hide scrollbar but allow scroll on mobile
         scrollbarWidth: 'none',
       }}
@@ -90,17 +90,17 @@ export default function ProjectBar({
         </svg>
         {!isMobile && <span style={{ fontSize: 12, color: 'rgba(13,148,136,0.70)', fontWeight: 500 }}>Master</span>}
         {masterAsset ? (
-          <span style={{ fontSize: 12, fontWeight: 500, color: '#0f172a', maxWidth: isMobile ? 90 : 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', maxWidth: isMobile ? 90 : 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {masterAsset.name}
           </span>
         ) : (
-          <span style={{ fontSize: 12, fontStyle: 'italic', color: 'rgba(15,23,42,0.35)' }}>
+          <span style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-subtle)' }}>
             {isMobile ? 'no audio' : 'no audio track'}
           </span>
         )}
       </div>
 
-      <div style={{ width: 1, height: 16, background: 'rgba(15,23,42,0.12)', flexShrink: 0 }} />
+      <div style={{ width: 1, height: 16, background: 'var(--border-default)', flexShrink: 0 }} />
 
       {/* Beat status / progress / analyze button */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -167,7 +167,7 @@ export default function ProjectBar({
         />
       ) : exportDone ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {!isMobile && <span style={{ fontSize: 13, color: 'rgba(13,148,136,0.70)' }}>Export done</span>}
+          {!isMobile && <span style={{ fontSize: 13, color: 'rgba(13,148,136,0.85)' }}>Export done</span>}
           <button
             style={{
               fontSize: isMobile ? 12 : 13,
@@ -242,7 +242,7 @@ function JobProgressBlock({
         <span style={{ fontSize: compact ? 11 : 13, flexShrink: 0, fontWeight: 500, color: primary }}>
           {label}
         </span>
-        <div style={{ position: 'relative', height: 4, borderRadius: 4, flex: 1, background: 'rgba(15,23,42,0.08)', minWidth: compact ? 40 : 80 }}>
+        <div style={{ position: 'relative', height: 4, borderRadius: 4, flex: 1, background: 'var(--progress-track)', minWidth: compact ? 40 : 80 }}>
           <div
             style={{
               position: 'absolute',

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import FeedbackButton from '@/components/FeedbackButton';
 import VersionBanner from '@/components/VersionBanner';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 export const metadata: Metadata = {
   title: 'Video Editor',
@@ -21,10 +22,29 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      {/* Inline script prevents flash of wrong theme on page load */}
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+(function() {
+  try {
+    var stored = localStorage.getItem('video-editor-theme');
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (prefersDark ? 'dark' : 'light');
+    if (theme === 'dark') document.documentElement.classList.add('dark');
+  } catch(e) {}
+})();
+            `,
+          }}
+        />
+      </head>
       <body style={{ height: '100dvh', overflow: 'hidden' }}>
-        {children}
-        <VersionBanner />
-        <FeedbackButton />
+        <ThemeProvider>
+          {children}
+          <VersionBanner />
+          <FeedbackButton />
+        </ThemeProvider>
       </body>
     </html>
   );
