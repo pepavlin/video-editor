@@ -468,10 +468,10 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
             top: 0,
             bottom: 0,
             ...(pageEdge === 'left'
-              ? { left: 0, width: '22%', borderRight: '2px solid rgba(0,212,160,0.9)', boxShadow: 'inset -6px 0 24px rgba(0,212,160,0.12), 4px 0 20px rgba(0,212,160,0.18)' }
-              : { right: 0, width: '22%', borderLeft: '2px solid rgba(0,212,160,0.9)', boxShadow: 'inset 6px 0 24px rgba(0,212,160,0.12), -4px 0 20px rgba(0,212,160,0.18)' }
+              ? { left: 0, width: '22%', borderRight: '2px solid rgba(13,148,136,0.75)', boxShadow: 'inset -4px 0 16px rgba(13,148,136,0.08), 2px 0 12px rgba(13,148,136,0.10)' }
+              : { right: 0, width: '22%', borderLeft: '2px solid rgba(13,148,136,0.75)', boxShadow: 'inset 4px 0 16px rgba(13,148,136,0.08), -2px 0 12px rgba(13,148,136,0.10)' }
             ),
-            background: 'rgba(0,212,160,0.10)',
+            background: 'rgba(13,148,136,0.07)',
             backdropFilter: 'blur(2px)',
             zIndex: 300,
             pointerEvents: 'none',
@@ -484,11 +484,11 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            color: 'rgba(0,212,160,1)',
+            color: '#0d9488',
             fontSize: 28,
             fontWeight: 700,
             pointerEvents: 'none',
-            textShadow: '0 0 12px rgba(0,212,160,0.8)',
+            textShadow: 'none',
           }}>
             {pageEdge === 'left' ? '◀' : '▶'}
           </div>
@@ -511,18 +511,18 @@ export function DockLayout({ panelRenderers }: { panelRenderers: PanelRenderers 
           position: 'fixed',
           alignItems: 'center',
           gap: 6,
-          background: 'rgba(6,14,26,0.92)',
-          border: '1px solid rgba(0,212,160,0.55)',
+          background: 'rgba(255,255,255,0.96)',
+          border: '1px solid rgba(13,148,136,0.35)',
           borderRadius: 8,
           padding: '5px 14px',
-          color: 'rgba(255,255,255,0.88)',
+          color: '#0f172a',
           fontSize: 12,
           fontWeight: 600,
           letterSpacing: '0.04em',
           pointerEvents: 'none',
           zIndex: 9999,
           backdropFilter: 'blur(10px)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,212,160,0.18)',
+          boxShadow: '0 4px 16px rgba(15,23,42,0.12), 0 1px 4px rgba(15,23,42,0.06)',
         }}
       />
     </div>
@@ -622,13 +622,13 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
           paddingRight: 8,
           gap: 4,
           cursor: 'grab',
-          background: 'rgba(6,14,26,0.90)',
+          background: 'rgba(255,255,255,0.92)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.10)',
+          border: '1px solid rgba(15,23,42,0.10)',
           borderRadius: 999,
           userSelect: 'none',
           whiteSpace: 'nowrap',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          boxShadow: '0 2px 8px rgba(15,23,42,0.10)',
           opacity: showHeader ? 1 : 0,
           pointerEvents: showHeader ? 'auto' : 'none',
           transition: 'opacity 0.18s ease',
@@ -642,7 +642,7 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
         {renderer
           ? renderer()
           : (
-            <div style={{ padding: 16, color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>
+            <div style={{ padding: 16, color: 'rgba(15,23,42,0.35)', fontSize: 12 }}>
               Unknown panel: {node.panelId}
             </div>
           )}
@@ -656,10 +656,10 @@ function RenderLeaf({ node, dragState, panelRenderers, registerLeaf, onStartDrag
             position: 'absolute',
             pointerEvents: 'none',
             zIndex: 200,
-            background: 'rgba(0,212,160,0.16)',
-            border: '2px solid rgba(0,212,160,0.90)',
+            background: 'rgba(13,148,136,0.10)',
+            border: '2px solid rgba(13,148,136,0.70)',
             borderRadius: 6,
-            boxShadow: '0 0 24px rgba(0,212,160,0.30), inset 0 0 20px rgba(0,212,160,0.08)',
+            boxShadow: '0 0 12px rgba(13,148,136,0.18)',
             backdropFilter: 'blur(2px)',
             ...ZONE_STYLE[dropZone],
           }}
@@ -681,7 +681,7 @@ function DropArrow({ zone }: { zone: DropZone }) {
     position: 'absolute',
     pointerEvents: 'none',
     zIndex: 201,
-    color: 'rgba(0,212,160,1)',
+    color: 'rgba(13,148,136,1)',
     fontSize: 20,
     display: 'flex',
     alignItems: 'center',
@@ -696,7 +696,7 @@ function DropArrow({ zone }: { zone: DropZone }) {
   };
 
   const { s, char } = arrowMap[zone];
-  return <div style={{ ...style, ...s }}>{char}</div>;
+  return <div style={{ ...style, ...s, color: '#0d9488' }}>{char}</div>;
 }
 
 // ─── RenderSplit ──────────────────────────────────────────────────────────────
@@ -781,19 +781,19 @@ function ResizeHandle({
         flexShrink: 0,
         width:  isH ? 5 : '100%',
         height: isH ? '100%' : 5,
-        background: 'rgba(255,255,255,0.04)',
+        background: 'rgba(15,23,42,0.06)',
         cursor: isH ? 'col-resize' : 'row-resize',
         transition: 'background 0.12s',
         zIndex: 10,
       }}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(0,212,160,0.35)';
-        el.style.boxShadow = isH ? '0 0 10px rgba(0,212,160,0.4)' : '0 0 10px rgba(0,212,160,0.4)';
+        el.style.background = 'rgba(13,148,136,0.35)';
+        el.style.boxShadow = isH ? '0 0 6px rgba(13,148,136,0.25)' : '0 0 6px rgba(13,148,136,0.25)';
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(255,255,255,0.04)';
+        el.style.background = 'rgba(15,23,42,0.06)';
         el.style.boxShadow = '';
       }}
     />
@@ -804,7 +804,7 @@ function ResizeHandle({
 
 function GripDots() {
   return (
-    <svg width="14" height="8" viewBox="0 0 14 8" fill="rgba(255,255,255,0.32)" style={{ flexShrink: 0 }}>
+    <svg width="14" height="8" viewBox="0 0 14 8" fill="rgba(15,23,42,0.35)" style={{ flexShrink: 0 }}>
       <circle cx="2"  cy="2" r="1.3" />
       <circle cx="7"  cy="2" r="1.3" />
       <circle cx="12" cy="2" r="1.3" />

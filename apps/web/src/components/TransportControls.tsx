@@ -117,10 +117,10 @@ export default function TransportControls({
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
-        background: 'rgba(8,18,34,0.95)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
-        boxShadow: 'inset 0 -1px 0 rgba(0,212,160,0.10)',
+        background: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(15,23,42,0.08)',
+        boxShadow: '0 1px 0 rgba(15,23,42,0.04)',
         userSelect: 'none',
       }}
     >
@@ -145,11 +145,11 @@ export default function TransportControls({
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            background: 'linear-gradient(135deg, #00d4a0, #38bdf8)',
+            background: 'linear-gradient(135deg, #0d9488, #0ea5e9)',
             boxShadow: isPlaying
-              ? '0 0 40px rgba(0,212,160,0.85), 0 0 14px rgba(56,189,248,0.50), 0 4px 14px rgba(0,0,0,0.35)'
-              : '0 0 20px rgba(0,212,160,0.45), 0 4px 14px rgba(0,0,0,0.30)',
-            border: '1.5px solid rgba(0,212,160,0.50)',
+              ? '0 0 20px rgba(13,148,136,0.55), 0 4px 12px rgba(15,23,42,0.12)'
+              : '0 0 10px rgba(13,148,136,0.30), 0 3px 8px rgba(15,23,42,0.08)',
+            border: '1.5px solid rgba(13,148,136,0.35)',
             cursor: 'pointer',
             transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
             animation: isPlaying ? 'glowPulse 2.5s ease-in-out infinite' : 'none',
@@ -158,15 +158,15 @@ export default function TransportControls({
           }}
           onMouseEnter={(e) => {
             const el = e.currentTarget as HTMLElement;
-            el.style.transform = 'scale(1.12)';
-            el.style.boxShadow = '0 0 40px rgba(0,212,160,0.80), 0 8px 22px rgba(0,0,0,0.4)';
+            el.style.transform = 'scale(1.08)';
+            el.style.boxShadow = '0 0 22px rgba(13,148,136,0.60), 0 6px 16px rgba(15,23,42,0.10)';
           }}
           onMouseLeave={(e) => {
             const el = e.currentTarget as HTMLElement;
             el.style.transform = '';
             el.style.boxShadow = isPlaying
-              ? '0 0 40px rgba(0,212,160,0.85), 0 0 14px rgba(56,189,248,0.50), 0 4px 14px rgba(0,0,0,0.35)'
-              : '0 0 20px rgba(0,212,160,0.45), 0 4px 14px rgba(0,0,0,0.30)';
+              ? '0 0 20px rgba(13,148,136,0.55), 0 4px 12px rgba(15,23,42,0.12)'
+              : '0 0 10px rgba(13,148,136,0.30), 0 3px 8px rgba(15,23,42,0.08)';
           }}
           onMouseDown={(e) => {
             (e.currentTarget as HTMLElement).style.transform = 'scale(0.92)';
@@ -185,7 +185,7 @@ export default function TransportControls({
                 position: 'absolute',
                 inset: -6,
                 borderRadius: '50%',
-                border: '1.5px solid rgba(0,212,160,0.45)',
+                border: '1.5px solid rgba(13,148,136,0.40)',
                 animation: 'ripple 2s ease-out infinite',
                 pointerEvents: 'none',
               }} />
@@ -193,19 +193,19 @@ export default function TransportControls({
                 position: 'absolute',
                 inset: -6,
                 borderRadius: '50%',
-                border: '1.5px solid rgba(0,212,160,0.25)',
+                border: '1.5px solid rgba(13,148,136,0.22)',
                 animation: 'ripple 2s ease-out 0.7s infinite',
                 pointerEvents: 'none',
               }} />
             </>
           )}
           {isPlaying ? (
-            <svg width="16" height="16" viewBox="0 0 14 14" fill="#040a08">
+            <svg width="16" height="16" viewBox="0 0 14 14" fill="#ffffff">
               <rect x="2" y="1" width="4" height="12" rx="1.5" />
               <rect x="8" y="1" width="4" height="12" rx="1.5" />
             </svg>
           ) : (
-            <svg width="16" height="16" viewBox="0 0 14 14" fill="#040a08">
+            <svg width="16" height="16" viewBox="0 0 14 14" fill="#ffffff">
               <polygon points="3,1 13,7 3,13" />
             </svg>
           )}
@@ -223,25 +223,25 @@ export default function TransportControls({
             justifyContent: 'center',
             flexShrink: 0,
             background: isLooping
-              ? 'linear-gradient(135deg, rgba(0,212,160,0.22), rgba(56,189,248,0.15))'
-              : 'rgba(255,255,255,0.05)',
+              ? 'rgba(13,148,136,0.10)'
+              : 'rgba(15,23,42,0.05)',
             boxShadow: isLooping
-              ? '0 0 14px rgba(0,212,160,0.40), inset 0 0 0 1px rgba(0,212,160,0.55)'
-              : 'inset 0 0 0 1px rgba(255,255,255,0.10)',
+              ? 'inset 0 0 0 1.5px rgba(13,148,136,0.45)'
+              : 'inset 0 0 0 1px rgba(15,23,42,0.10)',
             border: 'none',
             cursor: 'pointer',
             transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
-            color: isLooping ? '#00d4a0' : 'rgba(255,255,255,0.35)',
+            color: isLooping ? '#0d9488' : 'rgba(15,23,42,0.35)',
           }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.background = isLooping
-              ? 'linear-gradient(135deg, rgba(0,212,160,0.30), rgba(56,189,248,0.22))'
-              : 'rgba(255,255,255,0.09)';
+              ? 'rgba(13,148,136,0.16)'
+              : 'rgba(15,23,42,0.08)';
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = isLooping
-              ? 'linear-gradient(135deg, rgba(0,212,160,0.22), rgba(56,189,248,0.15))'
-              : 'rgba(255,255,255,0.05)';
+              ? 'rgba(13,148,136,0.10)'
+              : 'rgba(15,23,42,0.05)';
           }}
           title={isLooping ? 'Loop: On' : 'Loop: Off'}
         >
@@ -262,7 +262,7 @@ export default function TransportControls({
             minWidth: isMobile ? 60 : 80,
             fontVariantNumeric: 'tabular-nums',
             fontWeight: 600,
-            color: '#7de0cc',
+            color: '#0d9488',
           }}
         >
           {formatTime(displayTime)}
@@ -276,7 +276,7 @@ export default function TransportControls({
             borderRadius: 6,
             cursor: 'pointer',
             height: isMobile ? 12 : 8,
-            background: 'rgba(255,255,255,0.08)',
+            background: 'rgba(15,23,42,0.08)',
             // Enlarge touch hit area vertically via padding
             paddingTop: isMobile ? 8 : 4,
             paddingBottom: isMobile ? 8 : 4,
@@ -327,8 +327,8 @@ export default function TransportControls({
               style={{
                 width: '100%',
                 height: '100%',
-                background: 'linear-gradient(90deg, #00d4a0, #38bdf8)',
-                boxShadow: '0 0 10px rgba(0,212,160,0.55)',
+                background: 'linear-gradient(90deg, #0d9488, #0ea5e9)',
+                boxShadow: '0 0 6px rgba(13,148,136,0.35)',
               }}
             />
             {/* Shimmer */}
@@ -345,10 +345,10 @@ export default function TransportControls({
               left: `calc(0% - 10px)`,
               width: isMobile ? 24 : 20,
               height: isMobile ? 24 : 20,
-              background: '#00d4a0',
+              background: '#0d9488',
               borderRadius: '50%',
-              boxShadow: '0 0 12px rgba(0,212,160,0.85)',
-              border: '2.5px solid rgba(255,255,255,0.85)',
+              boxShadow: '0 0 8px rgba(13,148,136,0.45)',
+              border: '2.5px solid rgba(255,255,255,0.95)',
               transition: 'opacity 0.15s',
               opacity: isMobile ? 1 : undefined,
               zIndex: 2,
@@ -364,7 +364,7 @@ export default function TransportControls({
             minWidth: 80,
             textAlign: 'right',
             fontVariantNumeric: 'tabular-nums',
-            color: 'rgba(255,255,255,0.22)',
+            color: 'rgba(15,23,42,0.30)',
           }}>
             {formatTime(displayDuration)}
           </span>
@@ -387,7 +387,7 @@ export default function TransportControls({
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
-            color: 'rgba(0,212,160,0.55)',
+            color: 'rgba(13,148,136,0.65)',
             flexShrink: 0,
           }}>
             {isMobile ? 'In/Out' : 'Interval'}
@@ -419,10 +419,10 @@ export default function TransportControls({
               fontVariantNumeric: 'tabular-nums',
               width: isMobile ? 68 : 76,
               padding: '3px 6px',
-              background: 'rgba(0,212,160,0.08)',
-              border: '1px solid rgba(0,212,160,0.25)',
+              background: 'rgba(13,148,136,0.06)',
+              border: '1px solid rgba(13,148,136,0.22)',
               borderRadius: 6,
-              color: '#7de0cc',
+              color: '#0d9488',
               outline: 'none',
               textAlign: 'center',
               flexShrink: 0,
@@ -430,7 +430,7 @@ export default function TransportControls({
             title="Interval start (MM:SS.d)"
           />
 
-          <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, flexShrink: 0 }}>→</span>
+          <span style={{ color: 'rgba(15,23,42,0.30)', fontSize: 13, flexShrink: 0 }}>→</span>
 
           {/* End input */}
           <input
@@ -458,10 +458,10 @@ export default function TransportControls({
               fontVariantNumeric: 'tabular-nums',
               width: isMobile ? 68 : 76,
               padding: '3px 6px',
-              background: 'rgba(0,212,160,0.08)',
-              border: '1px solid rgba(0,212,160,0.25)',
+              background: 'rgba(13,148,136,0.06)',
+              border: '1px solid rgba(13,148,136,0.22)',
               borderRadius: 6,
-              color: '#7de0cc',
+              color: '#0d9488',
               outline: 'none',
               textAlign: 'center',
               flexShrink: 0,
@@ -470,7 +470,7 @@ export default function TransportControls({
           />
 
           {!isMobile && (
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.20)', marginLeft: 2 }}>
+            <span style={{ fontSize: 11, color: 'rgba(15,23,42,0.30)', marginLeft: 2 }}>
               ({formatTime(displayDuration)} total)
             </span>
           )}

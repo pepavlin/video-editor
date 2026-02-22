@@ -315,11 +315,11 @@ export default function Timeline({
     const SL = scrollLeftRef.current;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#0e1a2e';
+    ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, W, H);
 
     if (!project) {
-      ctx.fillStyle = '#4a7068';
+      ctx.fillStyle = 'rgba(13,148,136,0.50)';
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Create or load a project', W / 2, H / 2);
@@ -334,18 +334,18 @@ export default function Timeline({
       const waS = workArea.start * Z - SL + HEADER_WIDTH;
       const waE = workArea.end * Z - SL + HEADER_WIDTH;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillStyle = 'rgba(15,23,42,0.12)';
       ctx.fillRect(HEADER_WIDTH, 0, timeWidth, WORK_BAR_H);
 
       const wsX = Math.max(HEADER_WIDTH, waS);
       const weX = Math.min(W, waE);
       if (weX > wsX) {
-        ctx.fillStyle = 'rgba(0,212,160,0.45)';
+        ctx.fillStyle = 'rgba(13,148,136,0.45)';
         ctx.fillRect(wsX, 0, weX - wsX, WORK_BAR_H);
       }
 
       if (waS >= HEADER_WIDTH - 8 && waS <= W + 8) {
-        ctx.fillStyle = '#00d4a0';
+        ctx.fillStyle = '#0d9488';
         ctx.fillRect(Math.round(waS) - 1, 0, 2, RULER_HEIGHT);
         ctx.beginPath();
         ctx.moveTo(waS - 5, 0);
@@ -356,7 +356,7 @@ export default function Timeline({
       }
 
       if (waE >= HEADER_WIDTH - 8 && waE <= W + 8) {
-        ctx.fillStyle = '#00d4a0';
+        ctx.fillStyle = '#0d9488';
         ctx.fillRect(Math.round(waE) - 1, 0, 2, RULER_HEIGHT);
         ctx.beginPath();
         ctx.moveTo(waE - 5, 0);
@@ -368,7 +368,7 @@ export default function Timeline({
     }
 
     // ─── Ruler ────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#0b1826';
+    ctx.fillStyle = '#f1f5f9';
     ctx.fillRect(HEADER_WIDTH, WORK_BAR_H, timeWidth, RULER_HEIGHT - WORK_BAR_H);
 
     const secondsVisible = timeWidth / Z;
@@ -381,7 +381,7 @@ export default function Timeline({
     const endSec = Math.ceil((SL + timeWidth) / Z / tickInterval) * tickInterval;
 
     ctx.font = '10px sans-serif';
-    ctx.fillStyle = 'rgba(0,212,160,0.45)';
+    ctx.fillStyle = 'rgba(13,148,136,0.55)';
     ctx.textAlign = 'left';
 
     for (let s = startSec; s <= endSec; s += tickInterval) {
@@ -389,7 +389,7 @@ export default function Timeline({
       ctx.beginPath();
       ctx.moveTo(x, WORK_BAR_H);
       ctx.lineTo(x, RULER_HEIGHT);
-      ctx.strokeStyle = 'rgba(0,212,160,0.22)';
+      ctx.strokeStyle = 'rgba(13,148,136,0.20)';
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.fillText(formatTime(s), x + 3, RULER_HEIGHT - 4);
@@ -402,7 +402,7 @@ export default function Timeline({
       ctx.beginPath();
       ctx.moveTo(x, RULER_HEIGHT - 6);
       ctx.lineTo(x, RULER_HEIGHT);
-      ctx.strokeStyle = 'rgba(0,212,160,0.12)';
+      ctx.strokeStyle = 'rgba(13,148,136,0.10)';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -413,7 +413,7 @@ export default function Timeline({
     if (masterClip && snapModeRef.current === 'beats') {
       const beats = beatsData.get(masterClip.assetId);
       if (beats) {
-        ctx.fillStyle = 'rgba(0, 212, 160, 0.60)';
+        ctx.fillStyle = 'rgba(13,148,136,0.60)';
         for (const beat of beats.beats) {
           const x = beat * Z - SL + HEADER_WIDTH;
           if (x < HEADER_WIDTH || x > W) continue;
@@ -450,41 +450,41 @@ export default function Timeline({
 
       // Track header
       const headerBg = isEffectTrack
-        ? 'rgba(30,15,5,0.95)'
+        ? 'rgba(255,247,237,0.95)'
         : isReorderTarget
-        ? 'rgba(0,212,160,0.25)'
+        ? 'rgba(13,148,136,0.12)'
         : isGhostTrack
-        ? 'rgba(0,212,160,0.15)'
-        : '#101f33';
+        ? 'rgba(13,148,136,0.07)'
+        : '#f1f5f9';
       ctx.fillStyle = headerBg;
       ctx.globalAlpha = isReorderSource ? 0.4 : 1;
       ctx.fillRect(0, trackY, HEADER_WIDTH, trackH);
       ctx.strokeStyle = isEffectTrack
         ? 'rgba(251,146,60,0.45)'
         : isReorderTarget
-        ? 'rgba(0,212,160,0.85)'
+        ? 'rgba(13,148,136,0.85)'
         : isGhostTrack
-        ? 'rgba(0,212,160,0.50)'
-        : 'rgba(0,212,160,0.18)';
+        ? 'rgba(13,148,136,0.50)'
+        : 'rgba(13,148,136,0.15)';
       ctx.lineWidth = isEffectTrack || isReorderTarget || isGhostTrack ? 1 : 1;
       ctx.strokeRect(0, trackY, HEADER_WIDTH, trackH);
       ctx.globalAlpha = 1;
 
       // Draw reorder indicator line above target row
       if (isReorderTarget && trackDragFromIdx !== null) {
-        ctx.fillStyle = '#00d4a0';
+        ctx.fillStyle = '#0d9488';
         ctx.fillRect(0, trackY - 2, W, 3);
       }
 
       const labelColor = isEffectTrack
         ? 'rgba(251,146,60,0.90)'
         : isAudio
-        ? 'rgba(0,212,160,0.65)'
+        ? 'rgba(13,148,136,0.75)'
         : isTextTrack
         ? 'rgba(167,139,250,0.80)'
         : isLyricsTrack
         ? 'rgba(192,132,252,0.85)'
-        : 'rgba(56,189,248,0.65)';
+        : 'rgba(14,165,233,0.75)';
       ctx.fillStyle = labelColor;
       ctx.font = isEffectTrack ? 'bold 8px sans-serif' : 'bold 10px sans-serif';
       ctx.textAlign = 'center';
@@ -513,25 +513,25 @@ export default function Timeline({
       const bodyBg = isEffectTrack
         ? 'rgba(251,146,60,0.04)'
         : isAudio
-        ? 'rgba(0,212,160,0.05)'
+        ? 'rgba(13,148,136,0.04)'
         : isTextTrack
         ? 'rgba(167,139,250,0.04)'
         : isLyricsTrack
-        ? 'rgba(192,132,252,0.06)'
-        : 'rgba(56,189,248,0.04)';
+        ? 'rgba(192,132,252,0.05)'
+        : 'rgba(14,165,233,0.03)';
       ctx.fillStyle = bodyBg;
       ctx.globalAlpha = isReorderSource ? 0.3 : 1;
       ctx.fillRect(HEADER_WIDTH, trackY, timeWidth, trackH);
       ctx.globalAlpha = 1;
 
       // Track separator
-      ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.20)' : 'rgba(0,212,160,0.14)';
+      ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.15)' : 'rgba(15,23,42,0.07)';
       ctx.fillRect(HEADER_WIDTH, trackY + trackH - 1, timeWidth, 1);
 
       // Grid lines
       for (let s = startSec; s <= endSec; s += tickInterval) {
         const x = s * Z - SL + HEADER_WIDTH;
-        ctx.strokeStyle = 'rgba(0,212,160,0.09)';
+        ctx.strokeStyle = 'rgba(15,23,42,0.05)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, trackY);
@@ -543,7 +543,7 @@ export default function Timeline({
       if (masterClip && snapModeRef.current === 'beats') {
         const beats = beatsData.get(masterClip.assetId);
         if (beats) {
-          ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.20)' : 'rgba(0, 212, 160, 0.15)';
+          ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.18)' : 'rgba(13,148,136,0.12)';
           for (const beat of beats.beats) {
             const x = beat * Z - SL + HEADER_WIDTH;
             if (x < HEADER_WIDTH || x > W) continue;
@@ -724,11 +724,11 @@ export default function Timeline({
           }
 
           ctx.strokeStyle = isSelected
-            ? 'rgba(0,212,160,0.9)'
+            ? 'rgba(13,148,136,0.9)'
             : isCoveredByEffect
             ? 'rgba(251,146,60,0.70)'
             : isAudio
-            ? 'rgba(0,212,160,0.35)'
+            ? 'rgba(13,148,136,0.35)'
             : lightenColor(color, 40);
           ctx.lineWidth = isSelected || isCoveredByEffect ? 2 : 1;
           ctx.strokeRect(visX + 0.5, clipTop + 0.5, visW - 1, clipH - 1);
@@ -751,7 +751,7 @@ export default function Timeline({
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 4;
           }
-          ctx.fillStyle = (isText || isLyrics) ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(0,212,160,0.9)' : 'rgba(255,255,255,0.95)';
+          ctx.fillStyle = (isText || isLyrics) ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(13,148,136,0.95)' : 'rgba(255,255,255,0.95)';
           ctx.fillText(label, visX + 4, trackY + 14);
           ctx.shadowBlur = 0;
 
@@ -759,7 +759,7 @@ export default function Timeline({
           ctx.restore();
 
           if (isSelected) {
-            ctx.fillStyle = 'rgba(0,212,160,0.9)';
+            ctx.fillStyle = 'rgba(13,148,136,0.9)';
             ctx.fillRect(visX, clipTop, 4, clipH);
             ctx.fillRect(Math.min(clipX + clipW, W) - 4, clipTop, 4, clipH);
           }
@@ -779,7 +779,7 @@ export default function Timeline({
           const halfW = halfEndX - halfStartX;
           if (halfW > 0) {
             ctx.globalAlpha = 0.38;
-            ctx.fillStyle = hover.blocked ? 'rgba(239,68,68,0.6)' : 'rgba(0,212,160,0.5)';
+            ctx.fillStyle = hover.blocked ? 'rgba(239,68,68,0.6)' : 'rgba(13,148,136,0.4)';
             ctx.fillRect(halfStartX, hClipTop, halfW, hClipH);
             ctx.globalAlpha = 1;
           }
@@ -814,25 +814,25 @@ export default function Timeline({
       const isAudioGhost = ghost.assetType === 'audio';
 
       // Draw new track header
-      ctx.fillStyle = isAudioGhost ? 'rgba(0,212,160,0.12)' : 'rgba(56,189,248,0.10)';
+      ctx.fillStyle = isAudioGhost ? 'rgba(13,148,136,0.08)' : 'rgba(14,165,233,0.07)';
       ctx.fillRect(0, newTrackY, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = isAudioGhost ? 'rgba(0,212,160,0.45)' : 'rgba(56,189,248,0.45)';
+      ctx.strokeStyle = isAudioGhost ? 'rgba(13,148,136,0.45)' : 'rgba(14,165,233,0.45)';
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(1, newTrackY + 1, HEADER_WIDTH - 2, TRACK_HEIGHT - 2);
       ctx.setLineDash([]);
 
-      ctx.fillStyle = isAudioGhost ? 'rgba(0,212,160,0.55)' : 'rgba(56,189,248,0.55)';
+      ctx.fillStyle = isAudioGhost ? 'rgba(13,148,136,0.65)' : 'rgba(14,165,233,0.65)';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('+ NEW', HEADER_WIDTH / 2, newTrackY + TRACK_HEIGHT / 2 + 4);
 
       // Draw new track body background
-      ctx.fillStyle = isAudioGhost ? 'rgba(0,212,160,0.05)' : 'rgba(56,189,248,0.04)';
+      ctx.fillStyle = isAudioGhost ? 'rgba(13,148,136,0.04)' : 'rgba(14,165,233,0.03)';
       ctx.fillRect(HEADER_WIDTH, newTrackY, timeWidth, TRACK_HEIGHT);
 
       // Dashed border for new track area
-      ctx.strokeStyle = isAudioGhost ? 'rgba(0,212,160,0.25)' : 'rgba(56,189,248,0.25)';
+      ctx.strokeStyle = isAudioGhost ? 'rgba(13,148,136,0.22)' : 'rgba(14,165,233,0.22)';
       ctx.lineWidth = 1;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(HEADER_WIDTH + 0.5, newTrackY + 0.5, timeWidth - 1, TRACK_HEIGHT - 1);
@@ -848,7 +848,7 @@ export default function Timeline({
       const waE = workArea.end * Z - SL + HEADER_WIDTH;
       const totalTrackH = getTotalTracksHeight(tracks);
 
-      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.fillStyle = 'rgba(15,23,42,0.10)';
 
       const leftEnd = Math.min(Math.max(waS, HEADER_WIDTH), W);
       if (leftEnd > HEADER_WIDTH) {
@@ -1412,7 +1412,7 @@ export default function Timeline({
   const canvasHeight = RULER_HEIGHT + totalTracksH + (extraRow ? TRACK_HEIGHT : 0) + 8;
 
   return (
-    <div style={{ background: '#0e1a2e', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
       <div
         style={{
@@ -1423,11 +1423,11 @@ export default function Timeline({
           gap: 4,
           paddingLeft: 8,
           paddingRight: 8,
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          borderBottom: '1px solid rgba(15,23,42,0.07)',
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginRight: 4, userSelect: 'none' }}>
+        <span style={{ fontSize: 10, color: 'rgba(15,23,42,0.45)', marginRight: 4, userSelect: 'none' }}>
           Magnet:
         </span>
         {(
@@ -1444,9 +1444,9 @@ export default function Timeline({
               fontSize: 11,
               padding: '5px 10px',
               borderRadius: 6,
-              border: snapMode === mode ? '1px solid rgba(0,212,160,0.6)' : '1px solid rgba(255,255,255,0.12)',
-              background: snapMode === mode ? 'rgba(0,212,160,0.15)' : 'transparent',
-              color: snapMode === mode ? 'rgba(0,212,160,0.95)' : 'rgba(255,255,255,0.45)',
+              border: snapMode === mode ? '1px solid rgba(13,148,136,0.55)' : '1px solid rgba(15,23,42,0.12)',
+              background: snapMode === mode ? 'rgba(13,148,136,0.10)' : 'transparent',
+              color: snapMode === mode ? '#0d9488' : 'rgba(15,23,42,0.45)',
               cursor: 'pointer',
               userSelect: 'none',
               lineHeight: '18px',
@@ -1497,13 +1497,13 @@ export default function Timeline({
                 top: '100%',
                 right: 0,
                 marginTop: 3,
-                background: '#0e1a2e',
-                border: '1px solid rgba(251,146,60,0.40)',
+                background: '#ffffff',
+                border: '1px solid rgba(251,146,60,0.35)',
                 borderRadius: 6,
                 padding: '4px 0',
                 zIndex: 100,
                 minWidth: 148,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                boxShadow: '0 4px 16px rgba(15,23,42,0.12)',
               }}
             >
               {(
@@ -1554,7 +1554,7 @@ export default function Timeline({
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
                   <div>{label}</div>
-                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{desc}</div>
+                  <div style={{ fontSize: 9, color: 'rgba(15,23,42,0.40)', marginTop: 1 }}>{desc}</div>
                 </button>
               ))}
             </div>
@@ -1624,7 +1624,7 @@ export default function Timeline({
                   width="10"
                   height={track.type === 'effect' ? 10 : 16}
                   viewBox={track.type === 'effect' ? '0 0 10 10' : '0 0 12 16'}
-                  fill={track.type === 'effect' ? 'rgba(251,146,60,0.55)' : 'rgba(0,212,160,0.45)'}
+                  fill={track.type === 'effect' ? 'rgba(251,146,60,0.55)' : 'rgba(13,148,136,0.45)'}
                 >
                   {track.type === 'effect' ? (
                     <>
@@ -1678,12 +1678,12 @@ function drawGhostClip(
 
   // Ghost body
   ctx.globalAlpha = 0.55;
-  ctx.fillStyle = isAudio ? 'rgba(0,212,160,0.35)' : 'rgba(56,189,248,0.5)';
+  ctx.fillStyle = isAudio ? 'rgba(13,148,136,0.30)' : 'rgba(14,165,233,0.40)';
   ctx.fillRect(visX, clipTop, visW, clipH);
 
   // Ghost border (dashed)
   ctx.globalAlpha = 0.85;
-  ctx.strokeStyle = isAudio ? '#00d4a0' : '#38bdf8';
+  ctx.strokeStyle = isAudio ? '#0d9488' : '#0ea5e9';
   ctx.lineWidth = 2;
   ctx.setLineDash([5, 3]);
   ctx.strokeRect(visX + 1, clipTop + 1, visW - 2, clipH - 2);
@@ -1740,14 +1740,14 @@ function drawWaveformOnClip(
   ctx.closePath();
 
   const grad = ctx.createLinearGradient(0, trackY, 0, trackY + trackHeight);
-  grad.addColorStop(0,    'rgba(0, 212, 160, 0.18)');
-  grad.addColorStop(0.5,  'rgba(0, 212, 160, 0.52)');
-  grad.addColorStop(1,    'rgba(0, 212, 160, 0.18)');
+  grad.addColorStop(0,    'rgba(13,148,136,0.18)');
+  grad.addColorStop(0.5,  'rgba(13,148,136,0.52)');
+  grad.addColorStop(1,    'rgba(13,148,136,0.18)');
   ctx.fillStyle = grad;
   ctx.fill();
 
   // Upper edge line
-  ctx.strokeStyle = 'rgba(0, 212, 160, 0.95)';
+  ctx.strokeStyle = 'rgba(13,148,136,0.95)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let px = startPx; px <= endPx; px++) {
@@ -1758,7 +1758,7 @@ function drawWaveformOnClip(
   ctx.stroke();
 
   // Lower edge line
-  ctx.strokeStyle = 'rgba(0, 212, 160, 0.55)';
+  ctx.strokeStyle = 'rgba(13,148,136,0.55)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let px = startPx; px <= endPx; px++) {
@@ -1769,7 +1769,7 @@ function drawWaveformOnClip(
   ctx.stroke();
 
   // Centre line
-  ctx.strokeStyle = 'rgba(0, 212, 160, 0.15)';
+  ctx.strokeStyle = 'rgba(13,148,136,0.15)';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();

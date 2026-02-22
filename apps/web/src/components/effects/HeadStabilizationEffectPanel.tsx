@@ -20,8 +20,8 @@ interface Props {
 
 export function HeadStabilizationEffectPanel({ clipId, effect, onRemove, onUpdate, onProcess }: Omit<Props, 'onAdd'>) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(0,212,160,0.20)' }}>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.50)', cursor: 'pointer' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(13,148,136,0.25)' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(15,23,42,0.60)', cursor: 'pointer' }}>
         <input
           type="checkbox"
           checked={effect.enabled}
@@ -37,7 +37,7 @@ export function HeadStabilizationEffectPanel({ clipId, effect, onRemove, onUpdat
         ] as const
       ).map(({ key, label }) => (
         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', width: 52, flexShrink: 0 }}>{label}</span>
+          <span style={{ fontSize: 13, color: 'rgba(15,23,42,0.45)', width: 52, flexShrink: 0 }}>{label}</span>
           <input
             type="range"
             min={0}
@@ -52,7 +52,7 @@ export function HeadStabilizationEffectPanel({ clipId, effect, onRemove, onUpdat
               })
             }
           />
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', width: 32, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.45)', width: 32, flexShrink: 0 }}>
             {Math.round(effect[key] * 100)}%
           </span>
         </div>
@@ -61,12 +61,12 @@ export function HeadStabilizationEffectPanel({ clipId, effect, onRemove, onUpdat
         <div style={{
           fontSize: 11,
           color: effect.status === 'done'
-            ? '#4ade80'
+            ? '#16a34a'
             : effect.status === 'error'
-            ? '#f87171'
+            ? '#dc2626'
             : effect.status === 'processing'
-            ? '#fbbf24'
-            : 'rgba(255,255,255,0.28)',
+            ? '#d97706'
+            : 'rgba(15,23,42,0.35)',
           flex: 1,
         }}>
           {effect.status === 'done' && 'Stabilized'}
@@ -78,9 +78,9 @@ export function HeadStabilizationEffectPanel({ clipId, effect, onRemove, onUpdat
           className="btn btn-ghost"
           style={{
             fontSize: 11,
-            border: '1px solid rgba(0,212,160,0.30)',
+            border: '1px solid rgba(13,148,136,0.28)',
             padding: '4px 10px',
-            color: effect.status === 'processing' ? 'rgba(255,255,255,0.30)' : '#00d4a0',
+            color: effect.status === 'processing' ? 'rgba(15,23,42,0.30)' : '#0d9488',
             opacity: effect.status === 'processing' ? 0.5 : 1,
           }}
           disabled={effect.status === 'processing'}
@@ -105,7 +105,7 @@ export function HeadStabilizationEffectAddButton({ clipId, onAdd }: Pick<Props, 
   return (
     <button
       className="btn btn-ghost"
-      style={{ fontSize: 12, border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px' }}
+      style={{ fontSize: 12, border: '1px solid rgba(15,23,42,0.12)', padding: '4px 10px' }}
       onClick={() =>
         onAdd(clipId, {
           type: 'headStabilization',

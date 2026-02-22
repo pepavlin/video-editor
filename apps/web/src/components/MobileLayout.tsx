@@ -154,10 +154,10 @@ export function MobileLayout({ panelRenderers }: { panelRenderers: PanelRenderer
         style={{
           flexShrink: 0,
           display: 'flex',
-          background: 'rgba(6,14,26,0.97)',
-          backdropFilter: 'blur(24px)',
-          borderTop: '1px solid rgba(255,255,255,0.07)',
-          boxShadow: 'inset 0 1px 0 rgba(0,212,160,0.08)',
+          background: 'rgba(255,255,255,0.94)',
+          backdropFilter: 'blur(20px)',
+          borderTop: '1px solid rgba(15,23,42,0.08)',
+          boxShadow: '0 -1px 0 rgba(15,23,42,0.04)',
           // Safe area for iOS home indicator
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         }}
@@ -180,7 +180,7 @@ export function MobileLayout({ panelRenderers }: { panelRenderers: PanelRenderer
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                color: isActive ? '#00d4a0' : 'rgba(255,255,255,0.38)',
+                color: isActive ? '#0d9488' : 'rgba(15,23,42,0.38)',
                 transition: 'color 0.15s',
                 position: 'relative',
                 // Prevent double-tap zoom on mobile
@@ -198,8 +198,8 @@ export function MobileLayout({ panelRenderers }: { panelRenderers: PanelRenderer
                     right: '20%',
                     height: 2,
                     borderRadius: '0 0 2px 2px',
-                    background: 'linear-gradient(90deg, #00d4a0, #38bdf8)',
-                    boxShadow: '0 0 8px rgba(0,212,160,0.6)',
+                    background: '#0d9488',
+                    boxShadow: 'none',
                   }}
                 />
               )}

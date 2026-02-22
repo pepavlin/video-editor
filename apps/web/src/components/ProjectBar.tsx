@@ -70,36 +70,37 @@ export default function ProjectBar({
         gap: isMobile ? 8 : 12,
         padding: isMobile ? '0 12px' : '0 20px',
         flexShrink: 0,
-        borderBottom: '1px solid rgba(0,212,160,0.14)',
+        borderBottom: '1px solid rgba(15,23,42,0.08)',
         userSelect: 'none',
         overflowX: 'auto',
         minHeight: isMobile ? 44 : 48,
-        background: 'rgba(7,16,30,0.90)',
+        background: 'rgba(255,255,255,0.90)',
         backdropFilter: 'blur(16px)',
+        boxShadow: '0 1px 0 rgba(15,23,42,0.06)',
         // Hide scrollbar but allow scroll on mobile
         scrollbarWidth: 'none',
       }}
     >
       {/* Master audio */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(0,212,160,0.65)" strokeWidth="2">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(13,148,136,0.70)" strokeWidth="2">
           <path d="M9 18V5l12-2v13" />
           <circle cx="6" cy="18" r="3" />
           <circle cx="18" cy="16" r="3" />
         </svg>
-        {!isMobile && <span style={{ fontSize: 12, color: 'rgba(0,212,160,0.55)', fontWeight: 500 }}>Master</span>}
+        {!isMobile && <span style={{ fontSize: 12, color: 'rgba(13,148,136,0.70)', fontWeight: 500 }}>Master</span>}
         {masterAsset ? (
-          <span style={{ fontSize: 12, fontWeight: 500, color: '#9ac8c0', maxWidth: isMobile ? 90 : 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#0f172a', maxWidth: isMobile ? 90 : 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {masterAsset.name}
           </span>
         ) : (
-          <span style={{ fontSize: 12, fontStyle: 'italic', color: 'rgba(0,212,160,0.28)' }}>
+          <span style={{ fontSize: 12, fontStyle: 'italic', color: 'rgba(15,23,42,0.35)' }}>
             {isMobile ? 'no audio' : 'no audio track'}
           </span>
         )}
       </div>
 
-      <div style={{ width: 1, height: 16, background: 'rgba(0,212,160,0.18)', flexShrink: 0 }} />
+      <div style={{ width: 1, height: 16, background: 'rgba(15,23,42,0.12)', flexShrink: 0 }} />
 
       {/* Beat status / progress / analyze button */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -131,13 +132,13 @@ export default function ProjectBar({
                   cursor: 'pointer',
                   fontWeight: needsAnalysis ? 600 : 400,
                   background: needsAnalysis
-                    ? 'linear-gradient(135deg, #00d4a0, #38bdf8)'
-                    : 'rgba(0,212,160,0.10)',
+                    ? '#0d9488'
+                    : 'rgba(13,148,136,0.08)',
                   border: needsAnalysis
-                    ? '1px solid rgba(0,212,160,0.40)'
-                    : '1px solid rgba(0,212,160,0.15)',
-                  color: needsAnalysis ? '#040a08' : 'rgba(0,212,160,0.70)',
-                  boxShadow: needsAnalysis ? '0 0 12px rgba(0,212,160,0.28)' : 'none',
+                    ? '1px solid rgba(13,148,136,0.30)'
+                    : '1px solid rgba(13,148,136,0.18)',
+                  color: needsAnalysis ? '#ffffff' : 'rgba(13,148,136,0.80)',
+                  boxShadow: needsAnalysis ? '0 1px 4px rgba(13,148,136,0.20)' : 'none',
                   transition: 'all 0.15s ease',
                   whiteSpace: 'nowrap',
                 }}
@@ -166,7 +167,7 @@ export default function ProjectBar({
         />
       ) : exportDone ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {!isMobile && <span style={{ fontSize: 13, color: 'rgba(0,212,160,0.60)' }}>Export done</span>}
+          {!isMobile && <span style={{ fontSize: 13, color: 'rgba(13,148,136,0.70)' }}>Export done</span>}
           <button
             style={{
               fontSize: isMobile ? 12 : 13,
@@ -174,11 +175,11 @@ export default function ProjectBar({
               borderRadius: 8,
               flexShrink: 0,
               cursor: 'pointer',
-              background: 'linear-gradient(135deg, #00d4a0, #22c55e)',
-              border: '1px solid rgba(0,212,160,0.45)',
-              color: '#03180e',
+              background: '#0d9488',
+              border: '1px solid rgba(13,148,136,0.30)',
+              color: '#ffffff',
               fontWeight: 700,
-              boxShadow: '0 0 16px rgba(0,212,160,0.45)',
+              boxShadow: '0 1px 4px rgba(13,148,136,0.25)',
               whiteSpace: 'nowrap',
             }}
             onClick={onDownload}
@@ -194,11 +195,11 @@ export default function ProjectBar({
             borderRadius: 8,
             flexShrink: 0,
             cursor: 'pointer',
-            background: 'linear-gradient(135deg, rgba(240,177,0,0.88), rgba(255,160,30,0.88))',
-            border: '1px solid rgba(240,177,0,0.35)',
-            color: '#0a0800',
+            background: '#d97706',
+            border: '1px solid rgba(217,119,6,0.30)',
+            color: '#ffffff',
             fontWeight: 600,
-            boxShadow: '0 0 12px rgba(240,177,0,0.22)',
+            boxShadow: '0 1px 4px rgba(217,119,6,0.20)',
             whiteSpace: 'nowrap',
           }}
           onClick={onExport}
@@ -227,11 +228,11 @@ function JobProgressBlock({
 }) {
   const isTeal = color === 'teal';
   const gradient = isTeal
-    ? 'linear-gradient(90deg, #00d4a0, #38bdf8)'
-    : 'linear-gradient(90deg, rgba(240,177,0,0.95), rgba(255,160,30,0.95))';
-  const glow = isTeal ? 'rgba(0,212,160,0.45)' : 'rgba(240,177,0,0.45)';
-  const primary = isTeal ? '#5ee8c8' : '#f0c040';
-  const muted = isTeal ? 'rgba(94,232,200,0.50)' : 'rgba(240,192,64,0.50)';
+    ? 'linear-gradient(90deg, #0d9488, #0ea5e9)'
+    : 'linear-gradient(90deg, #d97706, #f59e0b)';
+  const glow = isTeal ? 'rgba(13,148,136,0.30)' : 'rgba(217,119,6,0.30)';
+  const primary = isTeal ? '#0d9488' : '#d97706';
+  const muted = isTeal ? 'rgba(13,148,136,0.55)' : 'rgba(217,119,6,0.55)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, minWidth: compact ? 120 : 260 }}>
@@ -241,7 +242,7 @@ function JobProgressBlock({
         <span style={{ fontSize: compact ? 11 : 13, flexShrink: 0, fontWeight: 500, color: primary }}>
           {label}
         </span>
-        <div style={{ position: 'relative', height: 4, borderRadius: 4, flex: 1, background: 'rgba(255,255,255,0.08)', minWidth: compact ? 40 : 80 }}>
+        <div style={{ position: 'relative', height: 4, borderRadius: 4, flex: 1, background: 'rgba(15,23,42,0.08)', minWidth: compact ? 40 : 80 }}>
           <div
             style={{
               position: 'absolute',
@@ -294,9 +295,9 @@ function BeatStatusBadge({
         fontSize: 12,
         padding: '3px 10px',
         borderRadius: 20,
-        background: 'rgba(255,69,96,0.12)',
-        color: '#ff7090',
-        border: '1px solid rgba(255,69,96,0.20)',
+        background: 'rgba(239,68,68,0.08)',
+        color: '#dc2626',
+        border: '1px solid rgba(239,68,68,0.18)',
       }}>
         {beatsStale ? '⚠ Stale' : 'Not analyzed'}
       </span>
@@ -311,9 +312,9 @@ function BeatStatusBadge({
       display: 'flex',
       alignItems: 'center',
       gap: 5,
-      background: 'rgba(0,212,160,0.10)',
-      color: '#00d4a0',
-      border: '1px solid rgba(0,212,160,0.20)',
+      background: 'rgba(13,148,136,0.08)',
+      color: '#0d9488',
+      border: '1px solid rgba(13,148,136,0.18)',
     }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
       {beats ? `${Math.round(beats.tempo)} BPM · ${beats.beats.length} beats` : 'Analyzed'}
