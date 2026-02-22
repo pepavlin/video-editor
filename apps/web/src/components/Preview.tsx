@@ -102,6 +102,16 @@ function getCartoonCanvases(iw: number, ih: number) {
 /**
  * Draw a cartoon-styled video frame onto ctx at the given bounds.
  * Relies on the caller to have set ctx.globalAlpha and any rotation transform.
+ *
+ * The pipeline mirrors the FFmpeg export:
+ *   1. Blur + saturate the video onto an offscreen base canvas
+ *   2. Run Sobel edge-detection at ½ resolution on a second canvas
+ *   3. Multiply the edge mask onto the base (dark edges darken the colour)
+ *   4. Blit the result to the main canvas
+ *
+ * If step 2 fails (e.g. SecurityError from getImageData) the function falls
+ * back to showing the blurred/saturated base without edge lines — still
+ * visually different from unprocessed video.
  */
 function applyCartoonEffectToCtx(
   ctx: CanvasRenderingContext2D,
@@ -115,7 +125,11 @@ function applyCartoonEffectToCtx(
   const { base, edge, ew, eh } = getCartoonCanvases(iw, ih);
   const baseCtx = base.getContext('2d');
   const edgeCtx = edge.getContext('2d');
-  if (!baseCtx || !edgeCtx) return;
+  if (!baseCtx || !edgeCtx) {
+    // Should never happen for plain 2D canvases, but guard anyway
+    ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
+    return;
+  }
 
   // ── 1. Color-simplified base: blur + saturation ───────────────────────────
   const colorSimplification = effect.colorSimplification ?? 0.3;
@@ -131,57 +145,66 @@ function applyCartoonEffectToCtx(
   baseCtx.filter = 'none';
 
   // ── 2. Edge detection at half resolution (Sobel) ─────────────────────────
-  edgeCtx.clearRect(0, 0, ew, eh);
-  edgeCtx.drawImage(videoEl, 0, 0, ew, eh);
+  // Wrapped in try/catch: getImageData throws a SecurityError if the canvas
+  // is tainted by a cross-origin video without proper CORS headers.  In that
+  // case we fall back gracefully to just the blur+saturation base.
+  try {
+    edgeCtx.clearRect(0, 0, ew, eh);
+    edgeCtx.drawImage(videoEl, 0, 0, ew, eh);
 
-  const { data: srcData } = edgeCtx.getImageData(0, 0, ew, eh);
-  const edgeImageData = edgeCtx.createImageData(ew, eh);
-  const dst = edgeImageData.data;
+    const { data: srcData } = edgeCtx.getImageData(0, 0, ew, eh);
+    const edgeImageData = edgeCtx.createImageData(ew, eh);
+    const dst = edgeImageData.data;
 
-  // Grayscale pre-pass
-  const gray = new Float32Array(ew * eh);
-  for (let i = 0; i < ew * eh; i++) {
-    const p = i * 4;
-    gray[i] = 0.299 * srcData[p] + 0.587 * srcData[p + 1] + 0.114 * srcData[p + 2];
-  }
-
-  // edgeStrength=0 → rawThreshold=200 (almost no edges)
-  // edgeStrength=1 → rawThreshold=0   (all gradients become edges)
-  const rawThreshold = (1 - edgeStrengthVal) * 200;
-
-  for (let y = 0; y < eh; y++) {
-    for (let x = 0; x < ew; x++) {
-      let edgeVal = 255; // white = transparent in multiply blend
-      if (y > 0 && y < eh - 1 && x > 0 && x < ew - 1) {
-        const tl = gray[(y - 1) * ew + (x - 1)];
-        const tm = gray[(y - 1) * ew + x];
-        const tr = gray[(y - 1) * ew + (x + 1)];
-        const ml = gray[y * ew + (x - 1)];
-        const mr = gray[y * ew + (x + 1)];
-        const bl = gray[(y + 1) * ew + (x - 1)];
-        const bm = gray[(y + 1) * ew + x];
-        const br = gray[(y + 1) * ew + (x + 1)];
-        const gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
-        const gy = -tl - 2 * tm - tr + bl + 2 * bm + br;
-        const mag = Math.sqrt(gx * gx + gy * gy);
-        if (mag > rawThreshold) {
-          // Darker = stronger edge; scale by edgeStrength
-          edgeVal = Math.max(0, 255 - (mag - rawThreshold) * edgeStrengthVal * 4);
-        }
-      }
-      const idx = (y * ew + x) * 4;
-      dst[idx] = dst[idx + 1] = dst[idx + 2] = Math.round(edgeVal);
-      dst[idx + 3] = 255;
+    // Grayscale pre-pass
+    const gray = new Float32Array(ew * eh);
+    for (let i = 0; i < ew * eh; i++) {
+      const p = i * 4;
+      gray[i] = 0.299 * srcData[p] + 0.587 * srcData[p + 1] + 0.114 * srcData[p + 2];
     }
-  }
-  edgeCtx.putImageData(edgeImageData, 0, 0);
 
-  // ── 3. Multiply edges onto base ───────────────────────────────────────────
-  // White pixels (no edge) leave base unchanged; dark pixels darken the base.
-  baseCtx.save();
-  baseCtx.globalCompositeOperation = 'multiply';
-  baseCtx.drawImage(edge, 0, 0, ew, eh, 0, 0, iw, ih);
-  baseCtx.restore();
+    // edgeStrength=0 → rawThreshold=200 (almost no edges)
+    // edgeStrength=1 → rawThreshold=0   (all gradients become edges)
+    const rawThreshold = (1 - edgeStrengthVal) * 200;
+
+    for (let y = 0; y < eh; y++) {
+      for (let x = 0; x < ew; x++) {
+        let edgeVal = 255; // white = transparent in multiply blend
+        if (y > 0 && y < eh - 1 && x > 0 && x < ew - 1) {
+          const tl = gray[(y - 1) * ew + (x - 1)];
+          const tm = gray[(y - 1) * ew + x];
+          const tr = gray[(y - 1) * ew + (x + 1)];
+          const ml = gray[y * ew + (x - 1)];
+          const mr = gray[y * ew + (x + 1)];
+          const bl = gray[(y + 1) * ew + (x - 1)];
+          const bm = gray[(y + 1) * ew + x];
+          const br = gray[(y + 1) * ew + (x + 1)];
+          const gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
+          const gy = -tl - 2 * tm - tr + bl + 2 * bm + br;
+          const mag = Math.sqrt(gx * gx + gy * gy);
+          if (mag > rawThreshold) {
+            // Darker = stronger edge; scale by edgeStrength
+            edgeVal = Math.max(0, 255 - (mag - rawThreshold) * edgeStrengthVal * 4);
+          }
+        }
+        const idx = (y * ew + x) * 4;
+        dst[idx] = dst[idx + 1] = dst[idx + 2] = Math.round(edgeVal);
+        dst[idx + 3] = 255;
+      }
+    }
+    edgeCtx.putImageData(edgeImageData, 0, 0);
+
+    // ── 3. Multiply edges onto base ─────────────────────────────────────────
+    // White pixels (no edge) leave base unchanged; dark pixels darken the base.
+    baseCtx.save();
+    baseCtx.globalCompositeOperation = 'multiply';
+    baseCtx.drawImage(edge, 0, 0, ew, eh, 0, 0, iw, ih);
+    baseCtx.restore();
+  } catch (err) {
+    // Edge detection failed (e.g. SecurityError).  The base canvas still holds
+    // the blurred + saturated frame, so we continue to blit it below.
+    console.warn('[Preview] Cartoon edge detection failed, falling back to blur/saturation:', err);
+  }
 
   // ── 4. Blit result to main canvas (inherits caller's globalAlpha + transform) ──
   ctx.drawImage(base, bounds.x, bounds.y, bounds.w, bounds.h);
@@ -194,10 +217,13 @@ const videoElementCache = new Map<string, HTMLVideoElement>();
 function getOrCreateVideoEl(assetId: string, src: string): HTMLVideoElement {
   if (!videoElementCache.has(assetId)) {
     const el = document.createElement('video');
+    // crossOrigin must be set BEFORE src so the CORS request is made correctly
+    // from the start; setting it after src causes browsers to re-fetch or use a
+    // non-CORS response which would taint the canvas and break getImageData.
+    el.crossOrigin = 'anonymous';
     el.src = src;
     el.preload = 'auto';
     el.muted = true;
-    el.crossOrigin = 'anonymous';
     el.style.display = 'none';
     document.body.appendChild(el);
     videoElementCache.set(assetId, el);
@@ -464,18 +490,37 @@ export default function Preview({
     assetMap.current = map;
   }, [assets]);
 
-  // Preload video elements for all video assets in project
+  // Ref to drawFrame so video event handlers can call it without stale closures
+  const drawFrameRef = useRef<() => void>(() => {});
+
+  // Preload video elements for all video assets in project.
+  // Also attach seeked/loadeddata listeners so the preview redraws automatically
+  // when a seek completes or new video data becomes available (e.g. after the
+  // video element first buffers). Without this, a frame rendered while the video
+  // is still seeking shows a stale (or blank) result and never updates because
+  // no React state change triggers another drawFrame call.
   useEffect(() => {
     if (!project) return;
+    const attached: Array<{ el: HTMLVideoElement; handler: () => void }> = [];
     for (const track of project.tracks) {
       if (track.type !== 'video') continue;
       for (const clip of track.clips) {
         const asset = assetMap.current.get(clip.assetId);
         if (asset?.type === 'video' && asset.proxyPath) {
-          getOrCreateVideoEl(asset.id, `/files/${asset.proxyPath}`);
+          const el = getOrCreateVideoEl(asset.id, `/files/${asset.proxyPath}`);
+          const handler = () => { if (!propsRef.current.isPlaying) drawFrameRef.current(); };
+          el.addEventListener('seeked', handler);
+          el.addEventListener('loadeddata', handler);
+          attached.push({ el, handler });
         }
       }
     }
+    return () => {
+      for (const { el, handler } of attached) {
+        el.removeEventListener('seeked', handler);
+        el.removeEventListener('loadeddata', handler);
+      }
+    };
   }, [project]);
 
   // ── Build clip bounds map for hit testing ──────────────────────────────────
@@ -628,7 +673,8 @@ export default function Preview({
             } else {
               ctx.drawImage(videoEl, bounds.x, bounds.y, bounds.w, bounds.h);
             }
-          } catch {
+          } catch (err) {
+            console.error('[Preview] Failed to render video clip:', err);
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
           }
@@ -692,6 +738,11 @@ export default function Preview({
   }, [getClipBounds]);
 
   // ── RAF loop ──────────────────────────────────────────────────────────────
+
+  // Keep drawFrameRef in sync so video event listeners can call the latest version
+  useEffect(() => {
+    drawFrameRef.current = drawFrame;
+  }, [drawFrame]);
 
   const rafRef = useRef<number>(0);
   useEffect(() => {
