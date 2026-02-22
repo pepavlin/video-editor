@@ -1590,9 +1590,10 @@ export default function Timeline({
                         }
                       }
                     }
-                    // Fallback: first video track
+                    // Fallback: prefer video track with actual clips, then any video track
                     if (!parentTrackId && project) {
-                      const vt = project.tracks.find((t) => t.type === 'video');
+                      const vt = project.tracks.find((t) => t.type === 'video' && t.clips.some((c) => c.assetId))
+                        ?? project.tracks.find((t) => t.type === 'video');
                       if (vt) parentTrackId = vt.id;
                     }
                     onAddEffectTrack(type, start, 3, parentTrackId);

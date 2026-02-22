@@ -286,11 +286,18 @@ export default function Editor() {
     const clip = findClip(clipId);
     if (!clip || !clip.effectConfig) return;
 
-    // Find parent video track and get assets to process
+    // Find parent video track and get assets to process.
+    // Prefer the linked parentTrackId, but fall back to any video track with clips
+    // (handles the case where parentTrackId points to the default empty video track).
     const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
-    const parentTrack = effectTrack?.parentTrackId
+    const linkedParent = effectTrack?.parentTrackId
       ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
-      : project.tracks.find((t) => t.type === 'video');
+      : null;
+    const parentTrack =
+      (linkedParent && linkedParent.clips.some((c) => c.assetId))
+        ? linkedParent
+        : project.tracks.find((t) => t.type === 'video' && t.clips.some((c) => c.assetId))
+          ?? project.tracks.find((t) => t.type === 'video');
     const videoClips = parentTrack?.clips ?? [];
     const seenAssets = new Set<string>();
     const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
@@ -323,11 +330,18 @@ export default function Editor() {
     const clip = findClip(clipId);
     if (!clip || !clip.effectConfig) return;
 
-    // Find parent video track and get assets to process
+    // Find parent video track and get assets to process.
+    // Prefer the linked parentTrackId, but fall back to any video track with clips
+    // (handles the case where parentTrackId points to the default empty video track).
     const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
-    const parentTrack = effectTrack?.parentTrackId
+    const linkedParent = effectTrack?.parentTrackId
       ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
-      : project.tracks.find((t) => t.type === 'video');
+      : null;
+    const parentTrack =
+      (linkedParent && linkedParent.clips.some((c) => c.assetId))
+        ? linkedParent
+        : project.tracks.find((t) => t.type === 'video' && t.clips.some((c) => c.assetId))
+          ?? project.tracks.find((t) => t.type === 'video');
     const videoClips = parentTrack?.clips ?? [];
     const seenAssets = new Set<string>();
     const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
