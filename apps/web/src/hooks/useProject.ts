@@ -96,6 +96,8 @@ export function useProject() {
             return { effectType: 'headStabilization', enabled: true, smoothingX: 0.7, smoothingY: 0.7, smoothingZ: 0.0, stabilizationStatus: 'pending' as const };
           case 'cartoon':
             return { effectType: 'cartoon', enabled: true, edgeStrength: 0.6, colorSimplification: 0.5, saturation: 1.5 };
+          case 'colorGrade':
+            return { effectType: 'colorGrade', enabled: true, contrast: 1, brightness: 1, colorSaturation: 1, hue: 0, shadows: 0, highlights: 0 };
         }
       })();
 
@@ -104,6 +106,7 @@ export function useProject() {
         cutout: 'Cutout',
         headStabilization: 'Head Stab',
         cartoon: 'Cartoon',
+        colorGrade: 'Color Grade',
       };
 
       updateProject((p) => {
