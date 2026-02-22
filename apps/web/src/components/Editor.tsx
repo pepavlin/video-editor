@@ -673,7 +673,7 @@ export default function Editor() {
 
   // ── Main editor layout ─────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col overflow-hidden" style={{ height: '100dvh' }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div

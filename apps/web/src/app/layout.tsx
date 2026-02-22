@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ height: '100vh', overflow: 'hidden' }}>
+      <body style={{ height: '100dvh', overflow: 'hidden' }}>
         {children}
         <VersionBanner />
         <FeedbackButton />
