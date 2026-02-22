@@ -29,14 +29,14 @@ interface Props {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <div style={{ borderBottom: '1px solid rgba(15,23,42,0.07)' }}>
+    <div style={{ borderBottom: '1px solid var(--border-subtle)' }}>
       <button
         className="flex items-center justify-between w-full text-left"
         style={{
           padding: '14px 16px',
           transition: 'background 0.15s ease',
         }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(15,23,42,0.03)'; }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-overlay)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
         onClick={() => setOpen((o) => !o)}
       >
@@ -78,12 +78,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
         margin: '0 -8px',
         transition: 'background 0.12s ease',
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(15,23,42,0.03)'; }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-overlay)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
     >
       <span style={{
         fontSize: 13,
-        color: 'rgba(15,23,42,0.45)',
+        color: 'var(--text-muted)',
         width: 80,
         flexShrink: 0,
       }}>{label}</span>
@@ -154,7 +154,7 @@ export default function Inspector({
   const assetHasAudio = !!(selectedAsset?.audioPath);
 
   const valueText = (v: number | string) => (
-    <span style={{ fontSize: 13, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+    <span style={{ fontSize: 13, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
   );
 
   return (
@@ -165,7 +165,7 @@ export default function Inspector({
           <Section title={selectedTrackType === 'effect' ? 'Effect Info' : 'Clip Info'}>
             {selectedTrackType !== 'effect' && selectedClip.assetId && (
               <Row label="Asset">
-                <span style={{ fontSize: 13, color: '#475569', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {selectedAsset?.name ?? selectedClip.assetId}
                 </span>
               </Row>
@@ -198,7 +198,7 @@ export default function Inspector({
                       checked={cfg.enabled}
                       onChange={(e) => update({ enabled: e.target.checked })}
                     />
-                    <span style={{ fontSize: 13, color: cfg.enabled ? 'rgba(251,146,60,0.90)' : 'rgba(15,23,42,0.40)' }}>
+                    <span style={{ fontSize: 13, color: cfg.enabled ? 'rgba(251,146,60,0.90)' : 'var(--text-muted)' }}>
                       {cfg.enabled ? 'Active' : 'Disabled'}
                     </span>
                   </label>
@@ -217,7 +217,7 @@ export default function Inspector({
                           style={{ width: '100%' }}
                           onChange={(e) => update({ intensity: parseFloat(e.target.value) })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 38, flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 38, flexShrink: 0 }}>
                           {Math.round((cfg.intensity ?? 0.08) * 100)}%
                         </span>
                       </div>
@@ -233,7 +233,7 @@ export default function Inspector({
                           style={{ width: '100%' }}
                           onChange={(e) => update({ durationMs: parseInt(e.target.value) })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 38, flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 38, flexShrink: 0 }}>
                           {cfg.durationMs ?? 150}ms
                         </span>
                       </div>
@@ -288,7 +288,7 @@ export default function Inspector({
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{
                           fontSize: 11,
-                          color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'processing' ? '#fbbf24' : 'rgba(15,23,42,0.35)',
+                          color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'processing' ? '#fbbf24' : 'var(--text-subtle)',
                           flex: 1,
                         }}>
                           {cfg.maskStatus === 'done' && 'Mask ready'}
@@ -298,7 +298,7 @@ export default function Inspector({
                         </span>
                         <button
                           className="btn btn-ghost"
-                          style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.maskStatus === 'processing' ? 'rgba(15,23,42,0.30)' : '#0d9488', opacity: cfg.maskStatus === 'processing' ? 0.5 : 1 }}
+                          style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.maskStatus === 'processing' ? 'var(--text-subtle)' : '#0d9488', opacity: cfg.maskStatus === 'processing' ? 0.5 : 1 }}
                           disabled={cfg.maskStatus === 'processing'}
                           onClick={() => onStartCutout(selectedClip!.id)}
                         >
@@ -347,7 +347,7 @@ export default function Inspector({
                         <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingX ?? 0.7} style={{ width: '100%' }}
                           onChange={(e) => update({ smoothingX: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingX ?? 0.7) * 100)}%</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingX ?? 0.7) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Y Axis">
@@ -355,7 +355,7 @@ export default function Inspector({
                         <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingY ?? 0.7} style={{ width: '100%' }}
                           onChange={(e) => update({ smoothingY: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingY ?? 0.7) * 100)}%</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingY ?? 0.7) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Z Zoom">
@@ -363,14 +363,14 @@ export default function Inspector({
                         <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingZ ?? 0.0} style={{ width: '100%' }}
                           onChange={(e) => update({ smoothingZ: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingZ ?? 0) * 100)}%</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingZ ?? 0) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{
                           fontSize: 11,
-                          color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'processing' ? '#fbbf24' : 'rgba(15,23,42,0.35)',
+                          color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'processing' ? '#fbbf24' : 'var(--text-subtle)',
                           flex: 1,
                         }}>
                           {cfg.stabilizationStatus === 'done' && 'Stabilized'}
@@ -380,7 +380,7 @@ export default function Inspector({
                         </span>
                         <button
                           className="btn btn-ghost"
-                          style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.stabilizationStatus === 'processing' ? 'rgba(15,23,42,0.30)' : '#0d9488', opacity: cfg.stabilizationStatus === 'processing' ? 0.5 : 1 }}
+                          style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.stabilizationStatus === 'processing' ? 'var(--text-subtle)' : '#0d9488', opacity: cfg.stabilizationStatus === 'processing' ? 0.5 : 1 }}
                           disabled={cfg.stabilizationStatus === 'processing'}
                           onClick={() => onStartHeadStabilization(selectedClip!.id)}
                         >
@@ -398,7 +398,7 @@ export default function Inspector({
                         <input type="range" min={0} max={1} step={0.05} value={cfg.edgeStrength ?? 0.6} style={{ width: '100%' }}
                           onChange={(e) => update({ edgeStrength: parseFloat(e.target.value) })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>{Math.round((cfg.edgeStrength ?? 0.6) * 100)}%</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.edgeStrength ?? 0.6) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Flatten">
@@ -406,7 +406,7 @@ export default function Inspector({
                         <input type="range" min={0} max={1} step={0.05} value={cfg.colorSimplification ?? 0.5} style={{ width: '100%' }}
                           onChange={(e) => update({ colorSimplification: parseFloat(e.target.value) })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>{Math.round((cfg.colorSimplification ?? 0.5) * 100)}%</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.colorSimplification ?? 0.5) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Saturation">
@@ -414,7 +414,7 @@ export default function Inspector({
                         <input type="range" min={0} max={2} step={0.05} value={cfg.saturation ?? 1.5} style={{ width: '100%' }}
                           onChange={(e) => update({ saturation: parseFloat(e.target.value) })}
                         />
-                        <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
                       </div>
                     </Row>
                   </>
@@ -473,7 +473,7 @@ export default function Inspector({
                     })
                   }
                 />
-                <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', flexShrink: 0 }}>°</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>°</span>
               </div>
             </Row>
             <Row label="Opacity">
@@ -491,7 +491,7 @@ export default function Inspector({
                     })
                   }
                 />
-                <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>
                   {Math.round(selectedClip.transform.opacity * 100)}%
                 </span>
               </div>
@@ -499,7 +499,7 @@ export default function Inspector({
             <Row label="">
               <button
                 className="btn btn-ghost"
-                style={{ fontSize: 11, border: '1px solid rgba(15,23,42,0.10)', padding: '4px 10px', color: 'rgba(15,23,42,0.40)' }}
+                style={{ fontSize: 11, border: '1px solid var(--border-default)', padding: '4px 10px', color: 'var(--text-muted)' }}
                 onClick={() =>
                   onClipUpdate(selectedClip!.id, {
                     transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
@@ -587,7 +587,7 @@ export default function Inspector({
             </Row>
             <Row label="">
               <div style={{ display: 'flex', gap: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgba(15,23,42,0.50)', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={selectedClip.textStyle?.bold ?? true}
@@ -599,7 +599,7 @@ export default function Inspector({
                   />
                   Bold
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgba(15,23,42,0.50)', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={selectedClip.textStyle?.italic ?? false}
@@ -627,7 +627,7 @@ export default function Inspector({
                 />
                 <button
                   className="btn btn-ghost"
-                  style={{ fontSize: 11, padding: '4px 8px', border: '1px solid rgba(15,23,42,0.10)', color: 'rgba(15,23,42,0.40)' }}
+                  style={{ fontSize: 11, padding: '4px 8px', border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                   onClick={() =>
                     onClipUpdate(selectedClip!.id, {
                       textStyle: { ...(selectedClip!.textStyle as TextStyle), background: undefined },
@@ -657,7 +657,7 @@ export default function Inspector({
                       })
                     }
                   />
-                  <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>
                     {Math.round((selectedClip.textStyle?.backgroundOpacity ?? 0.65) * 100)}%
                   </span>
                 </div>
@@ -687,7 +687,7 @@ export default function Inspector({
                   }
                 />
                 {!assetHasAudio && (
-                  <span style={{ fontSize: 11, color: 'rgba(15,23,42,0.30)' }}>no audio</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>no audio</span>
                 )}
               </label>
             </Row>
@@ -707,7 +707,7 @@ export default function Inspector({
                       })
                     }
                   />
-                  <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.40)', width: 32, flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>
                     {Math.round((selectedClip.clipAudioVolume ?? 1) * 100)}%
                   </span>
                 </div>
@@ -722,7 +722,7 @@ export default function Inspector({
                     border: '1px solid rgba(13,148,136,0.28)',
                     padding: '6px 12px',
                     width: '100%',
-                    color: syncing ? 'rgba(15,23,42,0.40)' : '#0d9488',
+                    color: syncing ? 'var(--text-muted)' : '#0d9488',
                     opacity: syncing ? 0.6 : 1,
                   }}
                   disabled={syncing}
@@ -743,7 +743,7 @@ export default function Inspector({
           )}
         </>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 120, gap: 10, color: 'rgba(15,23,42,0.25)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 120, gap: 10, color: 'var(--text-subtle)' }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
           <span style={{ fontSize: 13 }}>Select a clip to inspect</span>
         </div>
@@ -807,7 +807,7 @@ function LyricsClipInspector({
             border: '1px solid rgba(13,148,136,0.28)',
             width: '100%',
             fontSize: 13,
-            color: aligning ? 'rgba(15,23,42,0.40)' : '#0d9488',
+            color: aligning ? 'var(--text-muted)' : '#0d9488',
             opacity: aligning || !clip.lyricsContent?.trim() ? 0.6 : 1,
           }}
           disabled={aligning || !clip.lyricsContent?.trim()}
