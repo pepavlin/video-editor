@@ -10,7 +10,8 @@
 
 html,
 body {
-  height: 100%;
+  height: 100vh; /* fallback */
+  height: 100dvh; /* dynamic viewport height — excludes browser UI on mobile */
   overflow: hidden;
   color: #e8f4f0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

@@ -75,14 +75,18 @@ export function MobileLayout({ panelRenderers }: { panelRenderers: PanelRenderer
       {/* ── Content area ─────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
 
-        {/* Preview tab: project-bar + preview + transport stacked */}
+        {/* Preview tab: project-bar + preview + transport stacked.
+            Uses visibility instead of display:none so the container keeps its
+            dimensions — ResizeObserver inside Preview fires reliably on tab switch. */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            display: activeTab === 'preview' ? 'flex' : 'none',
+            display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            visibility: activeTab === 'preview' ? 'visible' : 'hidden',
+            pointerEvents: activeTab === 'preview' ? 'auto' : 'none',
           }}
         >
           {/* Project bar (compact) */}

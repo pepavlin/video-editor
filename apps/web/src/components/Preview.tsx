@@ -724,6 +724,8 @@ export default function Preview({
 
     const ro = new ResizeObserver(() => {
       const { clientWidth, clientHeight } = container;
+      // Skip when container is hidden (display:none / visibility:hidden collapses to 0)
+      if (clientWidth === 0 || clientHeight === 0) return;
       const aspect = project
         ? project.outputResolution.w / project.outputResolution.h
         : 9 / 16;
