@@ -90,6 +90,7 @@ export default function Editor() {
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportLogLine, setExportLogLine] = useState<string | null>(null);
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
+  const [cutoutProgress, setCutoutProgress] = useState<number | null>(null);
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -325,20 +326,22 @@ export default function Editor() {
     }
 
     const cutoutMode = (clip.effectConfig.cutoutMode ?? 'removeBg') as 'removeBg' | 'removePerson';
-    notify('Starting cutout processing...');
     updateEffectClipConfig(clipId, { maskStatus: 'processing' });
+    setCutoutProgress(0);
     try {
       const { jobId } = await api.startCutout(uniqueAssetIds[0], cutoutMode);
-      api.pollJob(jobId, (j) => notify(`Cutout: ${j.progress}%`)).then(() => {
+      api.pollJob(jobId, (j) => setCutoutProgress(j.progress)).then(() => {
         updateEffectClipConfig(clipId, { maskStatus: 'done' });
-        notify('Cutout done!');
+        setCutoutProgress(null);
         refreshAssets();
       }).catch((e) => {
         updateEffectClipConfig(clipId, { maskStatus: 'error' });
+        setCutoutProgress(null);
         notify(`Cutout failed: ${e.message}`);
       });
     } catch (e: any) {
       updateEffectClipConfig(clipId, { maskStatus: 'error' });
+      setCutoutProgress(null);
       notify(`Cutout error: ${e.message}`);
     }
   };
@@ -721,6 +724,7 @@ export default function Editor() {
           onStartCutout={handleStartCutout}
           onStartHeadStabilization={handleStartHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
+          cutoutProgress={cutoutProgress}
         />
       </div>
     ),
