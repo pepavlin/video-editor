@@ -643,7 +643,7 @@ export default function Editor() {
     ),
 
     timeline: () => (
-      <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <Timeline
           project={project}
           currentTime={playback.currentTime}

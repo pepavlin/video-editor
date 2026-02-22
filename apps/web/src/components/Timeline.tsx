@@ -96,6 +96,7 @@ export default function Timeline({
 
   const [zoom, setZoom] = useState(80); // px/second
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
   const [drag, setDrag] = useState<DragMode>({ type: 'none' });
   const [snapMode, setSnapMode] = useState<SnapMode>('clips');
   const [showEffectMenu, setShowEffectMenu] = useState(false);
@@ -116,6 +117,14 @@ export default function Timeline({
   const scrollLeftRef = useRef(scrollLeft);
   scrollLeftRef.current = scrollLeft;
 
+  const scrollTopRef = useRef(scrollTop);
+  scrollTopRef.current = scrollTop;
+
+  // Tracks the canvas container height for vertical scroll clamping
+  const containerHeightRef = useRef(0);
+  // Tracks total content height for vertical scroll clamping
+  const canvasContentHeightRef = useRef(0);
+
   const workAreaRef = useRef(workArea);
   workAreaRef.current = workArea;
 
@@ -128,7 +137,9 @@ export default function Timeline({
   // 'drag' = interacting with clip/ruler, 'scroll' = panning timeline, 'pinch' = zoom
   const touchModeRef = useRef<'drag' | 'scroll' | 'pinch' | 'none'>('none');
   const touchScrollStartClientXRef = useRef<number>(0);
+  const touchScrollStartClientYRef = useRef<number>(0);
   const touchScrollStartSLRef = useRef<number>(0);
+  const touchScrollStartSTRef = useRef<number>(0);
   // True after any touch event is received – used to widen hit areas
   const isTouchDeviceRef = useRef(false);
 
@@ -276,11 +287,11 @@ export default function Timeline({
     []
   );
 
-  // Get the canvas-Y for track at a given index (variable heights)
+  // Get the canvas-Y for track at a given index (variable heights), accounting for scrollTop
   const trackYForIndex = useCallback(
     (idx: number) => {
-      if (!project) return RULER_HEIGHT + idx * TRACK_HEIGHT;
-      let y = RULER_HEIGHT;
+      if (!project) return RULER_HEIGHT - scrollTopRef.current + idx * TRACK_HEIGHT;
+      let y = RULER_HEIGHT - scrollTopRef.current;
       for (let i = 0; i < idx && i < project.tracks.length; i++) {
         y += getTrackH(project.tracks[i]);
       }
@@ -289,11 +300,12 @@ export default function Timeline({
     [project]
   );
 
-  // Get track at canvas Y (returns track and its Y position), variable heights
+  // Get track at canvas Y (returns track and its Y position), accounting for scrollTop
   const getTrackAtY = useCallback(
     (y: number): { track: Track; trackY: number; trackH: number } | null => {
       if (!project) return null;
-      let ty = RULER_HEIGHT;
+      const ST = scrollTopRef.current;
+      let ty = RULER_HEIGHT - ST;
       for (const track of project.tracks) {
         const th = getTrackH(track);
         if (y >= ty && y < ty + th) return { track, trackY: ty, trackH: th };
@@ -318,6 +330,7 @@ export default function Timeline({
     const H = canvas.height;
     const Z = zoomRef.current;
     const SL = scrollLeftRef.current;
+    const ST = scrollTopRef.current;
 
     // ─── Theme colours ─────────────────────────────────────────────────────
     const dark = isDarkRef.current;
@@ -448,8 +461,13 @@ export default function Timeline({
       }
     }
 
-    // ─── Tracks ───────────────────────────────────────────────────────────
-    let trackY = RULER_HEIGHT;
+    // ─── Tracks (clipped below ruler, offset by scrollTop) ───────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER_HEIGHT, W, H - RULER_HEIGHT);
+    ctx.clip();
+
+    let trackY = RULER_HEIGHT - ST;
     for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
       const track = tracks[trackIdx];
       const trackH = getTrackH(track);
@@ -826,7 +844,7 @@ export default function Timeline({
 
     // ─── Ghost clip on new track zone (below all existing tracks) ─────────
     if (ghost && ghost.trackId === null) {
-      const newTrackY = RULER_HEIGHT + getTotalTracksHeight(tracks);
+      const newTrackY = RULER_HEIGHT - ST + getTotalTracksHeight(tracks);
       const isAudioGhost = ghost.assetType === 'audio';
 
       // Draw new track header
@@ -868,14 +886,17 @@ export default function Timeline({
 
       const leftEnd = Math.min(Math.max(waS, HEADER_WIDTH), W);
       if (leftEnd > HEADER_WIDTH) {
-        ctx.fillRect(HEADER_WIDTH, RULER_HEIGHT, leftEnd - HEADER_WIDTH, totalTrackH);
+        ctx.fillRect(HEADER_WIDTH, RULER_HEIGHT, leftEnd - HEADER_WIDTH, totalTrackH - ST);
       }
 
       const rightStart = Math.max(Math.min(waE, W), HEADER_WIDTH);
       if (rightStart < W) {
-        ctx.fillRect(rightStart, RULER_HEIGHT, W - rightStart, totalTrackH);
+        ctx.fillRect(rightStart, RULER_HEIGHT, W - rightStart, totalTrackH - ST);
       }
     }
+
+    // ─── End track area clip ───────────────────────────────────────────────
+    ctx.restore();
 
     // ─── Playhead ──────────────────────────────────────────────────────────
     const playX = currentTime * Z - SL + HEADER_WIDTH;
@@ -908,6 +929,9 @@ export default function Timeline({
     const ro = new ResizeObserver(() => {
       canvas.width = container.clientWidth;
       canvas.height = container.clientHeight;
+      containerHeightRef.current = container.clientHeight;
+      // Clamp scrollTop in case content shrank
+      setScrollTop((st) => Math.max(0, Math.min(st, canvasContentHeightRef.current - container.clientHeight)));
       draw();
     });
     ro.observe(container);
@@ -924,8 +948,9 @@ export default function Timeline({
       if (!project) return null;
       const Z = zoomRef.current;
       const SL = scrollLeftRef.current;
+      const ST = scrollTopRef.current;
 
-      let trackY = RULER_HEIGHT;
+      let trackY = RULER_HEIGHT - ST;
       for (const track of project.tracks) {
         const th = getTrackH(track);
         if (y >= trackY && y < trackY + th) {
@@ -1188,10 +1213,12 @@ export default function Timeline({
           touchModeRef.current = 'drag';
           handlePointerDown(x, y, true);
         } else {
-          // Start a horizontal pan
+          // Start a pan (horizontal + vertical)
           touchModeRef.current = 'scroll';
           touchScrollStartClientXRef.current = touch.clientX;
+          touchScrollStartClientYRef.current = touch.clientY;
           touchScrollStartSLRef.current = scrollLeftRef.current;
+          touchScrollStartSTRef.current = scrollTopRef.current;
         }
       }
     },
@@ -1216,9 +1243,14 @@ export default function Timeline({
         const touch = e.touches[0];
 
         if (touchModeRef.current === 'scroll') {
-          // Horizontal pan
+          // Horizontal + vertical pan
           const dx = touch.clientX - touchScrollStartClientXRef.current;
+          const dy = touch.clientY - touchScrollStartClientYRef.current;
           setScrollLeft(Math.max(0, touchScrollStartSLRef.current - dx));
+          setScrollTop(() => {
+            const maxST = Math.max(0, canvasContentHeightRef.current - containerHeightRef.current);
+            return clamp(touchScrollStartSTRef.current - dy, 0, maxST);
+          });
           return;
         }
 
@@ -1248,12 +1280,23 @@ export default function Timeline({
   );
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
+      // Ctrl/Meta + scroll → zoom
       const factor = e.deltaY > 0 ? 0.85 : 1.18;
       setZoom((z) => clamp(z * factor, MIN_ZOOM, MAX_ZOOM));
     } else {
-      setScrollLeft((s) => Math.max(0, s + e.deltaX + e.deltaY));
+      // Horizontal scroll (trackpad swipe left/right or Shift+wheel)
+      if (e.deltaX !== 0) {
+        setScrollLeft((s) => Math.max(0, s + e.deltaX));
+      }
+      // Vertical scroll (trackpad swipe up/down)
+      if (e.deltaY !== 0) {
+        setScrollTop((st) => {
+          const maxST = Math.max(0, canvasContentHeightRef.current - containerHeightRef.current);
+          return clamp(st + e.deltaY, 0, maxST);
+        });
+      }
     }
   }, []);
 
@@ -1422,13 +1465,14 @@ export default function Timeline({
     setTrackDragOverIdx(null);
   }, [trackDragFromIdx, onTrackReorder]);
 
-  // Compute canvas height based on track heights (variable) + extra row for new-track ghost zone
+  // Compute total content height (tracks + ruler) for vertical scroll clamping
   const totalTracksH = project ? getTotalTracksHeight(project.tracks) : TRACK_HEIGHT;
   const extraRow = ghostRef.current?.trackId === null ? 1 : 0;
-  const canvasHeight = RULER_HEIGHT + totalTracksH + (extraRow ? TRACK_HEIGHT : 0) + 8;
+  const canvasContentHeight = RULER_HEIGHT + totalTracksH + (extraRow ? TRACK_HEIGHT : 0) + 8;
+  canvasContentHeightRef.current = canvasContentHeight;
 
   return (
-    <div style={{ background: 'var(--surface-bg)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: 'var(--surface-bg)', display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Toolbar */}
       <div
         style={{
@@ -1578,11 +1622,11 @@ export default function Timeline({
         </div>
       </div>
 
-      {/* Canvas */}
+      {/* Canvas – fills remaining height; internal scrollTop handles vertical panning */}
       <div
         ref={containerRef}
         className="relative"
-        style={{ height: `${canvasHeight}px` }}
+        style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
       >
         <canvas
           ref={canvasRef}
@@ -1609,9 +1653,12 @@ export default function Timeline({
               left: 0,
               top: RULER_HEIGHT,
               width: HEADER_WIDTH,
+              bottom: 0,
+              overflow: 'hidden',
               pointerEvents: 'none',
             }}
           >
+            <div style={{ transform: `translateY(${-scrollTop}px)` }}>
             {project.tracks.map((track, idx) => (
               <div
                 key={track.id}
@@ -1663,6 +1710,7 @@ export default function Timeline({
                 </svg>
               </div>
             ))}
+            </div>
           </div>
         )}
       </div>
