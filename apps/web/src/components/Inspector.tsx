@@ -674,7 +674,7 @@ export default function Inspector({
             />
           )}
 
-          {selectedTrackType === 'video' && (
+          {selectedTrackType === 'video' && !selectedClip?.textContent && !selectedClip?.textStyle && (
           <Section title="Audio">
             <Row label="Use audio">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: assetHasAudio ? 'pointer' : 'not-allowed' }}>

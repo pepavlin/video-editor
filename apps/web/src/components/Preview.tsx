@@ -55,6 +55,14 @@ type DragState =
       startAngle: number; startRotation: number;
     };
 
+interface EditingTextState {
+  clipId: string;
+  canvasCX: number; // text center X in canvas pixels
+  canvasCY: number; // text center Y in canvas pixels
+  fontSize: number; // rendered font size in canvas pixels
+  style: TextStyle;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const HANDLE_RADIUS = 7;
@@ -483,6 +491,10 @@ export default function Preview({
   // Active snap guide lines drawn during move drag { x: canvas-x[], y: canvas-y[] }
   const snapLinesRef = useRef<{ x: number[]; y: number[] }>({ x: [], y: [] });
 
+  // Inline text editing state
+  const editingClipIdRef = useRef<string | null>(null);
+  const [editingState, setEditingState] = useState<EditingTextState | null>(null);
+
   const assetMap = useRef(new Map<string, Asset>());
   useEffect(() => {
     const map = new Map<string, Asset>();
@@ -596,7 +608,10 @@ export default function Preview({
 
         // Text clips can live on any visual track (video or legacy text type)
         if (clip.textContent) {
-          drawTextClip(ctx, clip, transform, W, H);
+          // Skip rendering when clip is being edited inline (textarea shows it instead)
+          if (clip.id !== editingClipIdRef.current) {
+            drawTextClip(ctx, clip, transform, W, H);
+          }
           continue;
         }
 
@@ -1117,6 +1132,43 @@ export default function Preview({
     [getClipBounds, onClipSelect]
   );
 
+  // Open inline text editor on double-click on a text clip
+  const handleDblClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const { x: mx, y: my } = getCanvasMousePos(e);
+      const W = canvas.width;
+      const H = canvas.height;
+      const { project, currentTime } = propsRef.current;
+      if (!project) return;
+
+      // Find topmost text clip at the double-click position
+      for (const track of [...project.tracks].reverse()) {
+        if (track.muted) continue;
+        for (const clip of track.clips) {
+          if (!clip.textContent) continue;
+          if (currentTime < clip.timelineStart || currentTime >= clip.timelineEnd) continue;
+          const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
+          const bounds = getTextBounds(clip, transform, ctx, W, H);
+          if (isInRect(mx, my, bounds)) {
+            onClipSelect(clip.id);
+            const style = clip.textStyle ?? DEFAULT_TEXT_STYLE;
+            const fontSize = Math.round((style.fontSize / 1920) * H * transform.scale);
+            const cx = W / 2 + transform.x;
+            const cy = H / 2 + transform.y;
+            editingClipIdRef.current = clip.id;
+            setEditingState({ clipId: clip.id, canvasCX: cx, canvasCY: cy, fontSize, style });
+            return;
+          }
+        }
+      }
+    },
+    [getCanvasMousePos, onClipSelect]
+  );
+
   // Update cursor based on what's under pointer
   const handleMouseMoveForCursor = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1236,6 +1288,7 @@ export default function Preview({
           style={{ display: 'block', imageRendering: 'auto' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMoveForCursor}
+          onDoubleClick={handleDblClick}
         />
         {/* SVG selection overlay — overflow:visible lets handles appear outside canvas */}
         <svg
@@ -1250,6 +1303,55 @@ export default function Preview({
             pointerEvents: 'none',
           }}
         />
+        {/* Inline text editor — rendered inside zoom wrapper so it scales with canvas zoom */}
+        {editingState && project && (() => {
+          const clip = project.tracks.flatMap((t) => t.clips).find((c) => c.id === editingState.clipId);
+          if (!clip) return null;
+          const { canvasCX, canvasCY, fontSize, style } = editingState;
+          const textWidth = Math.max(200, fontSize * 12);
+          return (
+            <textarea
+              key={editingState.clipId}
+              autoFocus
+              value={clip.textContent ?? ''}
+              onChange={(e) => onClipUpdate(clip.id, { textContent: e.target.value })}
+              onBlur={() => {
+                editingClipIdRef.current = null;
+                setEditingState(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  editingClipIdRef.current = null;
+                  setEditingState(null);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                left: canvasCX - textWidth / 2,
+                top: canvasCY - fontSize * 1.5,
+                width: textWidth,
+                minHeight: fontSize * 3,
+                background: 'rgba(0,0,0,0.55)',
+                border: '2px solid rgba(255,255,255,0.85)',
+                borderRadius: 4,
+                color: style.color,
+                fontSize: fontSize,
+                fontFamily: style.fontFamily,
+                fontWeight: style.bold ? 'bold' : 'normal',
+                fontStyle: style.italic ? 'italic' : 'normal',
+                textAlign: style.align ?? 'center',
+                resize: 'none',
+                padding: '4px 8px',
+                lineHeight: 1.4,
+                outline: 'none',
+                zIndex: 100,
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+              }}
+            />
+          );
+        })()}
       </div>
 
       {/* Zoom controls overlay */}
