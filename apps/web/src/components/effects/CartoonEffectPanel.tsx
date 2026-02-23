@@ -1,5 +1,7 @@
 'use client';
 
+import { SnapSlider } from './SnapSlider';
+
 interface CartoonEffect {
   type: 'cartoon';
   enabled: boolean;
@@ -29,23 +31,20 @@ export function CartoonEffectPanel({ clipId, effect, onRemove, onUpdate }: Omit<
       </label>
       {(
         [
-          { key: 'edgeStrength' as const, label: 'Edges', min: 0, max: 1, format: (v: number) => `${Math.round(v * 100)}%` },
-          { key: 'colorSimplification' as const, label: 'Flatten', min: 0, max: 1, format: (v: number) => `${Math.round(v * 100)}%` },
-          { key: 'saturation' as const, label: 'Saturation', min: 0, max: 2, format: (v: number) => `${v.toFixed(1)}×` },
+          { key: 'edgeStrength' as const, label: 'Edges', min: 0, max: 1, defaultValue: 0.6, format: (v: number) => `${Math.round(v * 100)}%` },
+          { key: 'colorSimplification' as const, label: 'Flatten', min: 0, max: 1, defaultValue: 0.5, format: (v: number) => `${Math.round(v * 100)}%` },
+          { key: 'saturation' as const, label: 'Saturation', min: 0, max: 2, defaultValue: 1.5, format: (v: number) => `${v.toFixed(1)}×` },
         ] as const
-      ).map(({ key, label, min, max, format }) => (
+      ).map(({ key, label, min, max, defaultValue, format }) => (
         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, color: 'rgba(15,23,42,0.45)', width: 70, flexShrink: 0 }}>{label}</span>
-          <input
-            type="range"
+          <SnapSlider
             min={min}
             max={max}
             step={0.05}
             value={effect[key]}
-            style={{ flex: 1 }}
-            onChange={(e) =>
-              onUpdate(clipId, 'cartoon', { [key]: parseFloat(e.target.value) })
-            }
+            defaultValue={defaultValue}
+            onChange={(v) => onUpdate(clipId, 'cartoon', { [key]: v })}
           />
           <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.45)', width: 36, flexShrink: 0 }}>
             {format(effect[key])}

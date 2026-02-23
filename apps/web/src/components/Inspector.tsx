@@ -11,6 +11,7 @@ import type {
   WordTimestamp,
 } from '@video-editor/shared';
 import { formatTime } from '@/lib/utils';
+import { SnapSlider } from './effects/SnapSlider';
 
 interface Props {
   project: Project | null;
@@ -372,24 +373,24 @@ export default function Inspector({
                   <>
                     <Row label="X Axis">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingX ?? 0.7} style={{ width: '100%' }}
-                          onChange={(e) => update({ smoothingX: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
+                        <SnapSlider min={0} max={1} step={0.05} value={cfg.smoothingX ?? 0.7} defaultValue={0.7}
+                          onChange={(v) => update({ smoothingX: v, stabilizationStatus: 'pending' })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingX ?? 0.7) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Y Axis">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingY ?? 0.7} style={{ width: '100%' }}
-                          onChange={(e) => update({ smoothingY: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
+                        <SnapSlider min={0} max={1} step={0.05} value={cfg.smoothingY ?? 0.7} defaultValue={0.7}
+                          onChange={(v) => update({ smoothingY: v, stabilizationStatus: 'pending' })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingY ?? 0.7) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Z Zoom">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={1} step={0.05} value={cfg.smoothingZ ?? 0.0} style={{ width: '100%' }}
-                          onChange={(e) => update({ smoothingZ: parseFloat(e.target.value), stabilizationStatus: 'pending' })}
+                        <SnapSlider min={0} max={1} step={0.05} value={cfg.smoothingZ ?? 0.0} defaultValue={0.0}
+                          onChange={(v) => update({ smoothingZ: v, stabilizationStatus: 'pending' })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingZ ?? 0) * 100)}%</span>
                       </div>
@@ -423,24 +424,24 @@ export default function Inspector({
                   <>
                     <Row label="Edges">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={1} step={0.05} value={cfg.edgeStrength ?? 0.6} style={{ width: '100%' }}
-                          onChange={(e) => update({ edgeStrength: parseFloat(e.target.value) })}
+                        <SnapSlider min={0} max={1} step={0.05} value={cfg.edgeStrength ?? 0.6} defaultValue={0.6}
+                          onChange={(v) => update({ edgeStrength: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.edgeStrength ?? 0.6) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Flatten">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={1} step={0.05} value={cfg.colorSimplification ?? 0.5} style={{ width: '100%' }}
-                          onChange={(e) => update({ colorSimplification: parseFloat(e.target.value) })}
+                        <SnapSlider min={0} max={1} step={0.05} value={cfg.colorSimplification ?? 0.5} defaultValue={0.5}
+                          onChange={(v) => update({ colorSimplification: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.colorSimplification ?? 0.5) * 100)}%</span>
                       </div>
                     </Row>
                     <Row label="Saturation">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={2} step={0.05} value={cfg.saturation ?? 1.5} style={{ width: '100%' }}
-                          onChange={(e) => update({ saturation: parseFloat(e.target.value) })}
+                        <SnapSlider min={0} max={2} step={0.05} value={cfg.saturation ?? 1.5} defaultValue={1.5}
+                          onChange={(v) => update({ saturation: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
                       </div>
@@ -452,48 +453,48 @@ export default function Inspector({
                   <>
                     <Row label="Contrast">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={2} step={0.05} value={cfg.contrast ?? 1} style={{ width: '100%' }}
-                          onChange={(e) => update({ contrast: parseFloat(e.target.value) })}
+                        <SnapSlider min={0} max={2} step={0.05} value={cfg.contrast ?? 1} defaultValue={1}
+                          onChange={(v) => update({ contrast: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.contrast ?? 1).toFixed(2)}</span>
                       </div>
                     </Row>
                     <Row label="Brightness">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={2} step={0.05} value={cfg.brightness ?? 1} style={{ width: '100%' }}
-                          onChange={(e) => update({ brightness: parseFloat(e.target.value) })}
+                        <SnapSlider min={0} max={2} step={0.05} value={cfg.brightness ?? 1} defaultValue={1}
+                          onChange={(v) => update({ brightness: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.brightness ?? 1).toFixed(2)}</span>
                       </div>
                     </Row>
                     <Row label="Saturation">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={0} max={2} step={0.05} value={cfg.colorSaturation ?? 1} style={{ width: '100%' }}
-                          onChange={(e) => update({ colorSaturation: parseFloat(e.target.value) })}
+                        <SnapSlider min={0} max={2} step={0.05} value={cfg.colorSaturation ?? 1} defaultValue={1}
+                          onChange={(v) => update({ colorSaturation: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.colorSaturation ?? 1).toFixed(2)}</span>
                       </div>
                     </Row>
                     <Row label="Hue">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={-180} max={180} step={1} value={cfg.hue ?? 0} style={{ width: '100%' }}
-                          onChange={(e) => update({ hue: parseFloat(e.target.value) })}
+                        <SnapSlider min={-180} max={180} step={1} value={cfg.hue ?? 0} defaultValue={0}
+                          onChange={(v) => update({ hue: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.hue ?? 0).toFixed(0)}°</span>
                       </div>
                     </Row>
                     <Row label="Shadows">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={-1} max={1} step={0.05} value={cfg.shadows ?? 0} style={{ width: '100%' }}
-                          onChange={(e) => update({ shadows: parseFloat(e.target.value) })}
+                        <SnapSlider min={-1} max={1} step={0.05} value={cfg.shadows ?? 0} defaultValue={0}
+                          onChange={(v) => update({ shadows: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.shadows ?? 0) >= 0 ? '+' : ''}{(cfg.shadows ?? 0).toFixed(2)}</span>
                       </div>
                     </Row>
                     <Row label="Highlights">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="range" min={-1} max={1} step={0.05} value={cfg.highlights ?? 0} style={{ width: '100%' }}
-                          onChange={(e) => update({ highlights: parseFloat(e.target.value) })}
+                        <SnapSlider min={-1} max={1} step={0.05} value={cfg.highlights ?? 0} defaultValue={0}
+                          onChange={(v) => update({ highlights: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.highlights ?? 0) >= 0 ? '+' : ''}{(cfg.highlights ?? 0).toFixed(2)}</span>
                       </div>
