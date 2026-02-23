@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import FeedbackButton from '@/components/FeedbackButton';
 import VersionBanner from '@/components/VersionBanner';
+import ChangelogModal from '@/components/ChangelogModal';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 
 export const metadata: Metadata = {
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <VersionBanner />
           <FeedbackButton />
+          <ChangelogModal />
         </ThemeProvider>
       </body>
     </html>
