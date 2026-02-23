@@ -1,5 +1,7 @@
 'use client';
 
+import { SnapSlider } from './SnapSlider';
+
 interface HeadStabilizationEffect {
   type: 'headStabilization';
   enabled: boolean;
@@ -31,26 +33,20 @@ export function HeadStabilizationEffectPanel({ clipId, effect, onRemove, onUpdat
       </label>
       {(
         [
-          { key: 'smoothingX' as const, label: 'X Axis' },
-          { key: 'smoothingY' as const, label: 'Y Axis' },
-          { key: 'smoothingZ' as const, label: 'Z Zoom' },
+          { key: 'smoothingX' as const, label: 'X Axis', defaultValue: 0.7 },
+          { key: 'smoothingY' as const, label: 'Y Axis', defaultValue: 0.7 },
+          { key: 'smoothingZ' as const, label: 'Z Zoom', defaultValue: 0.0 },
         ] as const
-      ).map(({ key, label }) => (
+      ).map(({ key, label, defaultValue }) => (
         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, color: 'rgba(15,23,42,0.45)', width: 52, flexShrink: 0 }}>{label}</span>
-          <input
-            type="range"
+          <SnapSlider
             min={0}
             max={1}
             step={0.05}
             value={effect[key]}
-            style={{ flex: 1 }}
-            onChange={(e) =>
-              onUpdate(clipId, 'headStabilization', {
-                [key]: parseFloat(e.target.value),
-                status: 'pending',
-              })
-            }
+            defaultValue={defaultValue}
+            onChange={(v) => onUpdate(clipId, 'headStabilization', { [key]: v, status: 'pending' })}
           />
           <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.45)', width: 32, flexShrink: 0 }}>
             {Math.round(effect[key] * 100)}%

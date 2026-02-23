@@ -1,5 +1,7 @@
 'use client';
 
+import { SnapSlider } from './SnapSlider';
+
 interface ColorGradeEffect {
   type: 'colorGrade';
   enabled: boolean;
@@ -20,12 +22,12 @@ interface Props {
 }
 
 const SLIDERS = [
-  { key: 'contrast' as const,        label: 'Contrast',    min: 0,    max: 2,   step: 0.05, format: (v: number) => v.toFixed(2) },
-  { key: 'brightness' as const,      label: 'Brightness',  min: 0,    max: 2,   step: 0.05, format: (v: number) => v.toFixed(2) },
-  { key: 'colorSaturation' as const, label: 'Saturation',  min: 0,    max: 2,   step: 0.05, format: (v: number) => v.toFixed(2) },
-  { key: 'hue' as const,             label: 'Hue',         min: -180, max: 180, step: 1,    format: (v: number) => `${v.toFixed(0)}°` },
-  { key: 'shadows' as const,         label: 'Shadows',     min: -1,   max: 1,   step: 0.05, format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}` },
-  { key: 'highlights' as const,      label: 'Highlights',  min: -1,   max: 1,   step: 0.05, format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}` },
+  { key: 'contrast' as const,        label: 'Contrast',    min: 0,    max: 2,   step: 0.05, defaultValue: 1,  format: (v: number) => v.toFixed(2) },
+  { key: 'brightness' as const,      label: 'Brightness',  min: 0,    max: 2,   step: 0.05, defaultValue: 1,  format: (v: number) => v.toFixed(2) },
+  { key: 'colorSaturation' as const, label: 'Saturation',  min: 0,    max: 2,   step: 0.05, defaultValue: 1,  format: (v: number) => v.toFixed(2) },
+  { key: 'hue' as const,             label: 'Hue',         min: -180, max: 180, step: 1,    defaultValue: 0,  format: (v: number) => `${v.toFixed(0)}°` },
+  { key: 'shadows' as const,         label: 'Shadows',     min: -1,   max: 1,   step: 0.05, defaultValue: 0,  format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}` },
+  { key: 'highlights' as const,      label: 'Highlights',  min: -1,   max: 1,   step: 0.05, defaultValue: 0,  format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}` },
 ] as const;
 
 export function ColorGradeEffectPanel({ clipId, effect, onRemove, onUpdate }: Omit<Props, 'onAdd'>) {
@@ -39,19 +41,16 @@ export function ColorGradeEffectPanel({ clipId, effect, onRemove, onUpdate }: Om
         />
         Enabled
       </label>
-      {SLIDERS.map(({ key, label, min, max, step, format }) => (
+      {SLIDERS.map(({ key, label, min, max, step, defaultValue, format }) => (
         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, color: 'rgba(15,23,42,0.45)', width: 70, flexShrink: 0 }}>{label}</span>
-          <input
-            type="range"
+          <SnapSlider
             min={min}
             max={max}
             step={step}
             value={effect[key]}
-            style={{ flex: 1 }}
-            onChange={(e) =>
-              onUpdate(clipId, 'colorGrade', { [key]: parseFloat(e.target.value) })
-            }
+            defaultValue={defaultValue}
+            onChange={(v) => onUpdate(clipId, 'colorGrade', { [key]: v })}
           />
           <span style={{ fontSize: 12, color: 'rgba(15,23,42,0.45)', width: 40, flexShrink: 0 }}>
             {format(effect[key])}
