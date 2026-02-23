@@ -168,6 +168,10 @@ export async function getJobStatus(jobId: string): Promise<{ job: Job & { lastLo
   return apiFetch(`/jobs/${jobId}/status`);
 }
 
+export async function cancelJob(jobId: string): Promise<void> {
+  await apiFetch(`/jobs/${jobId}/cancel`, { method: 'POST' });
+}
+
 export function getJobOutputUrl(jobId: string): string {
   return `${BASE}/jobs/${jobId}/output`;
 }
@@ -197,6 +201,9 @@ export async function pollJob(
         if (job.status === 'DONE') {
           clearInterval(interval);
           resolve(job);
+        } else if (job.status === 'CANCELLED') {
+          clearInterval(interval);
+          reject(new Error('CANCELLED'));
         } else if (job.status === 'ERROR') {
           clearInterval(interval);
           reject(new Error(job.error ?? 'Job failed'));
