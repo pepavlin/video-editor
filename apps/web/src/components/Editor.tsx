@@ -93,6 +93,7 @@ export default function Editor() {
   const [cutoutProgress, setCutoutProgress] = useState<number | null>(null);
   const [cutoutJobId, setCutoutJobId] = useState<string | null>(null);
   const [headStabJobId, setHeadStabJobId] = useState<string | null>(null);
+  const [headStabProgress, setHeadStabProgress] = useState<number | null>(null);
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -390,8 +391,8 @@ export default function Editor() {
       return;
     }
 
-    notify('Starting head stabilization...');
     updateEffectClipConfig(clipId, { stabilizationStatus: 'processing' });
+    setHeadStabProgress(0);
     try {
       const { jobId } = await api.startHeadStabilization(uniqueAssetIds[0], {
         smoothingX: clip.effectConfig.smoothingX ?? 0.7,
@@ -399,8 +400,9 @@ export default function Editor() {
         smoothingZ: clip.effectConfig.smoothingZ ?? 0.0,
       });
       setHeadStabJobId(jobId);
-      api.pollJob(jobId, (j) => notify(`Head stabilization: ${j.progress}%`)).then(() => {
+      api.pollJob(jobId, (j) => setHeadStabProgress(j.progress)).then(() => {
         updateEffectClipConfig(clipId, { stabilizationStatus: 'done' });
+        setHeadStabProgress(null);
         setHeadStabJobId(null);
         notify('Head stabilization done!');
         refreshAssets();
@@ -411,10 +413,12 @@ export default function Editor() {
           updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
           notify(`Head stabilization failed: ${e.message}`);
         }
+        setHeadStabProgress(null);
         setHeadStabJobId(null);
       });
     } catch (e: any) {
       updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
+      setHeadStabProgress(null);
       setHeadStabJobId(null);
       notify(`Head stabilization error: ${e.message}`);
     }
@@ -763,6 +767,7 @@ export default function Editor() {
           onCancelHeadStabilization={handleCancelHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
           cutoutProgress={cutoutProgress}
+          headStabProgress={headStabProgress}
         />
       </div>
     ),

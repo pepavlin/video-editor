@@ -29,6 +29,7 @@ interface Props {
   onCancelHeadStabilization: (clipId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
   cutoutProgress?: number | null;
+  headStabProgress?: number | null;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -139,6 +140,7 @@ export default function Inspector({
   onCancelHeadStabilization,
   onSyncAudio,
   cutoutProgress,
+  headStabProgress,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
 
@@ -411,17 +413,40 @@ export default function Inspector({
                     </Row>
                     <Row label="">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{
-                          fontSize: 11,
-                          color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'processing' ? '#fbbf24' : cfg.stabilizationStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
-                          flex: 1,
-                        }}>
-                          {cfg.stabilizationStatus === 'done' && 'Stabilized'}
-                          {cfg.stabilizationStatus === 'processing' && 'Processing...'}
-                          {cfg.stabilizationStatus === 'error' && 'Error – retry'}
-                          {cfg.stabilizationStatus === 'cancelled' && 'Cancelled'}
-                          {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
-                        </span>
+                        {cfg.stabilizationStatus === 'processing' ? (
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
+                            <div style={{
+                              flex: 1,
+                              height: 4,
+                              borderRadius: 2,
+                              background: 'rgba(251,191,36,0.18)',
+                              overflow: 'hidden',
+                            }}>
+                              <div style={{
+                                height: '100%',
+                                borderRadius: 2,
+                                background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                                width: `${headStabProgress ?? 0}%`,
+                                transition: 'width 0.3s ease',
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
+                              {headStabProgress ?? 0}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{
+                            fontSize: 11,
+                            color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
+                            flex: 1,
+                          }}>
+                            {cfg.stabilizationStatus === 'done' && 'Stabilized'}
+                            {cfg.stabilizationStatus === 'error' && 'Error – retry'}
+                            {cfg.stabilizationStatus === 'cancelled' && 'Cancelled'}
+                            {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
+                          </span>
+                        )}
                         {cfg.stabilizationStatus === 'processing' ? (
                           <button
                             className="btn btn-ghost"
