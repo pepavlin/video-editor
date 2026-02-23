@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import VersionBanner from '../components/VersionBanner';
 import * as useVersionCheckModule from '../hooks/useVersionCheck';
+import { OPEN_CHANGELOG_EVENT } from '../components/ChangelogModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,5 +105,26 @@ describe('VersionBanner', () => {
     mockVersionCheck('welcome');
     render(<VersionBanner />);
     expect(screen.getByRole('status')).toBeDefined();
+  });
+
+  it('shows "Co je nového?" button in welcome state', () => {
+    mockVersionCheck('welcome');
+    render(<VersionBanner />);
+    expect(screen.getByRole('button', { name: /co je nového/i })).toBeDefined();
+  });
+
+  it('"Co je nového?" button calls dismiss() and dispatches open-changelog event', () => {
+    const { dismiss } = mockVersionCheck('welcome');
+    const dispatchedEvents: string[] = [];
+    vi.spyOn(window, 'dispatchEvent').mockImplementation((event) => {
+      dispatchedEvents.push(event.type);
+      return true;
+    });
+
+    render(<VersionBanner />);
+    fireEvent.click(screen.getByRole('button', { name: /co je nového/i }));
+
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(dispatchedEvents).toContain(OPEN_CHANGELOG_EVENT);
   });
 });

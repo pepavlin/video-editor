@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
+import { OPEN_CHANGELOG_EVENT } from '@/components/ChangelogModal';
 
 const AUTO_DISMISS_MS = 6_000;
 
@@ -116,6 +117,25 @@ export default function VersionBanner() {
       <span style={{ color: '#0f172a', fontSize: '13px', fontWeight: 500 }}>
         Vítejte v nové verzi!
       </span>
+      <button
+        onClick={() => {
+          dismiss();
+          window.dispatchEvent(new CustomEvent(OPEN_CHANGELOG_EVENT));
+        }}
+        style={{
+          background: 'none',
+          border: '1px solid rgba(13,148,136,0.35)',
+          borderRadius: '7px',
+          padding: '4px 10px',
+          fontSize: '12px',
+          fontWeight: 600,
+          color: '#0d9488',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        Co je nového?
+      </button>
       <button onClick={dismiss} aria-label="Zavřít" style={DISMISS_BTN_STYLE}>
         ×
       </button>
