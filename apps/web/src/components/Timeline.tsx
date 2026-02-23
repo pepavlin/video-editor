@@ -1647,8 +1647,17 @@ export default function Timeline({
     [getTrackAtY, getSnapTargets, onDropAsset, onDropAssetNewTrack, draw]
   );
 
-  const handleDoubleClick = useCallback(
+  // ─── Context menu state ───────────────────────────────────────────────────
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    clipId: string;
+    time: number;
+  } | null>(null);
+
+  const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       const rect = canvasRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -1658,10 +1667,12 @@ export default function Timeline({
       const hit = getClipAtPosition(x, y);
       if (hit) {
         const t = (x + SL - HEADER_WIDTH) / Z;
-        onSplit(hit.clip.id, t);
+        setContextMenu({ x: e.clientX, y: e.clientY, clipId: hit.clip.id, time: t });
+      } else {
+        setContextMenu(null);
       }
     },
-    [getClipAtPosition, onSplit]
+    [getClipAtPosition]
   );
 
   const [cursor, setCursor] = useState('default');
@@ -1798,11 +1809,70 @@ export default function Timeline({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleContextMenu}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         />
+
+        {/* ─── Right-click context menu ─────────────────────────────────── */}
+        {contextMenu && (
+          <>
+            {/* Backdrop to dismiss on outside click */}
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+              onClick={() => setContextMenu(null)}
+              onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+            />
+            <div
+              style={{
+                position: 'fixed',
+                left: contextMenu.x,
+                top: contextMenu.y,
+                zIndex: 1000,
+                background: 'var(--bg-elevated, #1e1e2e)',
+                border: '1px solid var(--border-default, rgba(255,255,255,0.12))',
+                borderRadius: 8,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                minWidth: 160,
+                padding: '4px 0',
+                userSelect: 'none',
+              }}
+            >
+              <button
+                onClick={() => {
+                  onSplit(contextMenu.clipId, contextMenu.time);
+                  setContextMenu(null);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
+                  padding: '8px 14px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-primary, #e2e8f0)',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(13,148,136,0.15)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+              >
+                {/* Scissors icon */}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="6" cy="6" r="3"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+                  <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+                  <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+                </svg>
+                Split clip
+              </button>
+            </div>
+          </>
+        )}
 
         {/* ─── Track header drag handles (HTML overlay) ─────────────────── */}
         {project && (
