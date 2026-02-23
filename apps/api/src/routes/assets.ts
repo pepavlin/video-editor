@@ -304,6 +304,10 @@ export async function assetsRoutes(app: FastifyInstance) {
       config.pythonBin,
       [scriptPath, proxyPath, stabilizedOutputPath, sx, sy, sz],
       {
+        onProgress: (line: string) => {
+          const m = line.match(/\[head_stabilize\]\s+(\d+)%/);
+          return m ? parseInt(m[1], 10) : undefined;
+        },
         onDone: () => {
           const latestAsset = ws.getAsset(asset.id);
           if (latestAsset) {
@@ -347,6 +351,10 @@ export async function assetsRoutes(app: FastifyInstance) {
       config.pythonBin,
       [scriptPath, proxyPath, maskOutputPath, mode],
       {
+        onProgress: (line: string) => {
+          const m = line.match(/\[cutout\]\s+(\d+)%/);
+          return m ? parseInt(m[1], 10) : undefined;
+        },
         onDone: () => {
           const latestAsset = ws.getAsset(asset.id);
           if (latestAsset) {

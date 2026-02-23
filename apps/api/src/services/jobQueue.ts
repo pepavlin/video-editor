@@ -47,13 +47,29 @@ export function cancelJob(jobId: string): boolean {
 
   const child = activeProcesses.get(jobId);
   if (child) {
-    child.kill('SIGTERM');
-    // Give process a moment to exit gracefully, then force kill if needed
-    setTimeout(() => {
-      if (activeProcesses.has(jobId)) {
-        child.kill('SIGKILL');
+    const pid = child.pid;
+    if (pid) {
+      // Kill the entire process group so child processes (e.g. ffmpeg spawned by Python) are also killed.
+      // This works because runCommand spawns with detached:true, making the child the group leader.
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {
+        child.kill('SIGTERM');
       }
-    }, 3000);
+      // Force-kill after grace period. Use captured references (child, pid) — NOT activeProcesses,
+      // because activeProcesses.delete() is called synchronously below before this timeout fires.
+      setTimeout(() => {
+        if (!child.killed) {
+          try {
+            process.kill(-pid, 'SIGKILL');
+          } catch {
+            try { child.kill('SIGKILL'); } catch { /* already dead */ }
+          }
+        }
+      }, 3000);
+    } else {
+      child.kill('SIGTERM');
+    }
   }
 
   updateJob(jobId, { status: 'CANCELLED', error: 'Cancelled by user' });
@@ -81,7 +97,9 @@ export function runCommand(
   updateJob(jobId, { status: 'RUNNING', progress: 0 });
   ws.appendJobLog(jobId, `$ ${cmd} ${args.join(' ')}`);
 
-  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  // detached:true creates a new process group (child is group leader).
+  // This allows killing the entire group (including grandchildren like ffmpeg) via process.kill(-pid, signal).
+  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   activeProcesses.set(jobId, child);
 
   const handleLine = (line: string) => {
@@ -170,7 +188,7 @@ export async function runSequential(
       updateJob(jobId, { progress: step.progressStart });
       ws.appendJobLog(jobId, `$ ${step.cmd} ${step.args.join(' ')}`);
 
-      const child = spawn(step.cmd, step.args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(step.cmd, step.args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       activeProcesses.set(jobId, child);
 
       child.stdout.on('data', (d: Buffer) => {
