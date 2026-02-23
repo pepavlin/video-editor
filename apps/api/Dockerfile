@@ -63,6 +63,10 @@ RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: libr
 RUN pip3 install --no-cache-dir --break-system-packages rembg onnxruntime pillow \
     || pip3 install --no-cache-dir rembg onnxruntime pillow
 
+# Install head stabilization dependencies (opencv for face detection)
+RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: opencv-python-headless \
+    || pip3 install --no-cache-dir --only-binary=:all: opencv-python-headless
+
 # Optional: Whisper for lyrics alignment (comment in to enable, adds ~1.5GB)
 # RUN pip3 install --no-cache-dir --break-system-packages openai-whisper \
 #     || pip3 install --no-cache-dir openai-whisper

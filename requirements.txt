@@ -8,3 +8,5 @@ torchaudio>=2.0.0
 rembg>=2.0.50
 onnxruntime>=1.16.0
 pillow>=9.0.0
+# For head stabilization effect (face detection via Haar cascade)
+opencv-python-headless>=4.8.0
