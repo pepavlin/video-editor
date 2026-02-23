@@ -170,7 +170,7 @@ def process_stabilize(input_path: str, output_path: str,
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-        subprocess.run(
+        result = subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-framerate", str(fps),
@@ -181,9 +181,14 @@ def process_stabilize(input_path: str, output_path: str,
                 "-pix_fmt", "yuv420p",
                 output_path,
             ],
-            check=True,
             capture_output=True,
+            text=True,
         )
+        if result.returncode != 0:
+            print(result.stdout, file=sys.stderr)
+            print(result.stderr, file=sys.stderr)
+            print(f"ERROR: ffmpeg exited with code {result.returncode}", file=sys.stderr)
+            sys.exit(result.returncode)
 
     print(f"[head_stabilize] Done: {output_path}")
 
