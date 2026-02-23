@@ -14,6 +14,18 @@ export async function jobsRoutes(app: FastifyInstance) {
     return reply.send({ job: { ...job, lastLogLines } });
   });
 
+  // POST /jobs/:id/cancel - cancel a running job
+  app.post<{ Params: { id: string } }>('/jobs/:id/cancel', async (req, reply) => {
+    const job = jq.getJob(req.params.id);
+    if (!job) return reply.code(404).send({ error: 'Job not found' });
+    if (job.status !== 'RUNNING' && job.status !== 'QUEUED') {
+      return reply.code(400).send({ error: `Job is not running (status: ${job.status})` });
+    }
+    const cancelled = jq.cancelJob(req.params.id);
+    if (!cancelled) return reply.code(500).send({ error: 'Failed to cancel job' });
+    return reply.send({ ok: true });
+  });
+
   // GET /jobs/:id/log - full log output
   app.get<{ Params: { id: string } }>('/jobs/:id/log', async (req, reply) => {
     const job = jq.getJob(req.params.id);

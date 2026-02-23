@@ -6,6 +6,9 @@ import * as ws from './workspace';
 // In-memory map for quick status checks (persisted to disk too)
 const activeJobs = new Map<string, Job>();
 
+// Map of running child processes (for cancellation)
+const activeProcesses = new Map<string, ChildProcess>();
+
 export function createJob(type: JobType, relatedId?: string): Job {
   const now = new Date().toISOString();
   const job: Job = {
@@ -37,6 +40,28 @@ function updateJob(jobId: string, updates: Partial<Job>) {
   ws.writeJob(updated);
 }
 
+export function cancelJob(jobId: string): boolean {
+  const job = getJob(jobId);
+  if (!job) return false;
+  if (job.status !== 'RUNNING' && job.status !== 'QUEUED') return false;
+
+  const child = activeProcesses.get(jobId);
+  if (child) {
+    child.kill('SIGTERM');
+    // Give process a moment to exit, then force kill if needed
+    setTimeout(() => {
+      if (activeProcesses.has(jobId)) {
+        child.kill('SIGKILL');
+      }
+    }, 3000);
+  }
+
+  updateJob(jobId, { status: 'CANCELLED', error: 'Cancelled by user' });
+  ws.appendJobLog(jobId, 'Job cancelled by user');
+  activeProcesses.delete(jobId);
+  return true;
+}
+
 export function runCommand(
   jobId: string,
   cmd: string,
@@ -57,6 +82,7 @@ export function runCommand(
   ws.appendJobLog(jobId, `$ ${cmd} ${args.join(' ')}`);
 
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  activeProcesses.set(jobId, child);
 
   const handleLine = (line: string) => {
     ws.appendJobLog(jobId, line);
@@ -75,7 +101,23 @@ export function runCommand(
     d.toString().split('\n').filter(Boolean).forEach(handleLine);
   });
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
+    activeProcesses.delete(jobId);
+
+    // Check if the job was already marked as CANCELLED (cancelJob() was called)
+    const currentJob = getJob(jobId);
+    if (currentJob?.status === 'CANCELLED') {
+      // Already handled by cancelJob()
+      return;
+    }
+
+    // Process killed by signal (e.g. SIGTERM) without explicit cancel → treat as cancelled
+    if (signal !== null && code === null) {
+      updateJob(jobId, { status: 'CANCELLED', error: 'Cancelled by user' });
+      ws.appendJobLog(jobId, `Process terminated by signal ${signal}`);
+      return;
+    }
+
     if (code === 0) {
       updateJob(jobId, { status: 'DONE', progress: 100, outputPath });
       onDone?.();
@@ -88,6 +130,7 @@ export function runCommand(
   });
 
   child.on('error', (err) => {
+    activeProcesses.delete(jobId);
     ws.appendJobLog(jobId, err.message);
     updateJob(jobId, { status: 'ERROR', error: err.message });
     onError?.(err.message);
@@ -117,11 +160,18 @@ export async function runSequential(
   updateJob(jobId, { status: 'RUNNING', progress: 0 });
 
   for (const step of steps) {
+    // Check if cancelled before starting next step
+    const currentJob = getJob(jobId);
+    if (currentJob?.status === 'CANCELLED') {
+      throw new Error('Job cancelled');
+    }
+
     await new Promise<void>((resolve, reject) => {
       updateJob(jobId, { progress: step.progressStart });
       ws.appendJobLog(jobId, `$ ${step.cmd} ${step.args.join(' ')}`);
 
       const child = spawn(step.cmd, step.args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      activeProcesses.set(jobId, child);
 
       child.stdout.on('data', (d: Buffer) => {
         d.toString().split('\n').filter(Boolean).forEach((l) => ws.appendJobLog(jobId, l));
@@ -130,7 +180,21 @@ export async function runSequential(
         d.toString().split('\n').filter(Boolean).forEach((l) => ws.appendJobLog(jobId, l));
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        activeProcesses.delete(jobId);
+
+        const job = getJob(jobId);
+        if (job?.status === 'CANCELLED') {
+          reject(new Error('Job cancelled'));
+          return;
+        }
+
+        if (signal !== null && code === null) {
+          updateJob(jobId, { status: 'CANCELLED', error: 'Cancelled by user' });
+          reject(new Error('Job cancelled'));
+          return;
+        }
+
         if (code === 0) {
           updateJob(jobId, { progress: step.progressEnd });
           resolve();
@@ -141,6 +205,7 @@ export async function runSequential(
         }
       });
       child.on('error', (err) => {
+        activeProcesses.delete(jobId);
         updateJob(jobId, { status: 'ERROR', error: err.message });
         reject(err);
       });

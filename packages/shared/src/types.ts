@@ -78,13 +78,13 @@ export interface EffectClipConfig {
   beatDivision?: number; // how often to zoom relative to beats: 1=every beat (1/1), 2=every 2nd (1/2), 4=every 4th (1/4); 0.5=twice per beat (2/1)
   // cutout params
   background?: BackgroundConfig;
-  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+  maskStatus?: 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
   cutoutMode?: 'removeBg' | 'removePerson';  // removeBg=keep person, removePerson=keep background
   // headStabilization params
   smoothingX?: number;  // 0-1: stabilization strength on X axis
   smoothingY?: number;  // 0-1: stabilization strength on Y axis
   smoothingZ?: number;  // 0-1: stabilization strength on Z/zoom axis
-  stabilizationStatus?: 'pending' | 'processing' | 'done' | 'error';
+  stabilizationStatus?: 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
   // cartoon params
   edgeStrength?: number;        // 0-1: prominence of cartoon edges
   colorSimplification?: number; // 0-1: how much to simplify/flatten colors
@@ -120,7 +120,7 @@ export interface CutoutEffect {
   type: 'cutout';
   enabled: boolean;
   background: BackgroundConfig;
-  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+  maskStatus?: 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 }
 
 export interface HeadStabilizationEffect {
@@ -129,7 +129,7 @@ export interface HeadStabilizationEffect {
   smoothingX: number;
   smoothingY: number;
   smoothingZ: number;
-  status?: 'pending' | 'processing' | 'done' | 'error';
+  status?: 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 }
 
 export interface ColorGradeEffect {
@@ -165,7 +165,7 @@ export interface CutoutEffect {
   type: 'cutout';
   enabled: boolean;
   background: BackgroundConfig;
-  maskStatus?: 'pending' | 'processing' | 'done' | 'error';
+  maskStatus?: 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 }
 
 export interface HeadStabilizationEffect {
@@ -174,7 +174,7 @@ export interface HeadStabilizationEffect {
   smoothingX: number;  // 0-1
   smoothingY: number;  // 0-1
   smoothingZ: number;  // 0-1
-  status?: 'pending' | 'processing' | 'done' | 'error';
+  status?: 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 }
 
 // ─── Assets ─────────────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ export interface LyricsStyle {
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
-export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'ERROR';
+export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'ERROR' | 'CANCELLED';
 export type JobType = 'import' | 'beats' | 'lyrics' | 'export' | 'cutout' | 'headStabilization';
 
 export interface Job {

@@ -91,6 +91,8 @@ export default function Editor() {
   const [exportLogLine, setExportLogLine] = useState<string | null>(null);
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
   const [cutoutProgress, setCutoutProgress] = useState<number | null>(null);
+  const [cutoutJobId, setCutoutJobId] = useState<string | null>(null);
+  const [headStabJobId, setHeadStabJobId] = useState<string | null>(null);
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -330,19 +332,36 @@ export default function Editor() {
     setCutoutProgress(0);
     try {
       const { jobId } = await api.startCutout(uniqueAssetIds[0], cutoutMode);
+      setCutoutJobId(jobId);
       api.pollJob(jobId, (j) => setCutoutProgress(j.progress)).then(() => {
         updateEffectClipConfig(clipId, { maskStatus: 'done' });
         setCutoutProgress(null);
+        setCutoutJobId(null);
         refreshAssets();
       }).catch((e) => {
-        updateEffectClipConfig(clipId, { maskStatus: 'error' });
+        if (e.message === 'CANCELLED') {
+          updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
+        } else {
+          updateEffectClipConfig(clipId, { maskStatus: 'error' });
+          notify(`Cutout failed: ${e.message}`);
+        }
         setCutoutProgress(null);
-        notify(`Cutout failed: ${e.message}`);
+        setCutoutJobId(null);
       });
     } catch (e: any) {
       updateEffectClipConfig(clipId, { maskStatus: 'error' });
       setCutoutProgress(null);
+      setCutoutJobId(null);
       notify(`Cutout error: ${e.message}`);
+    }
+  };
+
+  const handleCancelCutout = async (clipId: string) => {
+    if (!cutoutJobId) return;
+    try {
+      await api.cancelJob(cutoutJobId);
+    } catch (e: any) {
+      notify(`Cancel failed: ${e.message}`);
     }
   };
 
@@ -379,17 +398,34 @@ export default function Editor() {
         smoothingY: clip.effectConfig.smoothingY ?? 0.7,
         smoothingZ: clip.effectConfig.smoothingZ ?? 0.0,
       });
+      setHeadStabJobId(jobId);
       api.pollJob(jobId, (j) => notify(`Head stabilization: ${j.progress}%`)).then(() => {
         updateEffectClipConfig(clipId, { stabilizationStatus: 'done' });
+        setHeadStabJobId(null);
         notify('Head stabilization done!');
         refreshAssets();
       }).catch((e) => {
-        updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
-        notify(`Head stabilization failed: ${e.message}`);
+        if (e.message === 'CANCELLED') {
+          updateEffectClipConfig(clipId, { stabilizationStatus: 'cancelled' });
+        } else {
+          updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
+          notify(`Head stabilization failed: ${e.message}`);
+        }
+        setHeadStabJobId(null);
       });
     } catch (e: any) {
       updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
+      setHeadStabJobId(null);
       notify(`Head stabilization error: ${e.message}`);
+    }
+  };
+
+  const handleCancelHeadStabilization = async (clipId: string) => {
+    if (!headStabJobId) return;
+    try {
+      await api.cancelJob(headStabJobId);
+    } catch (e: any) {
+      notify(`Cancel failed: ${e.message}`);
     }
   };
 
@@ -722,7 +758,9 @@ export default function Editor() {
           onAlignLyricsClip={handleAlignLyricsClip}
           onTranscribeLyricsClip={handleTranscribeLyricsClip}
           onStartCutout={handleStartCutout}
+          onCancelCutout={handleCancelCutout}
           onStartHeadStabilization={handleStartHeadStabilization}
+          onCancelHeadStabilization={handleCancelHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
           cutoutProgress={cutoutProgress}
         />

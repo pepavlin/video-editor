@@ -24,7 +24,9 @@ interface Props {
   onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
   onTranscribeLyricsClip: (clipId: string) => Promise<void>;
   onStartCutout: (clipId: string) => Promise<void>;
+  onCancelCutout: (clipId: string) => Promise<void>;
   onStartHeadStabilization: (clipId: string) => Promise<void>;
+  onCancelHeadStabilization: (clipId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
   cutoutProgress?: number | null;
 }
@@ -132,7 +134,9 @@ export default function Inspector({
   onAlignLyricsClip,
   onTranscribeLyricsClip,
   onStartCutout,
+  onCancelCutout,
   onStartHeadStabilization,
+  onCancelHeadStabilization,
   onSyncAudio,
   cutoutProgress,
 }: Props) {
