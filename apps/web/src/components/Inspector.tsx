@@ -321,22 +321,32 @@ export default function Inspector({
                         ) : (
                           <span style={{
                             fontSize: 11,
-                            color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : 'var(--text-subtle)',
+                            color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
                             flex: 1,
                           }}>
                             {cfg.maskStatus === 'done' && 'Mask ready'}
                             {cfg.maskStatus === 'error' && 'Error – retry'}
+                            {cfg.maskStatus === 'cancelled' && 'Cancelled'}
                             {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
                           </span>
                         )}
-                        <button
-                          className="btn btn-ghost"
-                          style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.maskStatus === 'processing' ? 'var(--text-subtle)' : '#0d9488', opacity: cfg.maskStatus === 'processing' ? 0.5 : 1 }}
-                          disabled={cfg.maskStatus === 'processing'}
-                          onClick={() => onStartCutout(selectedClip!.id)}
-                        >
-                          Process
-                        </button>
+                        {cfg.maskStatus === 'processing' ? (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
+                            onClick={() => onCancelCutout(selectedClip!.id)}
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
+                            onClick={() => onStartCutout(selectedClip!.id)}
+                          >
+                            {cfg.maskStatus === 'done' || cfg.maskStatus === 'cancelled' ? 'Re-process' : 'Process'}
+                          </button>
+                        )}
                       </div>
                     </Row>
                     <Row label="BG Type">
@@ -403,22 +413,32 @@ export default function Inspector({
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{
                           fontSize: 11,
-                          color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'processing' ? '#fbbf24' : 'var(--text-subtle)',
+                          color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'processing' ? '#fbbf24' : cfg.stabilizationStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
                           flex: 1,
                         }}>
                           {cfg.stabilizationStatus === 'done' && 'Stabilized'}
                           {cfg.stabilizationStatus === 'processing' && 'Processing...'}
                           {cfg.stabilizationStatus === 'error' && 'Error – retry'}
+                          {cfg.stabilizationStatus === 'cancelled' && 'Cancelled'}
                           {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
                         </span>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: cfg.stabilizationStatus === 'processing' ? 'var(--text-subtle)' : '#0d9488', opacity: cfg.stabilizationStatus === 'processing' ? 0.5 : 1 }}
-                          disabled={cfg.stabilizationStatus === 'processing'}
-                          onClick={() => onStartHeadStabilization(selectedClip!.id)}
-                        >
-                          Process
-                        </button>
+                        {cfg.stabilizationStatus === 'processing' ? (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
+                            onClick={() => onCancelHeadStabilization(selectedClip!.id)}
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
+                            onClick={() => onStartHeadStabilization(selectedClip!.id)}
+                          >
+                            {cfg.stabilizationStatus === 'done' || cfg.stabilizationStatus === 'cancelled' ? 'Re-process' : 'Process'}
+                          </button>
+                        )}
                       </div>
                     </Row>
                   </>
