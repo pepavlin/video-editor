@@ -357,11 +357,26 @@ export default function Editor() {
     }
   };
 
-  const handleCancelCutout = async (_clipId: string) => {
-    if (!cutoutJobId) return;
+  const handleCancelCutout = async (clipId: string) => {
+    // If no job ID (e.g. page was reloaded while job was running, or job failed
+    // before the ID was stored), just reset the UI state so the user isn't stuck.
+    if (!cutoutJobId) {
+      updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
+      setCutoutProgress(null);
+      return;
+    }
     try {
       await api.cancelJob(cutoutJobId);
+      // Optimistically update UI immediately; pollJob will also confirm via CANCELLED status.
+      updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
+      setCutoutProgress(null);
+      setCutoutJobId(null);
     } catch (e: any) {
+      // Cancel can fail when the job already finished or errored on the backend.
+      // In that case reset the UI anyway so the user isn't stuck at "processing".
+      updateEffectClipConfig(clipId, { maskStatus: 'error' });
+      setCutoutProgress(null);
+      setCutoutJobId(null);
       notify(`Cancel failed: ${e.message}`);
     }
   };
