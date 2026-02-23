@@ -48,7 +48,7 @@ export function cancelJob(jobId: string): boolean {
   const child = activeProcesses.get(jobId);
   if (child) {
     child.kill('SIGTERM');
-    // Give process a moment to exit, then force kill if needed
+    // Give process a moment to exit gracefully, then force kill if needed
     setTimeout(() => {
       if (activeProcesses.has(jobId)) {
         child.kill('SIGKILL');

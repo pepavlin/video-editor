@@ -356,7 +356,7 @@ export default function Editor() {
     }
   };
 
-  const handleCancelCutout = async (clipId: string) => {
+  const handleCancelCutout = async (_clipId: string) => {
     if (!cutoutJobId) return;
     try {
       await api.cancelJob(cutoutJobId);
@@ -420,7 +420,7 @@ export default function Editor() {
     }
   };
 
-  const handleCancelHeadStabilization = async (clipId: string) => {
+  const handleCancelHeadStabilization = async (_clipId: string) => {
     if (!headStabJobId) return;
     try {
       await api.cancelJob(headStabJobId);
