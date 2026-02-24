@@ -13,6 +13,9 @@ import type {
 import { formatTime } from '@/lib/utils';
 import { SnapSlider } from './effects/SnapSlider';
 
+type AssetJobEntry = { jobId: string; status: string; progress: number; logLines: string[] };
+type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry }>;
+
 interface Props {
   project: Project | null;
   selectedClipId: string | null;
@@ -23,15 +26,12 @@ interface Props {
   masterAssetId?: string;
   onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
   onTranscribeLyricsClip: (clipId: string) => Promise<void>;
-  onStartCutout: (clipId: string) => Promise<void>;
-  onCancelCutout: (clipId: string) => Promise<void>;
-  onStartHeadStabilization: (clipId: string) => Promise<void>;
-  onCancelHeadStabilization: (clipId: string) => Promise<void>;
+  onStartCutout: (assetId: string, mode?: 'removeBg' | 'removePerson') => Promise<void>;
+  onCancelCutout: (assetId: string) => Promise<void>;
+  onStartHeadStabilization: (assetId: string, params: { smoothingX: number; smoothingY: number; smoothingZ: number }) => Promise<void>;
+  onCancelHeadStabilization: (assetId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
-  cutoutProgress?: number | null;
-  cutoutLogLines?: string[];
-  headStabProgress?: number | null;
-  headStabLogLines?: string[];
+  assetJobs?: AssetJobs;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -141,10 +141,7 @@ export default function Inspector({
   onStartHeadStabilization,
   onCancelHeadStabilization,
   onSyncAudio,
-  cutoutProgress,
-  cutoutLogLines,
-  headStabProgress,
-  headStabLogLines,
+  assetJobs,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
 
@@ -165,6 +162,19 @@ export default function Inspector({
   const selectedAsset = selectedClip
     ? assets.find((a) => a.id === selectedClip!.assetId)
     : undefined;
+
+  // Derive cutout + headStab status from asset-level job map
+  const cutoutJob = assetJobs?.[selectedAsset?.id ?? '']?.cutout;
+  const isCutoutDone = !!selectedAsset?.maskPath;
+  const isCutoutProcessing = cutoutJob?.status === 'RUNNING' || cutoutJob?.status === 'QUEUED';
+  const cutoutProgress = cutoutJob?.progress ?? 0;
+  const cutoutLogLines = cutoutJob?.logLines ?? [];
+
+  const headStabJob = assetJobs?.[selectedAsset?.id ?? '']?.headStab;
+  const isHeadStabDone = !!selectedAsset?.headStabilizedPath;
+  const isHeadStabProcessing = headStabJob?.status === 'RUNNING' || headStabJob?.status === 'QUEUED';
+  const headStabProgress = headStabJob?.progress ?? 0;
+  const headStabLogLines = headStabJob?.logLines ?? [];
 
   const assetHasAudio = !!(selectedAsset?.audioPath);
 
@@ -292,7 +302,6 @@ export default function Inspector({
                         onChange={(e) =>
                           update({
                             cutoutMode: e.target.value as 'removeBg' | 'removePerson',
-                            maskStatus: 'pending',
                           })
                         }
                       >
@@ -303,7 +312,7 @@ export default function Inspector({
                     <Row label="Status">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {cfg.maskStatus === 'processing' ? (
+                          {isCutoutProcessing ? (
                             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
                               {/* Progress bar: indeterminate when at 0, deterministic otherwise */}
@@ -315,7 +324,7 @@ export default function Inspector({
                                 overflow: 'hidden',
                                 position: 'relative',
                               }}>
-                                {(cutoutProgress ?? 0) === 0 ? (
+                                {cutoutProgress === 0 ? (
                                   /* Indeterminate bounce — model loading phase */
                                   <div style={{
                                     position: 'absolute',
@@ -331,7 +340,7 @@ export default function Inspector({
                                     height: '100%',
                                     borderRadius: 3,
                                     background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
-                                    width: `${cutoutProgress ?? 0}%`,
+                                    width: `${cutoutProgress}%`,
                                     transition: 'width 0.4s ease',
                                     position: 'relative',
                                     overflow: 'hidden',
@@ -347,26 +356,26 @@ export default function Inspector({
                                 )}
                               </div>
                               <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
-                                {(cutoutProgress ?? 0) === 0 ? '…' : `${cutoutProgress}%`}
+                                {cutoutProgress === 0 ? '…' : `${cutoutProgress}%`}
                               </span>
                             </div>
                           ) : (
                             <span style={{
                               fontSize: 11,
-                              color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
+                              color: isCutoutDone ? '#4ade80' : cutoutJob?.status === 'ERROR' ? '#f87171' : cutoutJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
                               flex: 1,
                             }}>
-                              {cfg.maskStatus === 'done' && 'Mask ready'}
-                              {cfg.maskStatus === 'error' && 'Error – retry'}
-                              {cfg.maskStatus === 'cancelled' && 'Cancelled'}
-                              {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
+                              {isCutoutDone && 'Mask ready'}
+                              {!isCutoutDone && cutoutJob?.status === 'ERROR' && 'Error – retry'}
+                              {!isCutoutDone && cutoutJob?.status === 'CANCELLED' && 'Cancelled'}
+                              {!isCutoutDone && (!cutoutJob || (cutoutJob.status !== 'ERROR' && cutoutJob.status !== 'CANCELLED')) && 'Not processed'}
                             </span>
                           )}
-                          {cfg.maskStatus === 'processing' ? (
+                          {isCutoutProcessing ? (
                             <button
                               className="btn btn-ghost"
                               style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
-                              onClick={() => onCancelCutout(selectedClip!.id)}
+                              onClick={() => selectedAsset && onCancelCutout(selectedAsset.id)}
                             >
                               Cancel
                             </button>
@@ -374,14 +383,14 @@ export default function Inspector({
                             <button
                               className="btn btn-ghost"
                               style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
-                              onClick={() => onStartCutout(selectedClip!.id)}
+                              onClick={() => selectedAsset && onStartCutout(selectedAsset.id, cfg.cutoutMode as 'removeBg' | 'removePerson' | undefined)}
                             >
-                              {cfg.maskStatus === 'done' || cfg.maskStatus === 'cancelled' ? 'Re-process' : 'Process'}
+                              {isCutoutDone || cutoutJob?.status === 'CANCELLED' ? 'Re-process' : 'Process'}
                             </button>
                           )}
                         </div>
                         {/* Log message line — shown only during processing */}
-                        {cfg.maskStatus === 'processing' && cutoutLogLines && cutoutLogLines.length > 0 && (
+                        {isCutoutProcessing && cutoutLogLines.length > 0 && (
                           <div style={{
                             fontSize: 10,
                             color: 'rgba(251,191,36,0.65)',
@@ -435,7 +444,7 @@ export default function Inspector({
                     <Row label="X Axis">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <SnapSlider min={0} max={1} step={0.05} value={cfg.smoothingX ?? 0.7} defaultValue={0.7}
-                          onChange={(v) => update({ smoothingX: v, stabilizationStatus: 'pending' })}
+                          onChange={(v) => update({ smoothingX: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingX ?? 0.7) * 100)}%</span>
                       </div>
@@ -443,7 +452,7 @@ export default function Inspector({
                     <Row label="Y Axis">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <SnapSlider min={0} max={1} step={0.05} value={cfg.smoothingY ?? 0.7} defaultValue={0.7}
-                          onChange={(v) => update({ smoothingY: v, stabilizationStatus: 'pending' })}
+                          onChange={(v) => update({ smoothingY: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingY ?? 0.7) * 100)}%</span>
                       </div>
@@ -451,7 +460,7 @@ export default function Inspector({
                     <Row label="Z Zoom">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <SnapSlider min={0} max={1} step={0.05} value={cfg.smoothingZ ?? 0.0} defaultValue={0.0}
-                          onChange={(v) => update({ smoothingZ: v, stabilizationStatus: 'pending' })}
+                          onChange={(v) => update({ smoothingZ: v })}
                         />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.smoothingZ ?? 0) * 100)}%</span>
                       </div>
@@ -459,7 +468,7 @@ export default function Inspector({
                     <Row label="">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {cfg.stabilizationStatus === 'processing' ? (
+                          {isHeadStabProcessing ? (
                             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
                               <div style={{
@@ -470,7 +479,7 @@ export default function Inspector({
                                 overflow: 'hidden',
                                 position: 'relative',
                               }}>
-                                {(headStabProgress ?? 0) === 0 ? (
+                                {headStabProgress === 0 ? (
                                   <div style={{
                                     position: 'absolute',
                                     height: '100%',
@@ -484,7 +493,7 @@ export default function Inspector({
                                     height: '100%',
                                     borderRadius: 3,
                                     background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
-                                    width: `${headStabProgress ?? 0}%`,
+                                    width: `${headStabProgress}%`,
                                     transition: 'width 0.4s ease',
                                     position: 'relative',
                                     overflow: 'hidden',
@@ -500,26 +509,26 @@ export default function Inspector({
                                 )}
                               </div>
                               <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
-                                {(headStabProgress ?? 0) === 0 ? '…' : `${headStabProgress}%`}
+                                {headStabProgress === 0 ? '…' : `${headStabProgress}%`}
                               </span>
                             </div>
                           ) : (
                             <span style={{
                               fontSize: 11,
-                              color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
+                              color: isHeadStabDone ? '#4ade80' : headStabJob?.status === 'ERROR' ? '#f87171' : headStabJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
                               flex: 1,
                             }}>
-                              {cfg.stabilizationStatus === 'done' && 'Stabilized'}
-                              {cfg.stabilizationStatus === 'error' && 'Error – retry'}
-                              {cfg.stabilizationStatus === 'cancelled' && 'Cancelled'}
-                              {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
+                              {isHeadStabDone && 'Stabilized'}
+                              {!isHeadStabDone && headStabJob?.status === 'ERROR' && 'Error – retry'}
+                              {!isHeadStabDone && headStabJob?.status === 'CANCELLED' && 'Cancelled'}
+                              {!isHeadStabDone && (!headStabJob || (headStabJob.status !== 'ERROR' && headStabJob.status !== 'CANCELLED')) && 'Not processed'}
                             </span>
                           )}
-                          {cfg.stabilizationStatus === 'processing' ? (
+                          {isHeadStabProcessing ? (
                             <button
                               className="btn btn-ghost"
                               style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
-                              onClick={() => onCancelHeadStabilization(selectedClip!.id)}
+                              onClick={() => selectedAsset && onCancelHeadStabilization(selectedAsset.id)}
                             >
                               Cancel
                             </button>
@@ -527,13 +536,17 @@ export default function Inspector({
                             <button
                               className="btn btn-ghost"
                               style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
-                              onClick={() => onStartHeadStabilization(selectedClip!.id)}
+                              onClick={() => selectedAsset && onStartHeadStabilization(selectedAsset.id, {
+                                smoothingX: cfg.smoothingX ?? 0.7,
+                                smoothingY: cfg.smoothingY ?? 0.7,
+                                smoothingZ: cfg.smoothingZ ?? 0.0,
+                              })}
                             >
-                              {cfg.stabilizationStatus === 'done' || cfg.stabilizationStatus === 'cancelled' ? 'Re-process' : 'Process'}
+                              {isHeadStabDone || headStabJob?.status === 'CANCELLED' ? 'Re-process' : 'Process'}
                             </button>
                           )}
                         </div>
-                        {cfg.stabilizationStatus === 'processing' && headStabLogLines && headStabLogLines.length > 0 && (
+                        {isHeadStabProcessing && headStabLogLines.length > 0 && (
                           <div style={{
                             fontSize: 10,
                             color: 'rgba(251,191,36,0.65)',

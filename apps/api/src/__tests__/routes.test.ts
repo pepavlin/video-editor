@@ -761,6 +761,11 @@ describe('POST /api/assets/:id/cutout', () => {
     expect(res.statusCode).toBe(202);
     const body = JSON.parse(res.body);
     expect(body.jobId).toBeTruthy();
+
+    // Job ID should be stored on the asset so the UI can poll it
+    const updatedAsset = ws.getAsset(assetId);
+    expect(updatedAsset?.cutoutJobId).toBe(body.jobId);
+
     await app.close();
   });
 

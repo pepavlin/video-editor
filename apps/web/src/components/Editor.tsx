@@ -90,12 +90,12 @@ export default function Editor() {
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportLogLine, setExportLogLine] = useState<string | null>(null);
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
-  const [cutoutProgress, setCutoutProgress] = useState<number | null>(null);
-  const [cutoutJobId, setCutoutJobId] = useState<string | null>(null);
-  const [cutoutLogLines, setCutoutLogLines] = useState<string[]>([]);
-  const [headStabJobId, setHeadStabJobId] = useState<string | null>(null);
-  const [headStabProgress, setHeadStabProgress] = useState<number | null>(null);
-  const [headStabLogLines, setHeadStabLogLines] = useState<string[]>([]);
+
+  type AssetJobEntry = { jobId: string; status: string; progress: number; logLines: string[] };
+  type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry }>;
+  const [assetJobs, setAssetJobs] = useState<AssetJobs>({});
+  const assetJobsRef = useRef<AssetJobs>({});
+  assetJobsRef.current = assetJobs;
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -149,6 +149,83 @@ export default function Editor() {
 
   const refreshAssetsRef = useRef(refreshAssets);
   useEffect(() => { refreshAssetsRef.current = refreshAssets; }, [refreshAssets]);
+
+  // Sync asset-level job IDs (from server) into local assetJobs state so the
+  // UI can track auto-started jobs (e.g. cutout kicked off after import).
+  useEffect(() => {
+    setAssetJobs((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const asset of assets) {
+        if (asset.cutoutJobId) {
+          const existing = prev[asset.id]?.cutout;
+          if (!existing || existing.jobId !== asset.cutoutJobId) {
+            next[asset.id] = {
+              ...next[asset.id],
+              cutout: existing?.jobId === asset.cutoutJobId
+                ? existing
+                : { jobId: asset.cutoutJobId, status: 'QUEUED', progress: 0, logLines: [] },
+            };
+            changed = true;
+          }
+        }
+        if (asset.headStabJobId) {
+          const existing = prev[asset.id]?.headStab;
+          if (!existing || existing.jobId !== asset.headStabJobId) {
+            next[asset.id] = {
+              ...next[asset.id],
+              headStab: existing?.jobId === asset.headStabJobId
+                ? existing
+                : { jobId: asset.headStabJobId, status: 'QUEUED', progress: 0, logLines: [] },
+            };
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [assets]);
+
+  // Poll active cutout / headStab jobs and update assetJobs
+  useEffect(() => {
+    const iv = setInterval(async () => {
+      const snapshot = assetJobsRef.current;
+      const toPoll: Array<{ assetId: string; kind: 'cutout' | 'headStab'; entry: AssetJobEntry }> = [];
+      for (const [assetId, jobs] of Object.entries(snapshot)) {
+        for (const [kind, entry] of Object.entries(jobs) as ['cutout' | 'headStab', AssetJobEntry][]) {
+          if (entry.status === 'DONE' || entry.status === 'ERROR' || entry.status === 'CANCELLED') continue;
+          toPoll.push({ assetId, kind, entry });
+        }
+      }
+      for (const { assetId, kind, entry } of toPoll) {
+        try {
+          const { job } = await api.getJobStatus(entry.jobId);
+          setAssetJobs((prev) => {
+            const prevEntry = prev[assetId]?.[kind];
+            if (!prevEntry || prevEntry.jobId !== entry.jobId) return prev;
+            return {
+              ...prev,
+              [assetId]: {
+                ...prev[assetId],
+                [kind]: {
+                  ...prevEntry,
+                  status: job.status,
+                  progress: job.progress,
+                  logLines: job.lastLogLines ?? [],
+                },
+              },
+            };
+          });
+          if (job.status === 'DONE' || job.status === 'ERROR' || job.status === 'CANCELLED') {
+            refreshAssetsRef.current();
+          }
+        } catch {
+          // Ignore transient polling errors
+        }
+      }
+    }, 500);
+    return () => clearInterval(iv);
+  }, []);
 
   const setUrlProject = (id: string | null) => {
     const url = id ? `?p=${id}` : window.location.pathname;
@@ -305,159 +382,65 @@ export default function Editor() {
     } catch (e: any) { notify(`Lyrics detection failed: ${e.message}`); }
   };
 
-  const handleStartCutout = async (clipId: string) => {
-    if (!project) return;
-    const clip = findClip(clipId);
-    if (!clip || !clip.effectConfig) return;
-
-    // Find parent video track and get assets to process.
-    // Prefer the linked parentTrackId, but fall back to any video track with clips
-    // (handles the case where parentTrackId points to the default empty video track).
-    const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
-    const linkedParent = effectTrack?.parentTrackId
-      ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
-      : null;
-    const parentTrack =
-      (linkedParent && linkedParent.clips.some((c) => c.assetId))
-        ? linkedParent
-        : project.tracks.find((t) => t.type === 'video' && t.clips.some((c) => c.assetId))
-          ?? project.tracks.find((t) => t.type === 'video');
-    const videoClips = parentTrack?.clips ?? [];
-    const seenAssets = new Set<string>();
-    const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
-    if (uniqueAssetIds.length === 0) {
-      notify('No video clips found in parent track');
-      return;
-    }
-
-    const cutoutMode = (clip.effectConfig.cutoutMode ?? 'removeBg') as 'removeBg' | 'removePerson';
-    updateEffectClipConfig(clipId, { maskStatus: 'processing' });
-    setCutoutProgress(0);
+  const handleStartCutout = async (assetId: string, mode?: 'removeBg' | 'removePerson') => {
     try {
-      const { jobId } = await api.startCutout(uniqueAssetIds[0], cutoutMode);
-      setCutoutJobId(jobId);
-      api.pollJob(jobId, (j) => {
-        setCutoutProgress(j.progress);
-        if (j.lastLogLines?.length) setCutoutLogLines(j.lastLogLines);
-      }).then(() => {
-        updateEffectClipConfig(clipId, { maskStatus: 'done' });
-        setCutoutProgress(null);
-        setCutoutJobId(null);
-        setCutoutLogLines([]);
-        refreshAssets();
-      }).catch((e) => {
-        if (e.message === 'CANCELLED') {
-          updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
-        } else {
-          updateEffectClipConfig(clipId, { maskStatus: 'error' });
-          notify(`Cutout failed: ${e.message}`);
-        }
-        setCutoutProgress(null);
-        setCutoutJobId(null);
-        setCutoutLogLines([]);
-      });
+      const { jobId } = await api.startCutout(assetId, mode ?? 'removeBg');
+      setAssetJobs((prev) => ({
+        ...prev,
+        [assetId]: {
+          ...prev[assetId],
+          cutout: { jobId, status: 'QUEUED', progress: 0, logLines: [] },
+        },
+      }));
     } catch (e: any) {
-      updateEffectClipConfig(clipId, { maskStatus: 'error' });
-      setCutoutProgress(null);
-      setCutoutJobId(null);
       notify(`Cutout error: ${e.message}`);
     }
   };
 
-  const handleCancelCutout = async (clipId: string) => {
-    // If no job ID (e.g. page was reloaded while job was running, or job failed
-    // before the ID was stored), just reset the UI state so the user isn't stuck.
-    if (!cutoutJobId) {
-      updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
-      setCutoutProgress(null);
-      setCutoutLogLines([]);
+  const handleCancelCutout = async (assetId: string) => {
+    const jobId = assetJobsRef.current[assetId]?.cutout?.jobId;
+    if (!jobId) {
+      setAssetJobs((prev) => ({
+        ...prev,
+        [assetId]: {
+          ...prev[assetId],
+          cutout: prev[assetId]?.cutout
+            ? { ...prev[assetId]!.cutout!, status: 'CANCELLED' }
+            : undefined,
+        },
+      }));
       return;
     }
     try {
-      await api.cancelJob(cutoutJobId);
-      // Optimistically update UI immediately; pollJob will also confirm via CANCELLED status.
-      updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
-      setCutoutProgress(null);
-      setCutoutJobId(null);
-      setCutoutLogLines([]);
+      await api.cancelJob(jobId);
     } catch (e: any) {
-      // Cancel can fail when the job already finished or errored on the backend.
-      // In that case reset the UI anyway so the user isn't stuck at "processing".
-      updateEffectClipConfig(clipId, { maskStatus: 'error' });
-      setCutoutProgress(null);
-      setCutoutJobId(null);
-      setCutoutLogLines([]);
       notify(`Cancel failed: ${e.message}`);
     }
   };
 
-  const handleStartHeadStabilization = async (clipId: string) => {
-    if (!project) return;
-    const clip = findClip(clipId);
-    if (!clip || !clip.effectConfig) return;
-
-    // Find parent video track and get assets to process.
-    // Prefer the linked parentTrackId, but fall back to any video track with clips
-    // (handles the case where parentTrackId points to the default empty video track).
-    const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === clipId));
-    const linkedParent = effectTrack?.parentTrackId
-      ? project.tracks.find((t) => t.id === effectTrack.parentTrackId)
-      : null;
-    const parentTrack =
-      (linkedParent && linkedParent.clips.some((c) => c.assetId))
-        ? linkedParent
-        : project.tracks.find((t) => t.type === 'video' && t.clips.some((c) => c.assetId))
-          ?? project.tracks.find((t) => t.type === 'video');
-    const videoClips = parentTrack?.clips ?? [];
-    const seenAssets = new Set<string>();
-    const uniqueAssetIds = videoClips.map((c) => c.assetId).filter((id) => id && !seenAssets.has(id) && seenAssets.add(id));
-    if (uniqueAssetIds.length === 0) {
-      notify('No video clips found in parent track');
-      return;
-    }
-
-    updateEffectClipConfig(clipId, { stabilizationStatus: 'processing' });
-    setHeadStabProgress(0);
+  const handleStartHeadStabilization = async (
+    assetId: string,
+    params: { smoothingX: number; smoothingY: number; smoothingZ: number }
+  ) => {
     try {
-      const { jobId } = await api.startHeadStabilization(uniqueAssetIds[0], {
-        smoothingX: clip.effectConfig.smoothingX ?? 0.7,
-        smoothingY: clip.effectConfig.smoothingY ?? 0.7,
-        smoothingZ: clip.effectConfig.smoothingZ ?? 0.0,
-      });
-      setHeadStabJobId(jobId);
-      api.pollJob(jobId, (j) => {
-        setHeadStabProgress(j.progress);
-        if (j.lastLogLines?.length) setHeadStabLogLines(j.lastLogLines);
-      }).then(() => {
-        updateEffectClipConfig(clipId, { stabilizationStatus: 'done' });
-        setHeadStabProgress(null);
-        setHeadStabJobId(null);
-        setHeadStabLogLines([]);
-        notify('Head stabilization done!');
-        refreshAssets();
-      }).catch((e) => {
-        if (e.message === 'CANCELLED') {
-          updateEffectClipConfig(clipId, { stabilizationStatus: 'cancelled' });
-        } else {
-          updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
-          notify(`Head stabilization failed: ${e.message}`);
-        }
-        setHeadStabProgress(null);
-        setHeadStabJobId(null);
-        setHeadStabLogLines([]);
-      });
+      const { jobId } = await api.startHeadStabilization(assetId, params);
+      setAssetJobs((prev) => ({
+        ...prev,
+        [assetId]: {
+          ...prev[assetId],
+          headStab: { jobId, status: 'QUEUED', progress: 0, logLines: [] },
+        },
+      }));
     } catch (e: any) {
-      updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
-      setHeadStabProgress(null);
-      setHeadStabJobId(null);
       notify(`Head stabilization error: ${e.message}`);
     }
   };
 
-  const handleCancelHeadStabilization = async (_clipId: string) => {
-    if (!headStabJobId) return;
+  const handleCancelHeadStabilization = async (assetId: string) => {
+    const jobId = assetJobsRef.current[assetId]?.headStab?.jobId;
+    if (!jobId) return;
     try {
-      await api.cancelJob(headStabJobId);
+      await api.cancelJob(jobId);
     } catch (e: any) {
       notify(`Cancel failed: ${e.message}`);
     }
@@ -697,6 +680,7 @@ export default function Editor() {
         assets={assets}
         onAssetsChange={refreshAssets}
         onDragAsset={setDraggedAssetId}
+        assetJobs={assetJobs}
         onAddToTimeline={isMobile ? (assetId, assetType, duration) => {
           handleDropAssetNewTrack(assetType as 'video' | 'audio', assetId, 0, duration);
         } : undefined}
@@ -796,10 +780,7 @@ export default function Editor() {
           onStartHeadStabilization={handleStartHeadStabilization}
           onCancelHeadStabilization={handleCancelHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
-          cutoutProgress={cutoutProgress}
-          cutoutLogLines={cutoutLogLines}
-          headStabProgress={headStabProgress}
-          headStabLogLines={headStabLogLines}
+          assetJobs={assetJobs}
         />
       </div>
     ),

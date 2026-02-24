@@ -91,9 +91,9 @@ export function useProject() {
           case 'beatZoom':
             return { effectType: 'beatZoom', enabled: true, intensity: 0.08, durationMs: 150, easing: 'easeOut' as const, beatDivision: 1 };
           case 'cutout':
-            return { effectType: 'cutout', enabled: true, background: { type: 'solid' as const, color: '#000000' }, maskStatus: 'pending' as const };
+            return { effectType: 'cutout', enabled: true, background: { type: 'solid' as const, color: '#000000' } };
           case 'headStabilization':
-            return { effectType: 'headStabilization', enabled: true, smoothingX: 0.7, smoothingY: 0.7, smoothingZ: 0.0, stabilizationStatus: 'pending' as const };
+            return { effectType: 'headStabilization', enabled: true, smoothingX: 0.7, smoothingY: 0.7, smoothingZ: 0.0 };
           case 'cartoon':
             return { effectType: 'cartoon', enabled: true, edgeStrength: 0.6, colorSimplification: 0.5, saturation: 1.5 };
           case 'colorGrade':

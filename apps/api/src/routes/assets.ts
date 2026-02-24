@@ -86,6 +86,39 @@ export async function assetsRoutes(app: FastifyInstance) {
         await ffmpeg.runImportPipeline(job.id, assetId, originalPath, probe);
         const j = jq.getJob(job.id);
         if (j) ws.writeJob({ ...j, status: 'DONE', progress: 100, updatedAt: new Date().toISOString() });
+
+        // Auto-start cutout for video assets after import completes
+        const importedAsset = ws.getAsset(assetId);
+        if (importedAsset && importedAsset.type === 'video' && !importedAsset.maskPath) {
+          const proxyExists = importedAsset.proxyPath
+            ? fs.existsSync(path.join(ws.getWorkspaceDir(), importedAsset.proxyPath))
+            : false;
+          if (proxyExists) {
+            const cutoutJob = jq.createJob('cutout', assetId);
+            ws.upsertAsset({ ...importedAsset, cutoutJobId: cutoutJob.id });
+            const maskOutputPath = path.join(ws.getAssetDir(assetId), 'mask.mp4');
+            const scriptPath = path.join(config.scriptsDir, 'cutout.py');
+            const proxyAbsPath = path.join(ws.getWorkspaceDir(), importedAsset.proxyPath!);
+            jq.runCommand(
+              cutoutJob.id,
+              config.pythonBin,
+              ['-u', scriptPath, proxyAbsPath, maskOutputPath, 'removeBg'],
+              {
+                onProgress: (line: string) => {
+                  const m = line.match(/\[cutout\]\s+(\d+)%/);
+                  return m ? parseInt(m[1], 10) : undefined;
+                },
+                onDone: () => {
+                  const latest = ws.getAsset(assetId);
+                  if (latest) {
+                    ws.upsertAsset({ ...latest, maskPath: `assets/${assetId}/mask.mp4`, cutoutJobId: cutoutJob.id });
+                  }
+                },
+                outputPath: maskOutputPath,
+              }
+            );
+          }
+        }
       } catch (e: any) {
         ws.appendJobLog(job.id, `ERROR: ${e.message}`);
         const j = jq.getJob(job.id);
@@ -262,6 +295,39 @@ export async function assetsRoutes(app: FastifyInstance) {
         await ffmpeg.runImportPipeline(job.id, assetId, originalPath, probe);
         const j = jq.getJob(job.id);
         if (j) ws.writeJob({ ...j, status: 'DONE', progress: 100, updatedAt: new Date().toISOString() });
+
+        // Auto-start cutout for video assets after import completes
+        const importedAsset = ws.getAsset(assetId);
+        if (importedAsset && importedAsset.type === 'video' && !importedAsset.maskPath) {
+          const proxyExists = importedAsset.proxyPath
+            ? fs.existsSync(path.join(ws.getWorkspaceDir(), importedAsset.proxyPath))
+            : false;
+          if (proxyExists) {
+            const cutoutJob = jq.createJob('cutout', assetId);
+            ws.upsertAsset({ ...importedAsset, cutoutJobId: cutoutJob.id });
+            const maskOutputPath = path.join(ws.getAssetDir(assetId), 'mask.mp4');
+            const scriptPath = path.join(config.scriptsDir, 'cutout.py');
+            const proxyAbsPath = path.join(ws.getWorkspaceDir(), importedAsset.proxyPath!);
+            jq.runCommand(
+              cutoutJob.id,
+              config.pythonBin,
+              ['-u', scriptPath, proxyAbsPath, maskOutputPath, 'removeBg'],
+              {
+                onProgress: (line: string) => {
+                  const m = line.match(/\[cutout\]\s+(\d+)%/);
+                  return m ? parseInt(m[1], 10) : undefined;
+                },
+                onDone: () => {
+                  const latest = ws.getAsset(assetId);
+                  if (latest) {
+                    ws.upsertAsset({ ...latest, maskPath: `assets/${assetId}/mask.mp4`, cutoutJobId: cutoutJob.id });
+                  }
+                },
+                outputPath: maskOutputPath,
+              }
+            );
+          }
+        }
       } catch (e: any) {
         ws.appendJobLog(job.id, `ERROR: ${e.message}`);
         const j = jq.getJob(job.id);
@@ -299,6 +365,9 @@ export async function assetsRoutes(app: FastifyInstance) {
     const stabilizedOutputPath = path.join(ws.getAssetDir(asset.id), 'head_stabilized.mp4');
     const scriptPath = path.join(config.scriptsDir, 'head_stabilize.py');
 
+    // Store the active job ID on the asset so the UI can poll it
+    ws.upsertAsset({ ...asset, headStabJobId: job.id });
+
     jq.runCommand(
       job.id,
       config.pythonBin,
@@ -314,6 +383,7 @@ export async function assetsRoutes(app: FastifyInstance) {
             ws.upsertAsset({
               ...latestAsset,
               headStabilizedPath: `assets/${asset.id}/head_stabilized.mp4`,
+              headStabJobId: job.id,
             });
           }
         },
@@ -346,6 +416,9 @@ export async function assetsRoutes(app: FastifyInstance) {
     const maskOutputPath = path.join(ws.getAssetDir(asset.id), 'mask.mp4');
     const scriptPath = path.join(config.scriptsDir, 'cutout.py');
 
+    // Store the active job ID on the asset so the UI can poll it
+    ws.upsertAsset({ ...asset, cutoutJobId: job.id });
+
     jq.runCommand(
       job.id,
       config.pythonBin,
@@ -358,7 +431,7 @@ export async function assetsRoutes(app: FastifyInstance) {
         onDone: () => {
           const latestAsset = ws.getAsset(asset.id);
           if (latestAsset) {
-            ws.upsertAsset({ ...latestAsset, maskPath: `assets/${asset.id}/mask.mp4` });
+            ws.upsertAsset({ ...latestAsset, maskPath: `assets/${asset.id}/mask.mp4`, cutoutJobId: job.id });
           }
         },
         outputPath: maskOutputPath,

@@ -7,10 +7,13 @@ import { formatTime } from '@/lib/utils';
 
 type ViewMode = 'list' | 'grid' | 'masonry';
 
+type AssetJobEntry = { jobId: string; status: string; progress: number; logLines: string[] };
+
 interface Props {
   assets: Asset[];
   onAssetsChange: () => void;
   onDragAsset?: (assetId: string) => void;
+  assetJobs?: Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry }>;
   /** Called on mobile when user taps the "+" button to add an asset to the timeline. */
   onAddToTimeline?: (assetId: string, assetType: string, duration: number) => void;
 }
@@ -48,7 +51,7 @@ function MasonryIcon() {
   );
 }
 
-export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToTimeline }: Props) {
+export default function MediaBin({ assets, onAssetsChange, onDragAsset, assetJobs, onAddToTimeline }: Props) {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -383,6 +386,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, onAddToT
                 viewMode={viewMode}
                 onDragStart={handleAssetDragStart}
                 onAddToTimeline={onAddToTimeline}
+                cutoutJob={assetJobs?.[asset.id]?.cutout}
               />
             ))}
           </div>
@@ -398,16 +402,22 @@ function AssetItem({
   viewMode,
   onDragStart,
   onAddToTimeline,
+  cutoutJob,
 }: {
   asset: Asset;
   index?: number;
   viewMode: ViewMode;
   onDragStart: (e: React.DragEvent, asset: Asset) => void;
   onAddToTimeline?: (assetId: string, assetType: string, duration: number) => void;
+  cutoutJob?: AssetJobEntry;
 }) {
   const isVideo = asset.type === 'video';
   const isReady = !!asset.waveformPath;
   const [added, setAdded] = useState(false);
+
+  const isCutoutRunning = cutoutJob?.status === 'RUNNING' || cutoutJob?.status === 'QUEUED';
+  const isCutoutDone = !!asset.maskPath;
+  const isCutoutError = cutoutJob?.status === 'ERROR';
 
   const handleAddToTimeline = () => {
     if (!isReady || !onAddToTimeline) return;
@@ -531,6 +541,29 @@ function AssetItem({
             {formatTime(asset.duration)}
             {!isReady && ' · processing...'}
           </div>
+          {/* Cutout status badge */}
+          {isVideo && (isCutoutRunning || isCutoutDone || isCutoutError) && (
+            <div style={{ marginTop: 4 }}>
+              {isCutoutRunning && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#fbbf24' }}>Cutout: {cutoutJob!.progress > 0 ? `${cutoutJob!.progress}%` : '…'}</span>
+                  <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'rgba(251,191,36,0.18)', overflow: 'hidden', maxWidth: 60 }}>
+                    {cutoutJob!.progress > 0 ? (
+                      <div style={{ height: '100%', borderRadius: 2, background: '#fbbf24', width: `${cutoutJob!.progress}%`, transition: 'width 0.35s ease' }} />
+                    ) : (
+                      <div style={{ height: '100%', width: '40%', borderRadius: 2, background: '#fbbf24', animation: 'progressIndeterminate 1.4s ease-in-out infinite' }} />
+                    )}
+                  </div>
+                </div>
+              )}
+              {isCutoutDone && !isCutoutRunning && (
+                <span style={{ fontSize: 10, color: '#4ade80' }}>✓ Cutout ready</span>
+              )}
+              {isCutoutError && !isCutoutRunning && (
+                <span style={{ fontSize: 10, color: '#f87171' }}>Cutout error</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Resolution (hidden on mobile to save space) */}

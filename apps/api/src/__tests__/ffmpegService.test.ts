@@ -524,7 +524,7 @@ describe('buildExportCommand', () => {
 
   // ─── Head Stabilization effect ───────────────────────────────────────────────
 
-  it('head stabilization uses stabilized path when status is done', () => {
+  it('head stabilization uses stabilized path when asset has headStabilizedPath and effect is enabled', () => {
     const videoAsset = {
       id: 'hsa1',
       name: 'clip.mp4',
@@ -563,7 +563,6 @@ describe('buildExportCommand', () => {
                 smoothingX: 0.7,
                 smoothingY: 0.7,
                 smoothingZ: 0.0,
-                stabilizationStatus: 'done' as const,
               },
             },
           ],
@@ -597,14 +596,14 @@ describe('buildExportCommand', () => {
     expect(args).not.toContain(path.join(tmpDir, 'assets/hsa1/proxy.mp4'));
   });
 
-  it('head stabilization uses proxy when status is not done', () => {
+  it('head stabilization uses proxy when asset has no headStabilizedPath', () => {
     const videoAsset = {
       id: 'hsa2',
       name: 'clip.mp4',
       type: 'video' as const,
       originalPath: 'assets/hsa2/original.mp4',
       proxyPath: 'assets/hsa2/proxy.mp4',
-      headStabilizedPath: 'assets/hsa2/head_stabilized.mp4',
+      // No headStabilizedPath — effect is enabled but output not yet generated
       duration: 5,
       createdAt: new Date().toISOString(),
     };
@@ -635,7 +634,6 @@ describe('buildExportCommand', () => {
                 smoothingX: 0.7,
                 smoothingY: 0.7,
                 smoothingZ: 0.0,
-                stabilizationStatus: 'pending' as const,  // not done
               },
             },
           ],
@@ -663,7 +661,7 @@ describe('buildExportCommand', () => {
     });
 
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
-    // Should use proxy since status is not 'done'
+    // Should use proxy since headStabilizedPath does not exist on the asset
     expect(args).toContain(path.join(tmpDir, 'assets/hsa2/proxy.mp4'));
   });
 });

@@ -192,19 +192,20 @@ export function buildExportCommand(
   const inputArgs: string[] = [];
 
   // Determine which assets should use the head-stabilized video path.
-  // If the video track has a headStabilization effect track with status 'done',
-  // use the stabilized derivative for all clips on that track.
+  // If the video track has an enabled headStabilization effect track AND the asset
+  // already has a headStabilizedPath, use the stabilized derivative for export.
   const stabilizedAssetIds = new Set<string>();
   for (const track of videoTracks) {
     const hsEffectTrack = project.tracks.find(
       (t) => t.type === 'effect' && t.effectType === 'headStabilization' && t.parentTrackId === track.id
     );
-    const hasActiveHs = hsEffectTrack?.clips.some(
-      (ec) => ec.effectConfig?.enabled && ec.effectConfig?.stabilizationStatus === 'done'
-    );
-    if (hasActiveHs) {
+    const hasEnabledHs = hsEffectTrack?.clips.some((ec) => ec.effectConfig?.enabled);
+    if (hasEnabledHs) {
       for (const clip of track.clips) {
-        stabilizedAssetIds.add(clip.assetId);
+        const asset = ws.getAsset(clip.assetId);
+        if (asset?.headStabilizedPath) {
+          stabilizedAssetIds.add(clip.assetId);
+        }
       }
     }
   }

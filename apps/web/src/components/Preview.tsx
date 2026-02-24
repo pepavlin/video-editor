@@ -358,6 +358,106 @@ function getOrCreateVideoEl(assetId: string, src: string): HTMLVideoElement {
   return videoElementCache.get(assetId)!;
 }
 
+// ─── Mask video element cache ─────────────────────────────────────────────────
+
+const maskVideoCache = new Map<string, HTMLVideoElement>();
+
+function getOrCreateMaskVideoEl(assetId: string, src: string): HTMLVideoElement {
+  const key = `mask-${assetId}`;
+  if (!maskVideoCache.has(key)) {
+    const el = document.createElement('video');
+    el.crossOrigin = 'anonymous';
+    el.src = src;
+    el.preload = 'auto';
+    el.muted = true;
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    maskVideoCache.set(key, el);
+  }
+  return maskVideoCache.get(key)!;
+}
+
+// ─── Offscreen canvas for cutout compositing ──────────────────────────────────
+
+let _cutoutVideoCanvas: HTMLCanvasElement | null = null;
+let _cutoutMaskCanvas: HTMLCanvasElement | null = null;
+
+function getCutoutCanvases(w: number, h: number) {
+  const iw = Math.max(2, Math.round(w));
+  const ih = Math.max(2, Math.round(h));
+  if (!_cutoutVideoCanvas || _cutoutVideoCanvas.width !== iw || _cutoutVideoCanvas.height !== ih) {
+    _cutoutVideoCanvas = document.createElement('canvas');
+    _cutoutVideoCanvas.width = iw;
+    _cutoutVideoCanvas.height = ih;
+  }
+  if (!_cutoutMaskCanvas || _cutoutMaskCanvas.width !== iw || _cutoutMaskCanvas.height !== ih) {
+    _cutoutMaskCanvas = document.createElement('canvas');
+    _cutoutMaskCanvas.width = iw;
+    _cutoutMaskCanvas.height = ih;
+  }
+  return { videoCanvas: _cutoutVideoCanvas, maskCanvas: _cutoutMaskCanvas };
+}
+
+/**
+ * Composite a cutout effect: draw background, then masked person/subject on top.
+ * The mask video is grayscale yuv420p (opaque white=subject, black=background).
+ */
+function applyCutoutEffectToCtx(
+  ctx: CanvasRenderingContext2D,
+  videoEl: HTMLVideoElement,
+  maskEl: HTMLVideoElement,
+  bounds: Bounds,
+  background: import('@video-editor/shared').BackgroundConfig
+): void {
+  const { x, y, w, h } = bounds;
+  const iw = Math.max(2, Math.round(w));
+  const ih = Math.max(2, Math.round(h));
+
+  // 1. Draw background
+  if (background.type === 'solid') {
+    ctx.fillStyle = background.color ?? '#000000';
+    ctx.fillRect(x, y, w, h);
+  }
+  // (video background would require a separate bgVideoEl lookup — out of scope for MVP)
+
+  const { videoCanvas, maskCanvas } = getCutoutCanvases(iw, ih);
+  const videoCtx = videoCanvas.getContext('2d');
+  const maskCtx = maskCanvas.getContext('2d');
+  if (!videoCtx || !maskCtx) {
+    ctx.drawImage(videoEl, x, y, w, h);
+    return;
+  }
+
+  // 2. Draw video frame to offscreen canvas A
+  videoCtx.clearRect(0, 0, iw, ih);
+  videoCtx.drawImage(videoEl, 0, 0, iw, ih);
+
+  // 3. Draw mask to offscreen canvas B, convert luminance → alpha
+  try {
+    maskCtx.clearRect(0, 0, iw, ih);
+    maskCtx.drawImage(maskEl, 0, 0, iw, ih);
+    const maskData = maskCtx.getImageData(0, 0, iw, ih);
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      const lum = maskData.data[i] * 0.299 + maskData.data[i + 1] * 0.587 + maskData.data[i + 2] * 0.114;
+      maskData.data[i + 3] = Math.round(lum);
+      maskData.data[i] = maskData.data[i + 1] = maskData.data[i + 2] = 255;
+    }
+    maskCtx.putImageData(maskData, 0, 0);
+
+    // 4. Apply mask to video canvas using destination-in (keeps pixels where mask is opaque)
+    videoCtx.globalCompositeOperation = 'destination-in';
+    videoCtx.drawImage(maskCanvas, 0, 0);
+    videoCtx.globalCompositeOperation = 'source-over';
+  } catch (err) {
+    console.warn('[Preview] Cutout mask pixel manipulation failed (CORS?):', err);
+    ctx.drawImage(videoEl, x, y, w, h);
+    return;
+  }
+
+  // 5. Composite masked video onto main canvas (over the background already drawn)
+  ctx.drawImage(videoCanvas, x, y, w, h);
+}
+
 // ─── Bounds helpers ───────────────────────────────────────────────────────────
 
 function getVideoBounds(
@@ -809,11 +909,59 @@ export default function Preview({
             (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
           )?.effectConfig;
 
+          const cutoutEffectTrack = project.tracks.find(
+            (t) => t.type === 'effect' && t.effectType === 'cutout' && t.parentTrackId === track.id
+          );
+          const cutoutEff = cutoutEffectTrack?.clips.find(
+            (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
+          )?.effectConfig;
+          const cutoutActive = (cutoutEff?.enabled ?? false) && !!asset.maskPath;
+          const maskEl = cutoutActive
+            ? getOrCreateMaskVideoEl(asset.id, `/files/${asset.maskPath}`)
+            : null;
+
+          // Sync mask video time with main video
+          if (maskEl) {
+            const targetTime = Math.max(0, Math.min(
+              Math.max(0, clip.sourceStart + (currentTime - clip.timelineStart)),
+              maskEl.duration || 9999
+            ));
+            if (propsRef.current.isPlaying) {
+              if (maskEl.paused) {
+                maskEl.currentTime = targetTime;
+                maskEl.play().catch(() => {});
+              } else if (Math.abs(maskEl.currentTime - targetTime) > 0.5) {
+                maskEl.currentTime = targetTime;
+              }
+            } else {
+              if (Math.abs(maskEl.currentTime - targetTime) > 0.08) {
+                maskEl.currentTime = targetTime;
+              }
+            }
+          }
+
           try {
             const cartoonActive = cartoonEff?.enabled ?? false;
             const colorGradeActive = colorGradeEff?.enabled ?? false;
 
-            if (cartoonActive && colorGradeActive) {
+            if (cutoutActive && maskEl) {
+              // Cutout: background + masked subject. Then optionally post-process with cartoon/colorGrade.
+              applyCutoutEffectToCtx(ctx, videoEl, maskEl, bounds, cutoutEff!.background ?? { type: 'solid', color: '#000000' });
+              // Post-process the composited region with cartoon or colorGrade if active
+              if (cartoonActive || colorGradeActive) {
+                // Draw the composited region to an offscreen then apply effects
+                // For simplicity in MVP: apply colorGrade/cartoon from the already-drawn region
+                // by reading from the canvas itself (slow path — only used when stacked with cutout)
+                const postCanvas = processCartoonFrame(videoEl, bounds, cartoonEff!) ?? videoEl;
+                if (cartoonActive && colorGradeActive) {
+                  applyColorGradeEffectToCtx(ctx, postCanvas, bounds, colorGradeEff!);
+                } else if (cartoonActive) {
+                  applyCartoonEffectToCtx(ctx, videoEl, bounds, cartoonEff!);
+                } else {
+                  applyColorGradeEffectToCtx(ctx, videoEl, bounds, colorGradeEff!);
+                }
+              }
+            } else if (cartoonActive && colorGradeActive) {
               // Chain: render cartoon to offscreen first, then apply color grade on top
               const cartoonCanvas = processCartoonFrame(videoEl, bounds, cartoonEff!);
               applyColorGradeEffectToCtx(ctx, cartoonCanvas ?? videoEl, bounds, colorGradeEff!);
@@ -912,6 +1060,7 @@ export default function Preview({
   useEffect(() => {
     if (!isPlaying) {
       videoElementCache.forEach((el) => { if (!el.paused) el.pause(); });
+      maskVideoCache.forEach((el) => { if (!el.paused) el.pause(); });
     }
   }, [isPlaying]);
 
