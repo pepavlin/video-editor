@@ -32,9 +32,9 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
         sys.exit(1)
 
     invert_mask = (mode == 'removePerson')
-    print(f"[cutout] Input: {input_path}")
-    print(f"[cutout] Output: {output_path}")
-    print(f"[cutout] Mode: {mode} (invert={invert_mask})")
+    print(f"[cutout] Input: {input_path}", flush=True)
+    print(f"[cutout] Output: {output_path}", flush=True)
+    print(f"[cutout] Mode: {mode} (invert={invert_mask})", flush=True)
 
     # Create temp dirs
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -44,7 +44,7 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
         os.makedirs(masks_dir)
 
         # Extract frames from proxy video (low-res for speed)
-        print("[cutout] Extracting frames...")
+        print("[cutout] Extracting frames...", flush=True)
         subprocess.run(
             [
                 "ffmpeg", "-y",
@@ -59,10 +59,15 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
 
         frames = sorted(f for f in os.listdir(frames_dir) if f.endswith(".jpg"))
         total = len(frames)
-        print(f"[cutout] Processing {total} frames...")
+        print(f"[cutout] Processing {total} frames...", flush=True)
 
         # Load human segmentation model
+        print("[cutout] Loading segmentation model...", flush=True)
         session = new_session("u2net_human_seg")
+        print("[cutout] Model loaded, starting frame processing...", flush=True)
+
+        # Report interval: every frame for short clips, every 5 frames otherwise
+        report_every = max(1, min(5, total // 20 + 1))
 
         for i, frame_file in enumerate(frames):
             frame_path = os.path.join(frames_dir, frame_file)
@@ -83,12 +88,12 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
 
             mask.save(mask_path)
 
-            if (i + 1) % 10 == 0 or i == total - 1:
+            if (i + 1) % report_every == 0 or i == total - 1:
                 pct = int((i + 1) / total * 100)
-                print(f"[cutout] {pct}% ({i+1}/{total})")
+                print(f"[cutout] {pct}% ({i+1}/{total})", flush=True)
 
         # Reassemble mask frames into video
-        print("[cutout] Assembling mask video...")
+        print("[cutout] Assembling mask video...", flush=True)
 
         # Get FPS from input
         result = subprocess.run(
@@ -125,7 +130,7 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
             capture_output=True,
         )
 
-    print(f"[cutout] Done: {output_path}")
+    print(f"[cutout] Done: {output_path}", flush=True)
 
 
 if __name__ == "__main__":
