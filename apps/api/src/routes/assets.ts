@@ -349,7 +349,7 @@ export async function assetsRoutes(app: FastifyInstance) {
     jq.runCommand(
       job.id,
       config.pythonBin,
-      [scriptPath, proxyPath, maskOutputPath, mode],
+      ['-u', scriptPath, proxyPath, maskOutputPath, mode],
       {
         onProgress: (line: string) => {
           const m = line.match(/\[cutout\]\s+(\d+)%/);

@@ -29,7 +29,9 @@ interface Props {
   onCancelHeadStabilization: (clipId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
   cutoutProgress?: number | null;
+  cutoutLogLines?: string[];
   headStabProgress?: number | null;
+  headStabLogLines?: string[];
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -140,7 +142,9 @@ export default function Inspector({
   onCancelHeadStabilization,
   onSyncAudio,
   cutoutProgress,
+  cutoutLogLines,
   headStabProgress,
+  headStabLogLines,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
 
@@ -297,57 +301,98 @@ export default function Inspector({
                       </select>
                     </Row>
                     <Row label="Status">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {cfg.maskStatus === 'processing' ? (
-                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
-                            <div style={{
-                              flex: 1,
-                              height: 4,
-                              borderRadius: 2,
-                              background: 'rgba(251,191,36,0.18)',
-                              overflow: 'hidden',
-                            }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {cfg.maskStatus === 'processing' ? (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
+                              {/* Progress bar: indeterminate when at 0, deterministic otherwise */}
                               <div style={{
-                                height: '100%',
-                                borderRadius: 2,
-                                background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
-                                width: `${cutoutProgress ?? 0}%`,
-                                transition: 'width 0.3s ease',
-                              }} />
+                                flex: 1,
+                                height: 5,
+                                borderRadius: 3,
+                                background: 'rgba(251,191,36,0.18)',
+                                overflow: 'hidden',
+                                position: 'relative',
+                              }}>
+                                {(cutoutProgress ?? 0) === 0 ? (
+                                  /* Indeterminate bounce — model loading phase */
+                                  <div style={{
+                                    position: 'absolute',
+                                    height: '100%',
+                                    width: '40%',
+                                    borderRadius: 3,
+                                    background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                                    animation: 'progressIndeterminate 1.4s ease-in-out infinite',
+                                  }} />
+                                ) : (
+                                  /* Deterministic fill with shimmer overlay */
+                                  <div style={{
+                                    height: '100%',
+                                    borderRadius: 3,
+                                    background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                                    width: `${cutoutProgress ?? 0}%`,
+                                    transition: 'width 0.4s ease',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                  }}>
+                                    <div style={{
+                                      position: 'absolute',
+                                      inset: 0,
+                                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%)',
+                                      backgroundSize: '200% 100%',
+                                      animation: 'progressShimmer 1.8s linear infinite',
+                                    }} />
+                                  </div>
+                                )}
+                              </div>
+                              <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
+                                {(cutoutProgress ?? 0) === 0 ? '…' : `${cutoutProgress}%`}
+                              </span>
                             </div>
-                            <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
-                              {cutoutProgress ?? 0}%
+                          ) : (
+                            <span style={{
+                              fontSize: 11,
+                              color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
+                              flex: 1,
+                            }}>
+                              {cfg.maskStatus === 'done' && 'Mask ready'}
+                              {cfg.maskStatus === 'error' && 'Error – retry'}
+                              {cfg.maskStatus === 'cancelled' && 'Cancelled'}
+                              {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
                             </span>
-                          </div>
-                        ) : (
-                          <span style={{
-                            fontSize: 11,
-                            color: cfg.maskStatus === 'done' ? '#4ade80' : cfg.maskStatus === 'error' ? '#f87171' : cfg.maskStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
-                            flex: 1,
+                          )}
+                          {cfg.maskStatus === 'processing' ? (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
+                              onClick={() => onCancelCutout(selectedClip!.id)}
+                            >
+                              Cancel
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
+                              onClick={() => onStartCutout(selectedClip!.id)}
+                            >
+                              {cfg.maskStatus === 'done' || cfg.maskStatus === 'cancelled' ? 'Re-process' : 'Process'}
+                            </button>
+                          )}
+                        </div>
+                        {/* Log message line — shown only during processing */}
+                        {cfg.maskStatus === 'processing' && cutoutLogLines && cutoutLogLines.length > 0 && (
+                          <div style={{
+                            fontSize: 10,
+                            color: 'rgba(251,191,36,0.65)',
+                            fontFamily: 'monospace',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '100%',
                           }}>
-                            {cfg.maskStatus === 'done' && 'Mask ready'}
-                            {cfg.maskStatus === 'error' && 'Error – retry'}
-                            {cfg.maskStatus === 'cancelled' && 'Cancelled'}
-                            {(cfg.maskStatus === 'pending' || !cfg.maskStatus) && 'Not processed'}
-                          </span>
-                        )}
-                        {cfg.maskStatus === 'processing' ? (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
-                            onClick={() => onCancelCutout(selectedClip!.id)}
-                          >
-                            Cancel
-                          </button>
-                        ) : (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
-                            onClick={() => onStartCutout(selectedClip!.id)}
-                          >
-                            {cfg.maskStatus === 'done' || cfg.maskStatus === 'cancelled' ? 'Re-process' : 'Process'}
-                          </button>
+                            {cutoutLogLines[cutoutLogLines.length - 1]}
+                          </div>
                         )}
                       </div>
                     </Row>
@@ -412,57 +457,94 @@ export default function Inspector({
                       </div>
                     </Row>
                     <Row label="">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {cfg.stabilizationStatus === 'processing' ? (
-                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
-                            <div style={{
-                              flex: 1,
-                              height: 4,
-                              borderRadius: 2,
-                              background: 'rgba(251,191,36,0.18)',
-                              overflow: 'hidden',
-                            }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {cfg.stabilizationStatus === 'processing' ? (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 11, color: '#fbbf24', flexShrink: 0 }}>Processing</span>
                               <div style={{
-                                height: '100%',
-                                borderRadius: 2,
-                                background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
-                                width: `${headStabProgress ?? 0}%`,
-                                transition: 'width 0.3s ease',
-                              }} />
+                                flex: 1,
+                                height: 5,
+                                borderRadius: 3,
+                                background: 'rgba(251,191,36,0.18)',
+                                overflow: 'hidden',
+                                position: 'relative',
+                              }}>
+                                {(headStabProgress ?? 0) === 0 ? (
+                                  <div style={{
+                                    position: 'absolute',
+                                    height: '100%',
+                                    width: '40%',
+                                    borderRadius: 3,
+                                    background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                                    animation: 'progressIndeterminate 1.4s ease-in-out infinite',
+                                  }} />
+                                ) : (
+                                  <div style={{
+                                    height: '100%',
+                                    borderRadius: 3,
+                                    background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                                    width: `${headStabProgress ?? 0}%`,
+                                    transition: 'width 0.4s ease',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                  }}>
+                                    <div style={{
+                                      position: 'absolute',
+                                      inset: 0,
+                                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%)',
+                                      backgroundSize: '200% 100%',
+                                      animation: 'progressShimmer 1.8s linear infinite',
+                                    }} />
+                                  </div>
+                                )}
+                              </div>
+                              <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
+                                {(headStabProgress ?? 0) === 0 ? '…' : `${headStabProgress}%`}
+                              </span>
                             </div>
-                            <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0, minWidth: 28, textAlign: 'right' }}>
-                              {headStabProgress ?? 0}%
+                          ) : (
+                            <span style={{
+                              fontSize: 11,
+                              color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
+                              flex: 1,
+                            }}>
+                              {cfg.stabilizationStatus === 'done' && 'Stabilized'}
+                              {cfg.stabilizationStatus === 'error' && 'Error – retry'}
+                              {cfg.stabilizationStatus === 'cancelled' && 'Cancelled'}
+                              {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
                             </span>
-                          </div>
-                        ) : (
-                          <span style={{
-                            fontSize: 11,
-                            color: cfg.stabilizationStatus === 'done' ? '#4ade80' : cfg.stabilizationStatus === 'error' ? '#f87171' : cfg.stabilizationStatus === 'cancelled' ? '#94a3b8' : 'var(--text-subtle)',
-                            flex: 1,
+                          )}
+                          {cfg.stabilizationStatus === 'processing' ? (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
+                              onClick={() => onCancelHeadStabilization(selectedClip!.id)}
+                            >
+                              Cancel
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
+                              onClick={() => onStartHeadStabilization(selectedClip!.id)}
+                            >
+                              {cfg.stabilizationStatus === 'done' || cfg.stabilizationStatus === 'cancelled' ? 'Re-process' : 'Process'}
+                            </button>
+                          )}
+                        </div>
+                        {cfg.stabilizationStatus === 'processing' && headStabLogLines && headStabLogLines.length > 0 && (
+                          <div style={{
+                            fontSize: 10,
+                            color: 'rgba(251,191,36,0.65)',
+                            fontFamily: 'monospace',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '100%',
                           }}>
-                            {cfg.stabilizationStatus === 'done' && 'Stabilized'}
-                            {cfg.stabilizationStatus === 'error' && 'Error – retry'}
-                            {cfg.stabilizationStatus === 'cancelled' && 'Cancelled'}
-                            {(cfg.stabilizationStatus === 'pending' || !cfg.stabilizationStatus) && 'Not processed'}
-                          </span>
-                        )}
-                        {cfg.stabilizationStatus === 'processing' ? (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ fontSize: 11, border: '1px solid rgba(220,38,38,0.40)', padding: '4px 10px', color: '#ef4444' }}
-                            onClick={() => onCancelHeadStabilization(selectedClip!.id)}
-                          >
-                            Cancel
-                          </button>
-                        ) : (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
-                            onClick={() => onStartHeadStabilization(selectedClip!.id)}
-                          >
-                            {cfg.stabilizationStatus === 'done' || cfg.stabilizationStatus === 'cancelled' ? 'Re-process' : 'Process'}
-                          </button>
+                            {headStabLogLines[headStabLogLines.length - 1]}
+                          </div>
                         )}
                       </div>
                     </Row>

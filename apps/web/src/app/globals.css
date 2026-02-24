@@ -150,6 +150,15 @@ body {
   0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
   40%            { opacity: 1;   transform: scale(1); }
 }
+@keyframes progressIndeterminate {
+  0%   { left: -40%; width: 40%; }
+  60%  { left: 100%; width: 40%; }
+  100% { left: 100%; width: 40%; }
+}
+@keyframes progressShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
 @keyframes saveCheck {
   0%   { stroke-dashoffset: 20; opacity: 0; }
   60%  { opacity: 1; }

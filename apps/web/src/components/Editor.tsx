@@ -92,8 +92,10 @@ export default function Editor() {
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
   const [cutoutProgress, setCutoutProgress] = useState<number | null>(null);
   const [cutoutJobId, setCutoutJobId] = useState<string | null>(null);
+  const [cutoutLogLines, setCutoutLogLines] = useState<string[]>([]);
   const [headStabJobId, setHeadStabJobId] = useState<string | null>(null);
   const [headStabProgress, setHeadStabProgress] = useState<number | null>(null);
+  const [headStabLogLines, setHeadStabLogLines] = useState<string[]>([]);
 
   const beatsRef = useRef(beatsData);
   beatsRef.current = beatsData;
@@ -334,10 +336,14 @@ export default function Editor() {
     try {
       const { jobId } = await api.startCutout(uniqueAssetIds[0], cutoutMode);
       setCutoutJobId(jobId);
-      api.pollJob(jobId, (j) => setCutoutProgress(j.progress)).then(() => {
+      api.pollJob(jobId, (j) => {
+        setCutoutProgress(j.progress);
+        if (j.lastLogLines?.length) setCutoutLogLines(j.lastLogLines);
+      }).then(() => {
         updateEffectClipConfig(clipId, { maskStatus: 'done' });
         setCutoutProgress(null);
         setCutoutJobId(null);
+        setCutoutLogLines([]);
         refreshAssets();
       }).catch((e) => {
         if (e.message === 'CANCELLED') {
@@ -348,6 +354,7 @@ export default function Editor() {
         }
         setCutoutProgress(null);
         setCutoutJobId(null);
+        setCutoutLogLines([]);
       });
     } catch (e: any) {
       updateEffectClipConfig(clipId, { maskStatus: 'error' });
@@ -363,6 +370,7 @@ export default function Editor() {
     if (!cutoutJobId) {
       updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
       setCutoutProgress(null);
+      setCutoutLogLines([]);
       return;
     }
     try {
@@ -371,12 +379,14 @@ export default function Editor() {
       updateEffectClipConfig(clipId, { maskStatus: 'cancelled' });
       setCutoutProgress(null);
       setCutoutJobId(null);
+      setCutoutLogLines([]);
     } catch (e: any) {
       // Cancel can fail when the job already finished or errored on the backend.
       // In that case reset the UI anyway so the user isn't stuck at "processing".
       updateEffectClipConfig(clipId, { maskStatus: 'error' });
       setCutoutProgress(null);
       setCutoutJobId(null);
+      setCutoutLogLines([]);
       notify(`Cancel failed: ${e.message}`);
     }
   };
@@ -415,10 +425,14 @@ export default function Editor() {
         smoothingZ: clip.effectConfig.smoothingZ ?? 0.0,
       });
       setHeadStabJobId(jobId);
-      api.pollJob(jobId, (j) => setHeadStabProgress(j.progress)).then(() => {
+      api.pollJob(jobId, (j) => {
+        setHeadStabProgress(j.progress);
+        if (j.lastLogLines?.length) setHeadStabLogLines(j.lastLogLines);
+      }).then(() => {
         updateEffectClipConfig(clipId, { stabilizationStatus: 'done' });
         setHeadStabProgress(null);
         setHeadStabJobId(null);
+        setHeadStabLogLines([]);
         notify('Head stabilization done!');
         refreshAssets();
       }).catch((e) => {
@@ -430,6 +444,7 @@ export default function Editor() {
         }
         setHeadStabProgress(null);
         setHeadStabJobId(null);
+        setHeadStabLogLines([]);
       });
     } catch (e: any) {
       updateEffectClipConfig(clipId, { stabilizationStatus: 'error' });
@@ -782,7 +797,9 @@ export default function Editor() {
           onCancelHeadStabilization={handleCancelHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
           cutoutProgress={cutoutProgress}
+          cutoutLogLines={cutoutLogLines}
           headStabProgress={headStabProgress}
+          headStabLogLines={headStabLogLines}
         />
       </div>
     ),
