@@ -679,3 +679,135 @@ describe('POST /api/assets/link', () => {
     await app.close();
   });
 });
+
+// ─── Cutout ───────────────────────────────────────────────────────────────────
+
+describe('POST /api/assets/:id/cutout', () => {
+  it('returns 404 for unknown asset', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/unknown/cutout',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('returns 404 for audio asset (not video)', async () => {
+    ws.upsertAsset({
+      id: 'audio1',
+      name: 'music.mp3',
+      type: 'audio',
+      originalPath: 'assets/audio1/original.mp3',
+      duration: 30,
+      createdAt: new Date().toISOString(),
+    });
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/audio1/cutout',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('returns 400 when proxy file does not exist on disk', async () => {
+    ws.upsertAsset({
+      id: 'vid1',
+      name: 'clip.mp4',
+      type: 'video',
+      originalPath: 'assets/vid1/original.mp4',
+      proxyPath: 'assets/vid1/proxy.mp4',
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    });
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assets/vid1/cutout',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('starts job and returns 202 when proxy file exists', async () => {
+    const assetId = 'vid2';
+    const assetDir = ws.getAssetDir(assetId);
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, 'proxy.mp4'), 'fake-proxy');
+    ws.upsertAsset({
+      id: assetId,
+      name: 'clip.mp4',
+      type: 'video',
+      originalPath: `assets/${assetId}/original.mp4`,
+      proxyPath: `assets/${assetId}/proxy.mp4`,
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    });
+
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/assets/${assetId}/cutout`,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.statusCode).toBe(202);
+    const body = JSON.parse(res.body);
+    expect(body.jobId).toBeTruthy();
+    await app.close();
+  });
+
+  it('defaults to removeBg mode and accepts removePerson', async () => {
+    const assetId = 'vid3';
+    const assetDir = ws.getAssetDir(assetId);
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, 'proxy.mp4'), 'fake-proxy');
+    ws.upsertAsset({
+      id: assetId,
+      name: 'clip.mp4',
+      type: 'video',
+      originalPath: `assets/${assetId}/original.mp4`,
+      proxyPath: `assets/${assetId}/proxy.mp4`,
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    });
+
+    const app = await buildTestApp();
+
+    // default mode
+    const res1 = await app.inject({
+      method: 'POST',
+      url: `/api/assets/${assetId}/cutout`,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res1.statusCode).toBe(202);
+
+    // explicit removePerson mode
+    const res2 = await app.inject({
+      method: 'POST',
+      url: `/api/assets/${assetId}/cutout`,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'removePerson' }),
+    });
+    expect(res2.statusCode).toBe(202);
+
+    // invalid mode falls back to removeBg (no error)
+    const res3 = await app.inject({
+      method: 'POST',
+      url: `/api/assets/${assetId}/cutout`,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'invalid' }),
+    });
+    expect(res3.statusCode).toBe(202);
+
+    await app.close();
+  });
+});

@@ -63,6 +63,12 @@ RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: libr
 RUN pip3 install --no-cache-dir --break-system-packages rembg onnxruntime pillow \
     || pip3 install --no-cache-dir rembg onnxruntime pillow
 
+# Pre-download the rembg segmentation model so the first cutout job doesn't
+# need network access and avoids a silent hang while downloading ~170 MB.
+# Falls back gracefully if the build host has no internet access.
+RUN python3 -c "from rembg import new_session; new_session('u2net_human_seg'); print('rembg model cached')" \
+    || echo "WARNING: rembg model pre-download failed – it will be downloaded on first use"
+
 # Install head stabilization dependencies (opencv for face detection)
 RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: opencv-python-headless \
     || pip3 install --no-cache-dir --only-binary=:all: opencv-python-headless

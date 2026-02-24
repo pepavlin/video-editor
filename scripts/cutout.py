@@ -43,13 +43,18 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
         os.makedirs(frames_dir)
         os.makedirs(masks_dir)
 
-        # Extract frames from proxy video (low-res for speed)
+        # Extract frames from proxy video.
+        # Use scale=540:540:force_original_aspect_ratio=decrease to cap the longer
+        # dimension at 540px and NEVER upscale.  The proxy is already created with
+        # height=540, so landscape proxies (960x540) are downscaled to 540x304 while
+        # portrait proxies (304x540) stay at 304x540 instead of being upscaled to
+        # 540x960 (which would make rembg ~3x slower for no reason).
         print("[cutout] Extracting frames...", flush=True)
         subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-i", input_path,
-                "-vf", "scale=540:-2",
+                "-vf", "scale=540:540:force_original_aspect_ratio=decrease",
                 "-q:v", "3",
                 os.path.join(frames_dir, "frame_%06d.jpg"),
             ],
@@ -66,8 +71,10 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
         session = new_session("u2net_human_seg")
         print("[cutout] Model loaded, starting frame processing...", flush=True)
 
-        # Report interval: every frame for short clips, every 5 frames otherwise
-        report_every = max(1, min(5, total // 20 + 1))
+        # Report every single frame so the log line always advances and users
+        # can see that processing is making progress even when the integer
+        # percentage stays flat for a long time on longer clips.
+        report_every = 1
 
         for i, frame_file in enumerate(frames):
             frame_path = os.path.join(frames_dir, frame_file)
