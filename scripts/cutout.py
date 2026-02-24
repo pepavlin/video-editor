@@ -18,6 +18,22 @@ import subprocess
 import tempfile
 
 
+def _run_ffmpeg(args: list, label: str) -> None:
+    """Run ffmpeg with the given args, printing stderr to stdout on failure."""
+    try:
+        subprocess.run(args, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        stderr_text = e.stderr.decode(errors='replace').strip()
+        print(f"ERROR: {label} failed (exit {e.returncode}):", flush=True)
+        if stderr_text:
+            for line in stderr_text.splitlines():
+                print(f"  ffmpeg: {line}", flush=True)
+        sys.exit(1)
+    except FileNotFoundError:
+        print(f"ERROR: ffmpeg not found. Please install ffmpeg.", flush=True)
+        sys.exit(1)
+
+
 def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') -> None:
     try:
         from rembg import remove, new_session
@@ -36,6 +52,10 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
     print(f"[cutout] Output: {output_path}", flush=True)
     print(f"[cutout] Mode: {mode} (invert={invert_mask})", flush=True)
 
+    if not os.path.exists(input_path):
+        print(f"ERROR: Input file not found: {input_path}", flush=True)
+        sys.exit(1)
+
     # Create temp dirs
     with tempfile.TemporaryDirectory() as tmpdir:
         frames_dir = os.path.join(tmpdir, "frames")
@@ -49,26 +69,35 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
         # height=540, so landscape proxies (960x540) are downscaled to 540x304 while
         # portrait proxies (304x540) stay at 304x540 instead of being upscaled to
         # 540x960 (which would make rembg ~3x slower for no reason).
+        #
+        # force_divisible_by=2 ensures output dimensions are always even, which is
+        # required for yuv420p encoding in the assembly step.
         print("[cutout] Extracting frames...", flush=True)
-        subprocess.run(
+        _run_ffmpeg(
             [
                 "ffmpeg", "-y",
                 "-i", input_path,
-                "-vf", "scale=540:540:force_original_aspect_ratio=decrease",
+                "-vf", "scale=540:540:force_original_aspect_ratio=decrease:force_divisible_by=2",
                 "-q:v", "3",
                 os.path.join(frames_dir, "frame_%06d.jpg"),
             ],
-            check=True,
-            capture_output=True,
+            "Frame extraction",
         )
 
         frames = sorted(f for f in os.listdir(frames_dir) if f.endswith(".jpg"))
         total = len(frames)
+        if total == 0:
+            print("ERROR: No frames extracted from input video.", flush=True)
+            sys.exit(1)
         print(f"[cutout] Processing {total} frames...", flush=True)
 
         # Load human segmentation model
         print("[cutout] Loading segmentation model...", flush=True)
-        session = new_session("u2net_human_seg")
+        try:
+            session = new_session("u2net_human_seg")
+        except Exception as e:
+            print(f"ERROR: Failed to load segmentation model: {e}", flush=True)
+            sys.exit(1)
         print("[cutout] Model loaded, starting frame processing...", flush=True)
 
         # Report every single frame so the log line always advances and users
@@ -80,8 +109,12 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
             frame_path = os.path.join(frames_dir, frame_file)
             mask_path = os.path.join(masks_dir, frame_file.replace(".jpg", ".png"))
 
-            img = Image.open(frame_path).convert("RGBA")
-            output_img = remove(img, session=session, only_mask=True)
+            try:
+                img = Image.open(frame_path).convert("RGBA")
+                output_img = remove(img, session=session, only_mask=True)
+            except Exception as e:
+                print(f"ERROR: Frame {i+1}/{total} processing failed: {e}", flush=True)
+                sys.exit(1)
 
             # Convert to grayscale mask (white = person)
             if output_img.mode == "L":
@@ -123,18 +156,22 @@ def process_cutout(input_path: str, output_path: str, mode: str = 'removeBg') ->
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-        subprocess.run(
+        # scale=trunc(iw/2)*2:trunc(ih/2)*2 ensures the PNG frames (which may have
+        # odd dimensions despite force_divisible_by=2 in extraction, e.g. if Pillow
+        # saves at a slightly different size) are rounded down to even before encoding
+        # with yuv420p, which strictly requires even width and height.
+        _run_ffmpeg(
             [
                 "ffmpeg", "-y",
                 "-framerate", str(fps),
                 "-i", os.path.join(masks_dir, "frame_%06d.png"),
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-pix_fmt", "yuv420p",
                 output_path,
             ],
-            check=True,
-            capture_output=True,
+            "Mask video assembly",
         )
 
     print(f"[cutout] Done: {output_path}", flush=True)
