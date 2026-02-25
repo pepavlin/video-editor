@@ -187,7 +187,7 @@ describe('Inspector – cutout status via parent track resolution', () => {
     );
 
     expect(screen.getByText('Not processed')).toBeDefined();
-    expect(screen.queryByText('Mask ready')).toBeNull();
+    expect(screen.queryByText('Cutout ready')).toBeNull();
   });
 
   it('shows "Process" button (not "Re-process") when cutout is not yet done', () => {

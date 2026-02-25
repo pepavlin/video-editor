@@ -160,11 +160,12 @@ export default function Editor() {
         if (asset.cutoutJobId) {
           const existing = prev[asset.id]?.cutout;
           if (!existing || existing.jobId !== asset.cutoutJobId) {
+            // If the asset already has maskPath the job is finished — initialise as DONE
+            // so we never briefly show "Processing" for an already-completed job on page load.
+            const isDone = !!asset.maskPath;
             next[asset.id] = {
               ...next[asset.id],
-              cutout: existing?.jobId === asset.cutoutJobId
-                ? existing
-                : { jobId: asset.cutoutJobId, status: 'QUEUED', progress: 0, logLines: [] },
+              cutout: { jobId: asset.cutoutJobId, status: isDone ? 'DONE' : 'QUEUED', progress: isDone ? 100 : 0, logLines: [] },
             };
             changed = true;
           }
@@ -172,11 +173,11 @@ export default function Editor() {
         if (asset.headStabJobId) {
           const existing = prev[asset.id]?.headStab;
           if (!existing || existing.jobId !== asset.headStabJobId) {
+            // Same logic: if stabilised output already exists, mark as DONE immediately.
+            const isDone = !!asset.headStabilizedPath;
             next[asset.id] = {
               ...next[asset.id],
-              headStab: existing?.jobId === asset.headStabJobId
-                ? existing
-                : { jobId: asset.headStabJobId, status: 'QUEUED', progress: 0, logLines: [] },
+              headStab: { jobId: asset.headStabJobId, status: isDone ? 'DONE' : 'QUEUED', progress: isDone ? 100 : 0, logLines: [] },
             };
             changed = true;
           }
