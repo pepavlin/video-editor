@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Auto-transcription of lyrics using OpenAI Whisper (no pre-written lyrics required).
+Auto-transcription of lyrics using faster-whisper (no pre-written lyrics required).
 Usage: python3 transcribe_lyrics.py <audio_wav_path> <output_json_path>
 
 Output JSON format:
@@ -20,16 +20,17 @@ import os
 
 def transcribe_lyrics(audio_path: str, output_path: str) -> None:
     try:
-        import whisper
+        from faster_whisper import WhisperModel
     except ImportError:
-        print("ERROR: openai-whisper not installed. Run: pip3 install openai-whisper", file=sys.stderr)
+        print("ERROR: faster-whisper not installed. Run: pip3 install faster-whisper", file=sys.stderr)
         sys.exit(1)
 
     print(f"[transcribe_lyrics] Loading Whisper model (base)...")
-    model = whisper.load_model("base")
+    # Use int8 quantization for faster CPU inference with lower memory usage
+    model = WhisperModel("base", device="cpu", compute_type="int8")
 
     print(f"[transcribe_lyrics] Transcribing: {audio_path}")
-    result = model.transcribe(
+    segments, _info = model.transcribe(
         audio_path,
         word_timestamps=True,
         task="transcribe",
@@ -37,14 +38,16 @@ def transcribe_lyrics(audio_path: str, output_path: str) -> None:
 
     # Extract word-level timestamps
     words = []
-    for segment in result.get("segments", []):
-        for word_data in segment.get("words", []):
-            w = word_data.get("word", "").strip()
+    segment_list = []
+    for segment in segments:
+        segment_list.append(segment)
+        for word_data in (segment.words or []):
+            w = word_data.word.strip()
             if w:
                 words.append({
                     "word": w,
-                    "start": float(word_data.get("start", 0)),
-                    "end": float(word_data.get("end", 0)),
+                    "start": float(word_data.start),
+                    "end": float(word_data.end),
                 })
 
     print(f"[transcribe_lyrics] Found {len(words)} words")
@@ -52,10 +55,10 @@ def transcribe_lyrics(audio_path: str, output_path: str) -> None:
     if not words:
         # Fall back to segment-level text without timestamps
         print("[transcribe_lyrics] No word timestamps available, falling back to segment text")
-        for segment in result.get("segments", []):
-            seg_words = segment.get("text", "").split()
-            seg_start = float(segment.get("start", 0))
-            seg_end = float(segment.get("end", 0))
+        for segment in segment_list:
+            seg_words = segment.text.split()
+            seg_start = float(segment.start)
+            seg_end = float(segment.end)
             if seg_words:
                 dur = (seg_end - seg_start) / len(seg_words)
                 for i, w in enumerate(seg_words):
