@@ -159,9 +159,27 @@ export default function Inspector({
     }
   }
 
-  const selectedAsset = selectedClip
+  // For regular clips, the assetId directly points to the media asset.
+  // For effect track clips, assetId is '' (empty) – resolve the actual video asset
+  // by finding the parent video track and picking the clip that overlaps in time.
+  let selectedAsset = selectedClip
     ? assets.find((a) => a.id === selectedClip!.assetId)
     : undefined;
+
+  if (!selectedAsset && selectedTrackType === 'effect' && selectedClip && project) {
+    const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === selectedClip!.id));
+    if (effectTrack?.parentTrackId) {
+      const parentVideoTrack = project.tracks.find((t) => t.id === effectTrack.parentTrackId);
+      if (parentVideoTrack) {
+        const overlapping = parentVideoTrack.clips.find(
+          (c) => c.timelineEnd > selectedClip!.timelineStart && c.timelineStart < selectedClip!.timelineEnd
+        );
+        const fallback = parentVideoTrack.clips[0];
+        const sourceClip = overlapping ?? fallback;
+        if (sourceClip) selectedAsset = assets.find((a) => a.id === sourceClip.assetId);
+      }
+    }
+  }
 
   // Derive cutout + headStab status from asset-level job map
   const cutoutJob = assetJobs?.[selectedAsset?.id ?? '']?.cutout;
