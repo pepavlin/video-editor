@@ -168,6 +168,8 @@ export default function Inspector({
 
   if (!selectedAsset && selectedTrackType === 'effect' && selectedClip && project) {
     const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === selectedClip!.id));
+
+    // Primary: resolve via explicit parentTrackId relationship
     if (effectTrack?.parentTrackId) {
       const parentVideoTrack = project.tracks.find((t) => t.id === effectTrack.parentTrackId);
       if (parentVideoTrack) {
@@ -177,6 +179,21 @@ export default function Inspector({
         const fallback = parentVideoTrack.clips[0];
         const sourceClip = overlapping ?? fallback;
         if (sourceClip) selectedAsset = assets.find((a) => a.id === sourceClip.assetId);
+      }
+    }
+
+    // Fallback: parentTrackId missing or points to deleted track — scan all video tracks
+    // for any clip overlapping the effect clip in the timeline.
+    if (!selectedAsset) {
+      const videoTracks = project.tracks.filter((t) => t.type === 'video');
+      for (const vt of videoTracks) {
+        const overlapping = vt.clips.find(
+          (c) => c.timelineEnd > selectedClip!.timelineStart && c.timelineStart < selectedClip!.timelineEnd
+        );
+        if (overlapping) {
+          selectedAsset = assets.find((a) => a.id === overlapping.assetId);
+          if (selectedAsset) break;
+        }
       }
     }
   }
@@ -383,7 +400,7 @@ export default function Inspector({
                               color: isCutoutDone ? '#4ade80' : cutoutJob?.status === 'ERROR' ? '#f87171' : cutoutJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
                               flex: 1,
                             }}>
-                              {isCutoutDone && 'Mask ready'}
+                              {isCutoutDone && 'Cutout ready'}
                               {!isCutoutDone && cutoutJob?.status === 'ERROR' && 'Error – retry'}
                               {!isCutoutDone && cutoutJob?.status === 'CANCELLED' && 'Cancelled'}
                               {!isCutoutDone && (!cutoutJob || (cutoutJob.status !== 'ERROR' && cutoutJob.status !== 'CANCELLED')) && 'Not processed'}
