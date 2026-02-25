@@ -46,10 +46,11 @@ export function useHistory(
     if (!current) return;
 
     setHistoryState((prev) => {
-      if (prev.past.length === 0) return prev;
+      // Need at least 2 entries: the current state + one previous state to restore
+      if (prev.past.length < 2) return prev;
       const newPast = [...prev.past];
-      const snapshot = newPast.pop()!;
-      const currentSnap = JSON.stringify(current);
+      const currentSnap = newPast.pop()!;          // remove current state → goes to future
+      const snapshot = newPast[newPast.length - 1]; // peek at previous state (keep in past)
       setProject(JSON.parse(snapshot) as Project);
       lastSnapshotRef.current = snapshot;
       return {
@@ -60,16 +61,13 @@ export function useHistory(
   }, [setProject]);
 
   const redo = useCallback(() => {
-    const current = projectRef.current;
-
     setHistoryState((prev) => {
       if (prev.future.length === 0) return prev;
       const [snapshot, ...newFuture] = prev.future;
       setProject(JSON.parse(snapshot) as Project);
       lastSnapshotRef.current = snapshot;
       return {
-        // Use current project from ref (not stale closure)
-        past: [...prev.past, current ? JSON.stringify(current) : snapshot],
+        past: [...prev.past, snapshot],
         future: newFuture,
       };
     });
@@ -79,7 +77,7 @@ export function useHistory(
     pushSnapshot: debouncedPush,
     undo,
     redo,
-    canUndo: historyState.past.length > 0,
+    canUndo: historyState.past.length >= 2,
     canRedo: historyState.future.length > 0,
   };
 }
