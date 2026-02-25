@@ -401,19 +401,22 @@ function getCutoutCanvases(w: number, h: number) {
 /**
  * Composite a cutout effect: draw background, then masked person/subject on top.
  * The mask video is grayscale yuv420p (opaque white=subject, black=background).
+ * mode='removeBg' (default): keep person, remove background.
+ * mode='removePerson': keep background, remove person (inverts mask alpha).
  */
 function applyCutoutEffectToCtx(
   ctx: CanvasRenderingContext2D,
   videoEl: HTMLVideoElement,
   maskEl: HTMLVideoElement,
   bounds: Bounds,
-  background: import('@video-editor/shared').BackgroundConfig
+  background: import('@video-editor/shared').BackgroundConfig,
+  mode: 'removeBg' | 'removePerson' = 'removeBg'
 ): void {
   const { x, y, w, h } = bounds;
   const iw = Math.max(2, Math.round(w));
   const ih = Math.max(2, Math.round(h));
 
-  // 1. Draw background
+  // 1. Draw background (fill color or original video for person-removal mode)
   if (background.type === 'solid') {
     ctx.fillStyle = background.color ?? '#000000';
     ctx.fillRect(x, y, w, h);
@@ -433,13 +436,16 @@ function applyCutoutEffectToCtx(
   videoCtx.drawImage(videoEl, 0, 0, iw, ih);
 
   // 3. Draw mask to offscreen canvas B, convert luminance → alpha
+  //    removeBg:     alpha = lum       (white subject = opaque, black bg = transparent)
+  //    removePerson: alpha = 255 - lum (white subject = transparent, black bg = opaque)
   try {
     maskCtx.clearRect(0, 0, iw, ih);
     maskCtx.drawImage(maskEl, 0, 0, iw, ih);
     const maskData = maskCtx.getImageData(0, 0, iw, ih);
+    const invert = mode === 'removePerson';
     for (let i = 0; i < maskData.data.length; i += 4) {
       const lum = maskData.data[i] * 0.299 + maskData.data[i + 1] * 0.587 + maskData.data[i + 2] * 0.114;
-      maskData.data[i + 3] = Math.round(lum);
+      maskData.data[i + 3] = invert ? Math.round(255 - lum) : Math.round(lum);
       maskData.data[i] = maskData.data[i + 1] = maskData.data[i + 2] = 255;
     }
     maskCtx.putImageData(maskData, 0, 0);
@@ -946,7 +952,7 @@ export default function Preview({
 
             if (cutoutActive && maskEl) {
               // Cutout: background + masked subject. Then optionally post-process with cartoon/colorGrade.
-              applyCutoutEffectToCtx(ctx, videoEl, maskEl, bounds, cutoutEff!.background ?? { type: 'solid', color: '#000000' });
+              applyCutoutEffectToCtx(ctx, videoEl, maskEl, bounds, cutoutEff!.background ?? { type: 'solid', color: '#000000' }, cutoutEff!.cutoutMode ?? 'removeBg');
               // Post-process the composited region with cartoon or colorGrade if active
               if (cartoonActive || colorGradeActive) {
                 // Draw the composited region to an offscreen then apply effects
