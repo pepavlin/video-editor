@@ -375,4 +375,69 @@ describe('Inspector – cutout status via parent track resolution', () => {
     expect(screen.getByText('Cutout ready')).toBeDefined();
     expect(screen.queryByText('Not processed')).toBeNull();
   });
+
+  it('shows "Cutout ready" via clips[0] fallback when no parentTrackId and no time overlap', () => {
+    const asset = makeAsset({ id: 'asset_1', maskPath: 'masks/asset_1.mp4' });
+
+    // Video clip lives at t=0..10, effect clip lives at t=15..20 — no time overlap
+    const videoTrack = {
+      id: 'track_video',
+      type: 'video' as const,
+      name: 'Video 1',
+      muted: false,
+      clips: [
+        {
+          id: 'clip_video',
+          assetId: 'asset_1',
+          trackId: 'track_video',
+          timelineStart: 0,
+          timelineEnd: 10,
+          sourceStart: 0,
+          sourceEnd: 10,
+        },
+      ],
+    };
+
+    const effectClipId = 'clip_effect_6';
+    // Effect track with NO parentTrackId and placed beyond the video clip
+    const effectTrack = {
+      id: 'track_effect',
+      type: 'effect' as const,
+      effectType: 'cutout' as const,
+      parentTrackId: undefined as unknown as string,
+      name: 'Cutout 1',
+      muted: false,
+      clips: [
+        {
+          id: effectClipId,
+          assetId: '',
+          trackId: 'track_effect',
+          timelineStart: 15,
+          timelineEnd: 20,
+          sourceStart: 0,
+          sourceEnd: 5,
+          effectConfig: {
+            effectType: 'cutout' as const,
+            enabled: true,
+            background: { type: 'solid' as const, color: '#000000' },
+          },
+        },
+      ],
+    };
+
+    const project = makeProject({ tracks: [effectTrack, videoTrack] });
+
+    render(
+      <Inspector
+        {...baseProps}
+        project={project}
+        selectedClipId={effectClipId}
+        assets={[asset]}
+      />,
+    );
+
+    // clips[0] fallback should resolve to asset_1 which has maskPath → "Cutout ready"
+    expect(screen.getByText('Cutout ready')).toBeDefined();
+    expect(screen.queryByText('Not processed')).toBeNull();
+  });
 });

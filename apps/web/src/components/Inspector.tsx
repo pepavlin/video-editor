@@ -183,15 +183,16 @@ export default function Inspector({
     }
 
     // Fallback: parentTrackId missing or points to deleted track — scan all video tracks
-    // for any clip overlapping the effect clip in the timeline.
+    // for a clip overlapping the effect clip, falling back to clips[0] of each track.
     if (!selectedAsset) {
       const videoTracks = project.tracks.filter((t) => t.type === 'video');
       for (const vt of videoTracks) {
         const overlapping = vt.clips.find(
           (c) => c.timelineEnd > selectedClip!.timelineStart && c.timelineStart < selectedClip!.timelineEnd
         );
-        if (overlapping) {
-          selectedAsset = assets.find((a) => a.id === overlapping.assetId);
+        const sourceClip = overlapping ?? vt.clips[0];
+        if (sourceClip) {
+          selectedAsset = assets.find((a) => a.id === sourceClip.assetId);
           if (selectedAsset) break;
         }
       }
