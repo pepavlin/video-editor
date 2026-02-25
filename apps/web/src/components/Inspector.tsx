@@ -242,6 +242,19 @@ export default function Inspector({
                 </span>
               </Row>
             )}
+            {selectedTrackType === 'effect' && (
+              <Row label="Video">
+                {selectedAsset ? (
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selectedAsset.name}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    No video found
+                  </span>
+                )}
+              </Row>
+            )}
             <Row label="Start">{valueText(formatTime(selectedClip.timelineStart))}</Row>
             <Row label="End">{valueText(formatTime(selectedClip.timelineEnd))}</Row>
             <Row label="Duration">{valueText(formatTime(selectedClip.timelineEnd - selectedClip.timelineStart))}</Row>
@@ -401,7 +414,7 @@ export default function Inspector({
                               color: isCutoutDone ? '#4ade80' : cutoutJob?.status === 'ERROR' ? '#f87171' : cutoutJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
                               flex: 1,
                             }}>
-                              {isCutoutDone && 'Cutout ready'}
+                              {isCutoutDone && '✓ Cutout ready'}
                               {!isCutoutDone && cutoutJob?.status === 'ERROR' && 'Error – retry'}
                               {!isCutoutDone && cutoutJob?.status === 'CANCELLED' && 'Cancelled'}
                               {!isCutoutDone && (!cutoutJob || (cutoutJob.status !== 'ERROR' && cutoutJob.status !== 'CANCELLED')) && 'Not processed'}
