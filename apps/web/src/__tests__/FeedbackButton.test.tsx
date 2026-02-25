@@ -162,7 +162,18 @@ describe('FeedbackButton', () => {
       });
     });
 
-    it('shows task with fallback label when name is missing', async () => {
+    it('shows prompt as label when name is missing but prompt is present', async () => {
+      mockFetchWithTasks([{ status: 'running', id: '99', prompt: 'Vygeneruj intro video' }]);
+      render(<FeedbackButton />);
+      fireEvent.click(screen.getByRole('button', { name: /napsat návrh/i }));
+      fireEvent.click(screen.getByRole('tab', { name: /poslední tasky/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Vygeneruj intro video')).toBeDefined();
+      });
+    });
+
+    it('shows "Bez názvu" when neither name nor prompt is present', async () => {
       mockFetchWithTasks([{ status: 'running', id: '99' }]);
       render(<FeedbackButton />);
       fireEvent.click(screen.getByRole('button', { name: /napsat návrh/i }));
