@@ -635,6 +635,7 @@ export default function Timeline({
       for (const clip of track.clips) {
         // A clip is a "text clip" when it carries textContent (regardless of track type)
         const isText = !!clip.textContent || track.type === 'text';
+        const isRectangle = !!clip.rectangleStyle;
         const isLyrics = track.type === 'lyrics';
         const clipX = clip.timelineStart * Z - SL + HEADER_WIDTH;
         const clipW = (clip.timelineEnd - clip.timelineStart) * Z;
@@ -719,8 +720,9 @@ export default function Timeline({
             clip.timelineStart < selectedEffectClipRange.end &&
             clip.timelineEnd > selectedEffectClipRange.start;
 
-          // Text and lyrics clips get distinct colors; others use asset-based color
-          const color = isText ? '#a78bfa' : isLyrics ? '#c084fc' : getClipColor(clip.assetId);
+          // Text, rectangle, and lyrics clips get distinct colors; others use asset-based color
+          const rectFill = clip.rectangleStyle?.color ?? '#3b82f6';
+          const color = isRectangle ? rectFill : isText ? '#a78bfa' : isLyrics ? '#c084fc' : getClipColor(clip.assetId);
 
           const visX = Math.max(clipX, HEADER_WIDTH);
           const visW = Math.min(clipX + clipW, W) - visX;
@@ -729,7 +731,7 @@ export default function Timeline({
 
           // Base fill (lower opacity for video so thumbnails show through)
           ctx.fillStyle = isSelected ? lightenColor(color, 20) : color;
-          ctx.globalAlpha = isAudio ? 0.45 : (isText || isLyrics) ? 0.75 : 0.5;
+          ctx.globalAlpha = isAudio ? 0.45 : (isText || isLyrics || isRectangle) ? 0.75 : 0.5;
           ctx.globalAlpha *= isReorderSource ? 0.4 : 1;
           ctx.fillRect(visX, clipTop, visW, clipH);
           ctx.globalAlpha = 1;
@@ -737,7 +739,7 @@ export default function Timeline({
           const asset = propsRef.current.assets.find((a) => a.id === clip.assetId);
 
           // ─── Video thumbnails (filmstrip) ────────────────────────────────
-          if (!isAudio && !isText && asset?.proxyPath) {
+          if (!isAudio && !isText && !isRectangle && asset?.proxyPath) {
             const ar = asset.width && asset.height ? asset.width / asset.height : 9 / 16;
             const thumbH = clipH;
             const thumbW = Math.max(1, Math.round(thumbH * ar));
@@ -817,20 +819,22 @@ export default function Timeline({
           ctx.rect(visX, trackY, visW, TRACK_HEIGHT);
           ctx.clip();
 
-          ctx.font = (isText || isLyrics) ? 'bold 11px sans-serif' : '11px sans-serif';
+          ctx.font = (isText || isLyrics || isRectangle) ? 'bold 11px sans-serif' : '11px sans-serif';
           ctx.textAlign = 'left';
           const label = isLyrics
             ? (clip.lyricsContent ? `♪ "${clip.lyricsContent.slice(0, 30)}${clip.lyricsContent.length > 30 ? '…' : ''}"` : '♪ Lyrics')
+            : isRectangle
+            ? `▬ Rectangle`
             : isText
             ? (clip.textContent ? `T "${clip.textContent}"` : 'T Text')
             : (asset?.name ?? clip.assetId);
 
           // Text shadow for readability over thumbnails on video clips
-          if (!isAudio && !isText) {
+          if (!isAudio && !isText && !isRectangle) {
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 4;
           }
-          ctx.fillStyle = (isText || isLyrics) ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(13,148,136,0.95)' : 'rgba(255,255,255,0.95)';
+          ctx.fillStyle = (isText || isLyrics || isRectangle) ? 'rgba(255,255,255,0.90)' : isAudio ? 'rgba(13,148,136,0.95)' : 'rgba(255,255,255,0.95)';
           ctx.fillText(label, visX + 4, trackY + 14);
           ctx.shadowBlur = 0;
 

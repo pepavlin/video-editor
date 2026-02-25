@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Project, Clip, Track, Transform, TextStyle, EffectClipConfig, EffectType, LyricsStyle } from '@video-editor/shared';
+import type { Project, Clip, Track, Transform, TextStyle, RectangleStyle, EffectClipConfig, EffectType, LyricsStyle } from '@video-editor/shared';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 
@@ -272,6 +272,73 @@ export function useProject() {
     [updateProject]
   );
 
+  // Add a rectangle clip to a video track (or create a new video track if none exists).
+  const addRectangleTrack = useCallback(
+    (timelineStart: number, duration: number, targetTrackId?: string) => {
+      const clipId = genId('clip');
+      const defaultStyle: RectangleStyle = {
+        color: '#3b82f6',
+        fillOpacity: 0.85,
+        width: 400,
+        height: 200,
+        borderRadius: 0,
+      };
+      updateProject((p) => {
+        const videoTrack = targetTrackId
+          ? p.tracks.find((t) => t.id === targetTrackId)
+          : p.tracks.find((t) => t.type === 'video' || t.type === 'text');
+
+        if (videoTrack) {
+          const rectClip: Clip = {
+            id: clipId,
+            assetId: '',
+            trackId: videoTrack.id,
+            timelineStart,
+            timelineEnd: timelineStart + duration,
+            sourceStart: 0,
+            sourceEnd: duration,
+            rectangleStyle: defaultStyle,
+            transform: { ...DEFAULT_TRANSFORM },
+          };
+          return {
+            ...p,
+            tracks: p.tracks.map((t) =>
+              t.id === videoTrack.id ? { ...t, clips: [...t.clips, rectClip] } : t
+            ),
+          };
+        }
+
+        // No video track exists – create a new "Video" track with the rectangle clip
+        const newTrackId = genId('track');
+        const count = p.tracks.filter((t) => t.type === 'video').length;
+        const baseName = 'Video';
+        const trackName = count === 0 ? baseName : `${baseName} ${count + 1}`;
+        const newTrack: Track = {
+          id: newTrackId,
+          type: 'video',
+          name: trackName,
+          muted: false,
+          clips: [
+            {
+              id: clipId,
+              assetId: '',
+              trackId: newTrackId,
+              timelineStart,
+              timelineEnd: timelineStart + duration,
+              sourceStart: 0,
+              sourceEnd: duration,
+              rectangleStyle: defaultStyle,
+              transform: { ...DEFAULT_TRANSFORM },
+            },
+          ],
+        };
+        return { ...p, tracks: [...p.tracks, newTrack] };
+      });
+      return clipId;
+    },
+    [updateProject]
+  );
+
   // Add a lyrics track with one clip at timelineStart
   const addLyricsTrack = useCallback(
     (timelineStart: number, duration: number, text: string = '') => {
@@ -530,6 +597,7 @@ export function useProject() {
     updateProject,
     addTrack,
     addTextTrack,
+    addRectangleTrack,
     addLyricsTrack,
     addEffectTrack,
     updateEffectClipConfig,

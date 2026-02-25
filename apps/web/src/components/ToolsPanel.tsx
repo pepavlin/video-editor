@@ -8,6 +8,7 @@ interface ToolsPanelProps {
   currentTime: number;
   selectedClipId: string | null;
   onAddText: (start: number, duration: number, text: string) => void;
+  onAddRectangle: (start: number, duration: number) => void;
   onAddLyrics: (start: number, duration: number) => void;
   onAddEffect: (effectType: EffectType, start: number, duration: number, parentTrackId?: string) => void;
 }
@@ -33,6 +34,7 @@ export default function ToolsPanel({
   currentTime,
   selectedClipId,
   onAddText,
+  onAddRectangle,
   onAddLyrics,
   onAddEffect,
 }: ToolsPanelProps) {
@@ -53,6 +55,17 @@ export default function ToolsPanel({
       label: 'Text',
       description: 'Přidat textový overlay',
       onClick: () => onAddText(currentTime, 3, 'Text'),
+    },
+    {
+      id: 'rectangle',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ color: 'inherit' }}>
+          <rect x="2" y="4" width="12" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        </svg>
+      ),
+      label: 'Rectangle',
+      description: 'Přidat barevný obdélník',
+      onClick: () => onAddRectangle(currentTime, 3),
     },
     {
       id: 'lyrics',

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { Project, Asset, BeatsData, Clip, Transform, TextStyle, CartoonEffect, LyricsStyle, WordTimestamp } from '@video-editor/shared';
+import type { Project, Asset, BeatsData, Clip, Transform, TextStyle, RectangleStyle, CartoonEffect, LyricsStyle, WordTimestamp } from '@video-editor/shared';
 import { getBeatZoomScale, clamp } from '@/lib/utils';
 
 // ─── Zoom constants ────────────────────────────────────────────────────────────
@@ -514,6 +514,21 @@ function getTextBounds(
   return { x: cx - tw / 2 - pad, y: cy - th / 2 - pad, w: tw + pad * 2, h: th + pad * 2 };
 }
 
+function getRectangleBounds(
+  clip: Clip,
+  transform: Transform,
+  W: number,
+  H: number
+): Bounds {
+  const style = clip.rectangleStyle as RectangleStyle;
+  const scale = transform.scale * (H / 1920);
+  const rw = style.width * scale;
+  const rh = style.height * scale;
+  const cx = W / 2 + transform.x;
+  const cy = H / 2 + transform.y;
+  return { x: cx - rw / 2, y: cy - rh / 2, w: rw, h: rh };
+}
+
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
 }
@@ -584,6 +599,65 @@ function drawTextClip(
   ctx.shadowBlur = 6;
   ctx.fillStyle = style.color;
   ctx.fillText(text, cx, cy);
+
+  ctx.restore();
+}
+
+// ─── Rectangle clip renderer ───────────────────────────────────────────────────
+
+function drawRectangleClip(
+  ctx: CanvasRenderingContext2D,
+  clip: Clip,
+  transform: Transform,
+  W: number,
+  H: number
+) {
+  const style = clip.rectangleStyle as RectangleStyle;
+  // Scale rectangle dimensions relative to canvas height (1920px reference)
+  const scale = transform.scale * (H / 1920);
+  const rw = style.width * scale;
+  const rh = style.height * scale;
+  const cx = W / 2 + transform.x;
+  const cy = H / 2 + transform.y;
+  const rx = cx - rw / 2;
+  const ry = cy - rh / 2;
+  const radius = (style.borderRadius ?? 0) * scale;
+
+  ctx.save();
+  ctx.globalAlpha = transform.opacity * (style.fillOpacity ?? 1);
+
+  if (transform.rotation !== 0) {
+    ctx.translate(cx, cy);
+    ctx.rotate((transform.rotation * Math.PI) / 180);
+    ctx.translate(-cx, -cy);
+  }
+
+  // Draw rounded rect (or regular rect if radius=0)
+  ctx.beginPath();
+  if (radius > 0) {
+    ctx.moveTo(rx + radius, ry);
+    ctx.lineTo(rx + rw - radius, ry);
+    ctx.arcTo(rx + rw, ry, rx + rw, ry + radius, radius);
+    ctx.lineTo(rx + rw, ry + rh - radius);
+    ctx.arcTo(rx + rw, ry + rh, rx + rw - radius, ry + rh, radius);
+    ctx.lineTo(rx + radius, ry + rh);
+    ctx.arcTo(rx, ry + rh, rx, ry + rh - radius, radius);
+    ctx.lineTo(rx, ry + radius);
+    ctx.arcTo(rx, ry, rx + radius, ry, radius);
+    ctx.closePath();
+  } else {
+    ctx.rect(rx, ry, rw, rh);
+  }
+  ctx.fillStyle = style.color;
+  ctx.fill();
+
+  // Optional border
+  if (style.borderColor && style.borderWidth && style.borderWidth > 0) {
+    ctx.globalAlpha = transform.opacity;
+    ctx.strokeStyle = style.borderColor;
+    ctx.lineWidth = style.borderWidth * scale;
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
@@ -768,6 +842,11 @@ export default function Preview({
       const track = project.tracks.find((t) => t.clips.some((c) => c.id === clip.id));
       if (!track) return null;
 
+      // Rectangle clips
+      if (clip.rectangleStyle) {
+        return getRectangleBounds(clip, transform, W, H);
+      }
+
       // Text clips can live on any visual track (video or legacy text type)
       if (clip.textContent) {
         return getTextBounds(clip, transform, ctx, W, H);
@@ -830,6 +909,12 @@ export default function Preview({
         const transform = (live?.clipId === clip.id)
           ? live.transform
           : (clip.transform ?? { ...DEFAULT_TRANSFORM });
+
+        // Rectangle clips can live on any visual track
+        if (clip.rectangleStyle) {
+          drawRectangleClip(ctx, clip, transform, W, H);
+          continue;
+        }
 
         // Text clips can live on any visual track (video or legacy text type)
         if (clip.textContent) {
