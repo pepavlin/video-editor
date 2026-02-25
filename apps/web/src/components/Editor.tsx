@@ -60,6 +60,7 @@ export default function Editor() {
     updateProject,
     addTrack,
     addTextTrack,
+    addRectangleTrack,
     addLyricsTrack,
     addEffectTrack,
     updateEffectClipConfig,
@@ -802,6 +803,10 @@ export default function Editor() {
         selectedClipId={selectedClipId}
         onAddText={(start, duration, text) => {
           const clipId = addTextTrack(start, duration, text);
+          setSelectedClipId(clipId);
+        }}
+        onAddRectangle={(start, duration) => {
+          const clipId = addRectangleTrack(start, duration);
           setSelectedClipId(clipId);
         }}
         onAddLyrics={(start, duration) => {

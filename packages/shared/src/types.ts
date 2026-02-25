@@ -43,6 +43,16 @@ export interface TextStyle {
   backgroundOpacity?: number; // 0..1
 }
 
+export interface RectangleStyle {
+  color: string;          // fill color hex
+  fillOpacity: number;    // 0..1 fill opacity
+  width: number;          // design pixels relative to 1920px height reference
+  height: number;         // design pixels relative to 1920px height reference
+  borderRadius?: number;  // corner radius in design pixels (optional)
+  borderColor?: string;   // optional border/stroke color hex
+  borderWidth?: number;   // optional border width in design pixels
+}
+
 export interface Clip {
   id: string;
   assetId: string;
@@ -58,6 +68,8 @@ export interface Clip {
   // Text-clip-only fields:
   textContent?: string;      // text to display (text tracks only)
   textStyle?: TextStyle;     // text appearance (text tracks only)
+  // Rectangle-clip-only fields:
+  rectangleStyle?: RectangleStyle; // rectangle appearance (rectangle clips only)
   // Lyrics-clip-only fields:
   lyricsContent?: string;    // full lyrics text (lyrics tracks only)
   lyricsWords?: WordTimestamp[];  // word-level timestamps from Whisper (lyrics tracks only)

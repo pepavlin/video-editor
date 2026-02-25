@@ -7,6 +7,7 @@ import type {
   Asset,
   LyricsStyle,
   TextStyle,
+  RectangleStyle,
   EffectClipConfig,
   WordTimestamp,
 } from '@video-editor/shared';
@@ -954,6 +955,133 @@ export default function Inspector({
                     {Math.round((selectedClip.textStyle?.backgroundOpacity ?? 0.65) * 100)}%
                   </span>
                 </div>
+              </Row>
+            )}
+          </Section>
+          )}
+
+          {/* Rectangle clip inspector */}
+          {selectedClip?.rectangleStyle && (
+          <Section title="Rectangle">
+            <Row label="Color">
+              <input
+                type="color"
+                value={selectedClip.rectangleStyle.color ?? '#3b82f6'}
+                style={{ width: '100%', height: 32, cursor: 'pointer' }}
+                onChange={(e) =>
+                  onClipUpdate(selectedClip!.id, {
+                    rectangleStyle: { ...(selectedClip!.rectangleStyle as RectangleStyle), color: e.target.value },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Fill Alpha">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={selectedClip.rectangleStyle.fillOpacity ?? 1}
+                  style={{ width: '100%' }}
+                  onChange={(e) =>
+                    onClipUpdate(selectedClip!.id, {
+                      rectangleStyle: {
+                        ...(selectedClip!.rectangleStyle as RectangleStyle),
+                        fillOpacity: parseFloat(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>
+                  {Math.round((selectedClip.rectangleStyle.fillOpacity ?? 1) * 100)}%
+                </span>
+              </div>
+            </Row>
+            <Row label="Width">
+              <NumInput
+                value={selectedClip.rectangleStyle.width ?? 400}
+                min={4}
+                max={3840}
+                step={4}
+                onChange={(v) =>
+                  onClipUpdate(selectedClip!.id, {
+                    rectangleStyle: { ...(selectedClip!.rectangleStyle as RectangleStyle), width: v },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Height">
+              <NumInput
+                value={selectedClip.rectangleStyle.height ?? 200}
+                min={4}
+                max={3840}
+                step={4}
+                onChange={(v) =>
+                  onClipUpdate(selectedClip!.id, {
+                    rectangleStyle: { ...(selectedClip!.rectangleStyle as RectangleStyle), height: v },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Radius">
+              <NumInput
+                value={selectedClip.rectangleStyle.borderRadius ?? 0}
+                min={0}
+                max={960}
+                step={4}
+                onChange={(v) =>
+                  onClipUpdate(selectedClip!.id, {
+                    rectangleStyle: { ...(selectedClip!.rectangleStyle as RectangleStyle), borderRadius: v },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Border">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="color"
+                  value={selectedClip.rectangleStyle.borderColor ?? '#ffffff'}
+                  style={{ width: 56, height: 32, cursor: 'pointer', flexShrink: 0 }}
+                  onChange={(e) =>
+                    onClipUpdate(selectedClip!.id, {
+                      rectangleStyle: {
+                        ...(selectedClip!.rectangleStyle as RectangleStyle),
+                        borderColor: e.target.value,
+                      },
+                    })
+                  }
+                />
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: 11, padding: '4px 8px', border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
+                  onClick={() =>
+                    onClipUpdate(selectedClip!.id, {
+                      rectangleStyle: {
+                        ...(selectedClip!.rectangleStyle as RectangleStyle),
+                        borderColor: undefined,
+                        borderWidth: undefined,
+                      },
+                    })
+                  }
+                >
+                  Clear
+                </button>
+              </div>
+            </Row>
+            {selectedClip.rectangleStyle.borderColor && (
+              <Row label="Border W">
+                <NumInput
+                  value={selectedClip.rectangleStyle.borderWidth ?? 4}
+                  min={1}
+                  max={100}
+                  step={1}
+                  onChange={(v) =>
+                    onClipUpdate(selectedClip!.id, {
+                      rectangleStyle: { ...(selectedClip!.rectangleStyle as RectangleStyle), borderWidth: v },
+                    })
+                  }
+                />
               </Row>
             )}
           </Section>
