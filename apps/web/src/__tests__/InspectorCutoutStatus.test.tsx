@@ -549,3 +549,73 @@ describe('Inspector – cutout status via parent track resolution', () => {
     expect(screen.getByText('No video found')).toBeDefined();
   });
 });
+
+describe('Inspector – cutout mode toggle', () => {
+  function makeScenario(cutoutMode?: 'removeBg' | 'removePerson') {
+    const asset = makeAsset({ id: 'asset_1' });
+    const videoTrack = {
+      id: 'track_video',
+      type: 'video' as const,
+      name: 'Video 1',
+      muted: false,
+      clips: [{ id: 'clip_video', assetId: 'asset_1', trackId: 'track_video', timelineStart: 0, timelineEnd: 10, sourceStart: 0, sourceEnd: 10 }],
+    };
+    const effectClipId = 'clip_eff_mode';
+    const effectTrack = {
+      id: 'track_effect',
+      type: 'effect' as const,
+      effectType: 'cutout' as const,
+      parentTrackId: 'track_video',
+      name: 'Cutout',
+      muted: false,
+      clips: [{
+        id: effectClipId,
+        assetId: '',
+        trackId: 'track_effect',
+        timelineStart: 0,
+        timelineEnd: 10,
+        sourceStart: 0,
+        sourceEnd: 10,
+        effectConfig: {
+          effectType: 'cutout' as const,
+          enabled: true,
+          background: { type: 'solid' as const, color: '#000000' },
+          ...(cutoutMode ? { cutoutMode } : {}),
+        },
+      }],
+    };
+    return { asset, project: makeProject({ tracks: [effectTrack, videoTrack] }), effectClipId };
+  }
+
+  it('shows both mode toggle buttons', () => {
+    const { asset, project, effectClipId } = makeScenario();
+    render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    expect(screen.getByText('👤 Keep person')).toBeDefined();
+    expect(screen.getByText('🖼 Keep background')).toBeDefined();
+  });
+
+  it('defaults to "Keep person" active when no cutoutMode is set', () => {
+    const { asset, project, effectClipId } = makeScenario(undefined);
+    render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    const keepPersonBtn = screen.getByText('👤 Keep person').closest('button')!;
+    const keepBgBtn = screen.getByText('🖼 Keep background').closest('button')!;
+    // active button has green color style
+    expect(keepPersonBtn.style.color).toBe('rgb(52, 211, 153)');
+    expect(keepBgBtn.style.color).not.toBe('rgb(52, 211, 153)');
+  });
+
+  it('marks "Keep background" active when cutoutMode is removePerson', () => {
+    const { asset, project, effectClipId } = makeScenario('removePerson');
+    render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    const keepBgBtn = screen.getByText('🖼 Keep background').closest('button')!;
+    expect(keepBgBtn.style.color).toBe('rgb(52, 211, 153)');
+  });
+
+  it('calls onUpdateEffectClipConfig with removePerson when "Keep background" is clicked', () => {
+    const onUpdate = vi.fn();
+    const { asset, project, effectClipId } = makeScenario('removeBg');
+    render(<Inspector {...baseProps} onUpdateEffectClipConfig={onUpdate} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    screen.getByText('🖼 Keep background').closest('button')!.click();
+    expect(onUpdate).toHaveBeenCalledWith(effectClipId, expect.objectContaining({ cutoutMode: 'removePerson' }));
+  });
+});

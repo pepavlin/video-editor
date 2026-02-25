@@ -345,18 +345,36 @@ export default function Inspector({
                 {cfg.effectType === 'cutout' && (
                   <>
                     <Row label="Mode">
-                      <select
-                        value={cfg.cutoutMode ?? 'removeBg'}
-                        style={{ fontSize: 13 }}
-                        onChange={(e) =>
-                          update({
-                            cutoutMode: e.target.value as 'removeBg' | 'removePerson',
-                          })
-                        }
-                      >
-                        <option value="removeBg">Remove background (keep person)</option>
-                        <option value="removePerson">Remove person (keep background)</option>
-                      </select>
+                      <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                        {(['removeBg', 'removePerson'] as const).map((modeVal) => {
+                          const active = (cfg.cutoutMode ?? 'removeBg') === modeVal;
+                          const label = modeVal === 'removeBg' ? '👤 Keep person' : '🖼 Keep background';
+                          return (
+                            <button
+                              key={modeVal}
+                              onClick={() => update({ cutoutMode: modeVal })}
+                              style={{
+                                flex: 1,
+                                fontSize: 11,
+                                padding: '5px 6px',
+                                borderRadius: 5,
+                                border: active
+                                  ? '1.5px solid rgba(52,211,153,0.8)'
+                                  : '1.5px solid rgba(255,255,255,0.12)',
+                                background: active
+                                  ? 'rgba(52,211,153,0.15)'
+                                  : 'rgba(255,255,255,0.04)',
+                                color: active ? '#34d399' : 'var(--text-subtle)',
+                                cursor: 'pointer',
+                                fontWeight: active ? 600 : 400,
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </Row>
                     <Row label="Status">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
