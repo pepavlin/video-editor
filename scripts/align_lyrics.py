@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Lyrics word-level alignment using OpenAI Whisper.
+Lyrics word-level alignment using faster-whisper.
 Usage: python3 align_lyrics.py <audio_wav_path> <lyrics_txt_path> <output_json_path>
 
 Strategy:
-1. Run Whisper with word-level timestamps
+1. Run faster-whisper with word-level timestamps
 2. Map Whisper words to provided lyrics using fuzzy matching
 3. Output word timestamps
 """
@@ -22,9 +22,9 @@ def normalize_word(w: str) -> str:
 
 def align_lyrics(audio_path: str, lyrics_path: str, output_path: str) -> None:
     try:
-        import whisper
+        from faster_whisper import WhisperModel
     except ImportError:
-        print("ERROR: openai-whisper not installed. Run: pip3 install openai-whisper", file=sys.stderr)
+        print("ERROR: faster-whisper not installed. Run: pip3 install faster-whisper", file=sys.stderr)
         sys.exit(1)
 
     print(f"[align_lyrics] Reading lyrics from: {lyrics_path}")
@@ -37,26 +37,27 @@ def align_lyrics(audio_path: str, lyrics_path: str, output_path: str) -> None:
     print(f"[align_lyrics] Lyrics: {len(lyrics_words)} words")
     print("[align_lyrics] Loading Whisper model (base)...")
 
-    model = whisper.load_model("base")
+    # Use int8 quantization for faster CPU inference with lower memory usage
+    model = WhisperModel("base", device="cpu", compute_type="int8")
 
     print(f"[align_lyrics] Transcribing: {audio_path}")
-    result = model.transcribe(
+    segments_generator, _info = model.transcribe(
         audio_path,
         word_timestamps=True,
-        language="en",
         task="transcribe",
     )
 
-    # Extract all word-level timestamps from whisper segments
+    # Consume generator and extract all word-level timestamps
     whisper_words = []
-    for segment in result.get("segments", []):
-        for word_data in segment.get("words", []):
-            w = word_data.get("word", "").strip()
+    all_segments = list(segments_generator)
+    for segment in all_segments:
+        for word_data in (segment.words or []):
+            w = word_data.word.strip()
             if w:
                 whisper_words.append({
                     "word": w,
-                    "start": float(word_data.get("start", 0)),
-                    "end": float(word_data.get("end", 0)),
+                    "start": float(word_data.start),
+                    "end": float(word_data.end),
                     "norm": normalize_word(w),
                 })
 
@@ -65,7 +66,7 @@ def align_lyrics(audio_path: str, lyrics_path: str, output_path: str) -> None:
     if not whisper_words:
         # Fallback: use segment-level timing distributed evenly
         print("[align_lyrics] No word timestamps from Whisper, using segment fallback")
-        output_words = _fallback_align(lyrics_words, result.get("segments", []))
+        output_words = _fallback_align(lyrics_words, all_segments)
     else:
         # Try to map provided lyrics to whisper words
         output_words = _map_to_provided_lyrics(lyrics_words, whisper_words)
@@ -146,8 +147,8 @@ def _fallback_align(lyrics_words: list, segments: list) -> list:
             t += 0.4
         return result
 
-    total_start = segments[0]["start"]
-    total_end = segments[-1]["end"]
+    total_start = segments[0].start
+    total_end = segments[-1].end
     total_dur = total_end - total_start
     word_dur = total_dur / max(len(lyrics_words), 1)
 
