@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { Project, Asset, BeatsData, Clip, Transform, TextStyle, CartoonEffect } from '@video-editor/shared';
+import type { Project, Asset, BeatsData, Clip, Transform, TextStyle, CartoonEffect, LyricsStyle, WordTimestamp } from '@video-editor/shared';
 import { getBeatZoomScale, clamp } from '@/lib/utils';
 
 // ─── Zoom constants ────────────────────────────────────────────────────────────
@@ -837,6 +837,18 @@ export default function Preview({
           if (clip.id !== editingClipIdRef.current) {
             drawTextClip(ctx, clip, transform, W, H);
           }
+          continue;
+        }
+
+        // Lyrics clips – render word-level karaoke overlay
+        if (track.type === 'lyrics' && clip.lyricsWords && clip.lyricsWords.length > 0) {
+          // Word timestamps are relative to the master audio WAV start.
+          // Compute audio time by accounting for master clip's timeline/source offset.
+          const audioTimeOffset = masterClip
+            ? masterClip.sourceStart - masterClip.timelineStart
+            : 0;
+          const audioTime = currentTime + audioTimeOffset;
+          drawClipLyricsOverlay(ctx, W, H, audioTime, clip.lyricsWords, clip.lyricsStyle);
           continue;
         }
 
@@ -1741,6 +1753,70 @@ export default function Preview({
       </div>
     </div>
   );
+}
+
+// ─── Clip-level lyrics overlay (for 'lyrics' track clips with lyricsWords) ───
+
+function drawClipLyricsOverlay(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  audioTime: number,
+  words: WordTimestamp[],
+  lyricsStyle?: LyricsStyle,
+) {
+  const style: LyricsStyle = lyricsStyle ?? {
+    fontSize: 48,
+    color: '#FFFFFF',
+    highlightColor: '#FFE600',
+    position: 'bottom',
+    wordsPerChunk: 3,
+  };
+
+  const chunkSize = style.wordsPerChunk;
+  const fontSize = Math.round((style.fontSize / 1920) * H);
+
+  let chunkStart = -1;
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const chunk = words.slice(i, i + chunkSize);
+    if (audioTime >= chunk[0].start && audioTime <= (chunk[chunk.length - 1].end + 0.5)) {
+      chunkStart = i;
+      break;
+    }
+  }
+
+  if (chunkStart < 0) return;
+
+  const chunk = words.slice(chunkStart, chunkStart + chunkSize);
+
+  ctx.save();
+  ctx.font = `bold ${fontSize}px Arial`;
+  ctx.textAlign = 'center';
+
+  const y = style.position === 'bottom'
+    ? H - fontSize * 2
+    : style.position === 'top'
+    ? fontSize * 2
+    : H / 2;
+
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 8;
+
+  const texts = chunk.map((w) => w.word);
+  const fullText = texts.join(' ');
+  const totalWidth = ctx.measureText(fullText).width;
+  let x = (W - totalWidth) / 2;
+
+  for (let i = 0; i < chunk.length; i++) {
+    const w = chunk[i];
+    const isCurrentWord = audioTime >= w.start && audioTime <= w.end;
+    ctx.fillStyle = isCurrentWord ? style.highlightColor : style.color;
+    const wordText = i < chunk.length - 1 ? w.word + ' ' : w.word;
+    ctx.fillText(wordText, x + ctx.measureText(wordText).width / 2, y);
+    x += ctx.measureText(wordText).width;
+  }
+
+  ctx.restore();
 }
 
 // ─── Lyrics overlay ───────────────────────────────────────────────────────────
