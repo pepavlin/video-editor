@@ -15,6 +15,7 @@ interface Task {
   title?: string;
   message?: string;
   description?: string;
+  prompt?: string;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -56,7 +57,7 @@ function getStatusLabel(status: string) {
 }
 
 function getTaskLabel(task: Task): string {
-  return task.name ?? task.title ?? task.description ?? task.message ?? 'Bez názvu';
+  return task.name ?? task.title ?? task.description ?? task.message ?? task.prompt ?? 'Bez názvu';
 }
 
 function formatTime(dateStr?: string): string {
