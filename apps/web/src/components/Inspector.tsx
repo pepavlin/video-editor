@@ -24,8 +24,8 @@ interface Props {
   onUpdateEffectClipConfig: (clipId: string, updates: Partial<EffectClipConfig>) => void;
   onUpdateProject: (updater: (p: Project) => Project) => void;
   masterAssetId?: string;
-  onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
-  onTranscribeLyricsClip: (clipId: string) => Promise<void>;
+  onAlignLyricsClip: (clipId: string, text: string, onProgress: (logLines: string[]) => void) => Promise<void>;
+  onTranscribeLyricsClip: (clipId: string, onProgress: (logLines: string[]) => void) => Promise<void>;
   onStartCutout: (assetId: string, mode?: 'removeBg' | 'removePerson') => Promise<void>;
   onCancelCutout: (assetId: string) => Promise<void>;
   onStartHeadStabilization: (assetId: string, params: { smoothingX: number; smoothingY: number; smoothingZ: number }) => Promise<void>;
@@ -1057,11 +1057,12 @@ function LyricsClipInspector({
 }: {
   clip: Clip;
   onClipUpdate: (clipId: string, updates: Partial<Clip>) => void;
-  onAlignLyricsClip: (clipId: string, text: string) => Promise<void>;
-  onTranscribeLyricsClip: (clipId: string) => Promise<void>;
+  onAlignLyricsClip: (clipId: string, text: string, onProgress: (logLines: string[]) => void) => Promise<void>;
+  onTranscribeLyricsClip: (clipId: string, onProgress: (logLines: string[]) => void) => Promise<void>;
 }) {
   const [aligning, setAligning] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [jobLogs, setJobLogs] = useState<string[]>([]);
   const style = clip.lyricsStyle ?? {
     fontSize: 48,
     color: '#ffffff',
@@ -1077,11 +1078,13 @@ function LyricsClipInspector({
     const text = clip.lyricsContent ?? '';
     if (!text.trim()) return;
     setAligning(true);
+    setJobLogs([]);
     onClipUpdate(clip.id, { lyricsAlignStatus: 'aligning' });
     try {
-      await onAlignLyricsClip(clip.id, text);
+      await onAlignLyricsClip(clip.id, text, (lines) => setJobLogs(lines));
       onClipUpdate(clip.id, { lyricsAlignStatus: 'done' });
-    } catch {
+    } catch (e: any) {
+      setJobLogs((prev) => [...prev, e?.message ?? 'Unknown error']);
       onClipUpdate(clip.id, { lyricsAlignStatus: 'error' });
     } finally {
       setAligning(false);
@@ -1090,11 +1093,13 @@ function LyricsClipInspector({
 
   const handleTranscribe = async () => {
     setTranscribing(true);
+    setJobLogs([]);
     onClipUpdate(clip.id, { lyricsAlignStatus: 'aligning' });
     try {
-      await onTranscribeLyricsClip(clip.id);
+      await onTranscribeLyricsClip(clip.id, (lines) => setJobLogs(lines));
       onClipUpdate(clip.id, { lyricsAlignStatus: 'done' });
-    } catch {
+    } catch (e: any) {
+      setJobLogs((prev) => [...prev, e?.message ?? 'Unknown error']);
       onClipUpdate(clip.id, { lyricsAlignStatus: 'error' });
     } finally {
       setTranscribing(false);
@@ -1143,12 +1148,33 @@ function LyricsClipInspector({
         >
           {aligning ? 'Aligning with Whisper...' : 'Re-align with Whisper'}
         </button>
-        {clip.lyricsWords && clip.lyricsWords.length > 0 && (
+        {(busy || jobLogs.length > 0) && (
+          <div
+            style={{
+              marginTop: 6,
+              padding: '6px 8px',
+              background: 'rgba(0,0,0,0.35)',
+              borderRadius: 4,
+              border: '1px solid rgba(255,255,255,0.08)',
+              maxHeight: 120,
+              overflowY: 'auto',
+              fontFamily: 'monospace',
+              fontSize: 11,
+              lineHeight: 1.5,
+              color: clip.lyricsAlignStatus === 'error' ? '#f87171' : 'var(--text-muted)',
+            }}
+          >
+            {jobLogs.length > 0
+              ? jobLogs.map((line, i) => <div key={i}>{line}</div>)
+              : <div style={{ opacity: 0.6 }}>Spouštím...</div>}
+          </div>
+        )}
+        {clip.lyricsWords && clip.lyricsWords.length > 0 && !busy && (
           <p style={{ fontSize: 12, color: '#4ade80', marginTop: 4 }}>
             {clip.lyricsWords.length} words aligned
           </p>
         )}
-        {clip.lyricsAlignStatus === 'error' && (
+        {clip.lyricsAlignStatus === 'error' && !busy && (
           <p style={{ fontSize: 12, color: '#f87171', marginTop: 4 }}>Operation failed – try again</p>
         )}
       </Section>

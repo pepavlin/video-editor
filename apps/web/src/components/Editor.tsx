@@ -356,30 +356,40 @@ export default function Editor() {
     finally { setBeatsProgress(null); setBeatsLogLine(null); }
   };
 
-  const handleAlignLyricsClip = async (clipId: string, text: string) => {
+  const handleAlignLyricsClip = async (clipId: string, text: string, onProgress: (logLines: string[]) => void) => {
     if (!project) return;
-    notify('Starting lyrics alignment...');
     try {
       const { jobId } = await api.alignLyricsClip(project.id, clipId, text, masterAssetId);
-      await api.pollJob(jobId, (j) => notify(`Lyrics: ${j.progress}%`));
+      await api.pollJob(jobId, (j) => {
+        onProgress(j.lastLogLines ?? []);
+        notify(`Lyrics: ${j.progress}%`);
+      });
       // Reload project to get updated lyricsWords on the clip
       const { project: updated } = await api.loadProject(project.id);
       setProject(updated);
       notify('Lyrics aligned!');
-    } catch (e: any) { notify(`Lyrics alignment failed: ${e.message}`); }
+    } catch (e: any) {
+      notify(`Lyrics alignment failed: ${e.message}`);
+      throw e;
+    }
   };
 
-  const handleTranscribeLyricsClip = async (clipId: string) => {
+  const handleTranscribeLyricsClip = async (clipId: string, onProgress: (logLines: string[]) => void) => {
     if (!project) return;
-    notify('Auto-detecting lyrics...');
     try {
       const { jobId } = await api.transcribeLyricsClip(project.id, clipId, masterAssetId);
-      await api.pollJob(jobId, (j) => notify(`Transcribing: ${j.progress}%`));
+      await api.pollJob(jobId, (j) => {
+        onProgress(j.lastLogLines ?? []);
+        notify(`Transcribing: ${j.progress}%`);
+      });
       // Reload project to get detected lyricsContent + lyricsWords on the clip
       const { project: updated } = await api.loadProject(project.id);
       setProject(updated);
       notify('Lyrics detected! Edit the text below if needed, then re-align.');
-    } catch (e: any) { notify(`Lyrics detection failed: ${e.message}`); }
+    } catch (e: any) {
+      notify(`Lyrics detection failed: ${e.message}`);
+      throw e;
+    }
   };
 
   const handleStartCutout = async (assetId: string, mode?: 'removeBg' | 'removePerson') => {
