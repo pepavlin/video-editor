@@ -564,7 +564,25 @@ export default function FeedbackButton() {
                     overflowY: 'auto',
                   }}
                 >
-                  {tasks.map((task, idx) => {
+                  {[...tasks].sort((a, b) => {
+                    const priority: Record<string, number> = {
+                      running: 0,
+                      queued: 1,
+                      waiting: 1,
+                      done: 2,
+                      completed: 2,
+                      success: 2,
+                      error: 3,
+                      failed: 3,
+                    };
+                    const ap = priority[(a.status ?? '').toLowerCase()] ?? 4;
+                    const bp = priority[(b.status ?? '').toLowerCase()] ?? 4;
+                    if (ap !== bp) return ap - bp;
+                    // Within same priority, newer tasks first
+                    const aTime = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+                    const bTime = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+                    return bTime - aTime;
+                  }).map((task, idx, arr) => {
                     const st = getStatusStyle(task.status ?? '');
                     const label = getStatusLabel(task.status ?? '');
                     const isRunning = (task.status ?? '').toLowerCase() === 'running';
@@ -577,7 +595,7 @@ export default function FeedbackButton() {
                           alignItems: 'flex-start',
                           gap: '10px',
                           padding: '9px 16px',
-                          borderBottom: idx < tasks.length - 1 ? '1px solid rgba(15,23,42,0.05)' : 'none',
+                          borderBottom: idx < arr.length - 1 ? '1px solid rgba(15,23,42,0.05)' : 'none',
                         }}
                       >
                         {/* Status dot */}
