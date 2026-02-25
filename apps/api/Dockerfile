@@ -73,9 +73,9 @@ RUN python3 -c "from rembg import new_session; new_session('u2net_human_seg'); p
 RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: opencv-python-headless \
     || pip3 install --no-cache-dir --only-binary=:all: opencv-python-headless
 
-# Optional: Whisper for lyrics alignment (comment in to enable, adds ~1.5GB)
-# RUN pip3 install --no-cache-dir --break-system-packages openai-whisper \
-#     || pip3 install --no-cache-dir openai-whisper
+# Whisper for lyrics auto-transcription (faster-whisper uses CTranslate2, much smaller than openai-whisper+torch)
+RUN pip3 install --no-cache-dir --break-system-packages faster-whisper \
+    || pip3 install --no-cache-dir faster-whisper
 
 # Build API
 RUN npm run build -w apps/api
