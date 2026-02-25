@@ -168,18 +168,20 @@ export default function Inspector({
 
   if (!selectedAsset && selectedTrackType === 'effect' && selectedClip && project) {
     const effectTrack = project.tracks.find((t) => t.clips.some((c) => c.id === selectedClip!.id));
-
-    // Primary: resolve via explicit parentTrackId relationship
-    if (effectTrack?.parentTrackId) {
-      const parentVideoTrack = project.tracks.find((t) => t.id === effectTrack.parentTrackId);
-      if (parentVideoTrack) {
-        const overlapping = parentVideoTrack.clips.find(
-          (c) => c.timelineEnd > selectedClip!.timelineStart && c.timelineStart < selectedClip!.timelineEnd
-        );
-        const fallback = parentVideoTrack.clips[0];
-        const sourceClip = overlapping ?? fallback;
-        if (sourceClip) selectedAsset = assets.find((a) => a.id === sourceClip.assetId);
-      }
+    // Try the linked parent track first, then fall back to any video track in the project.
+    // The fallback is important for projects created before parentTrackId was tracked,
+    // or when the original parent track was deleted/replaced.
+    const parentVideoTrack =
+      (effectTrack?.parentTrackId && project.tracks.find((t) => t.id === effectTrack.parentTrackId)) ||
+      project.tracks.find((t) => t.type === 'video' && t.clips.length > 0) ||
+      project.tracks.find((t) => t.type === 'video');
+    if (parentVideoTrack) {
+      const overlapping = parentVideoTrack.clips.find(
+        (c) => c.timelineEnd > selectedClip!.timelineStart && c.timelineStart < selectedClip!.timelineEnd
+      );
+      const fallback = parentVideoTrack.clips[0];
+      const sourceClip = overlapping ?? fallback;
+      if (sourceClip) selectedAsset = assets.find((a) => a.id === sourceClip.assetId);
     }
 
     // Fallback: parentTrackId missing or points to deleted track — scan all video tracks
@@ -429,13 +431,14 @@ export default function Inspector({
                           ) : (
                             <span style={{
                               fontSize: 11,
-                              color: isCutoutDone ? '#4ade80' : cutoutJob?.status === 'ERROR' ? '#f87171' : cutoutJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
+                              color: !selectedAsset ? 'var(--text-subtle)' : isCutoutDone ? '#4ade80' : cutoutJob?.status === 'ERROR' ? '#f87171' : cutoutJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
                               flex: 1,
                             }}>
-                              {isCutoutDone && '✓ Cutout ready'}
-                              {!isCutoutDone && cutoutJob?.status === 'ERROR' && 'Error – retry'}
-                              {!isCutoutDone && cutoutJob?.status === 'CANCELLED' && 'Cancelled'}
-                              {!isCutoutDone && (!cutoutJob || (cutoutJob.status !== 'ERROR' && cutoutJob.status !== 'CANCELLED')) && 'Not processed'}
+                              {!selectedAsset && 'No video asset'}
+                              {selectedAsset && isCutoutDone && '✓ Cutout ready'}
+                              {selectedAsset && !isCutoutDone && cutoutJob?.status === 'ERROR' && 'Error – retry'}
+                              {selectedAsset && !isCutoutDone && cutoutJob?.status === 'CANCELLED' && 'Cancelled'}
+                              {selectedAsset && !isCutoutDone && (!cutoutJob || (cutoutJob.status !== 'ERROR' && cutoutJob.status !== 'CANCELLED')) && 'Not processed'}
                             </span>
                           )}
                           {isCutoutProcessing ? (
@@ -446,15 +449,15 @@ export default function Inspector({
                             >
                               Cancel
                             </button>
-                          ) : (
+                          ) : selectedAsset ? (
                             <button
                               className="btn btn-ghost"
                               style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
-                              onClick={() => selectedAsset && onStartCutout(selectedAsset.id, cfg.cutoutMode as 'removeBg' | 'removePerson' | undefined)}
+                              onClick={() => onStartCutout(selectedAsset.id, cfg.cutoutMode as 'removeBg' | 'removePerson' | undefined)}
                             >
                               {isCutoutDone || cutoutJob?.status === 'CANCELLED' ? 'Re-process' : 'Process'}
                             </button>
-                          )}
+                          ) : null}
                         </div>
                         {/* Log message line — shown only during processing */}
                         {isCutoutProcessing && cutoutLogLines.length > 0 && (
@@ -582,13 +585,14 @@ export default function Inspector({
                           ) : (
                             <span style={{
                               fontSize: 11,
-                              color: isHeadStabDone ? '#4ade80' : headStabJob?.status === 'ERROR' ? '#f87171' : headStabJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
+                              color: !selectedAsset ? 'var(--text-subtle)' : isHeadStabDone ? '#4ade80' : headStabJob?.status === 'ERROR' ? '#f87171' : headStabJob?.status === 'CANCELLED' ? '#94a3b8' : 'var(--text-subtle)',
                               flex: 1,
                             }}>
-                              {isHeadStabDone && 'Stabilized'}
-                              {!isHeadStabDone && headStabJob?.status === 'ERROR' && 'Error – retry'}
-                              {!isHeadStabDone && headStabJob?.status === 'CANCELLED' && 'Cancelled'}
-                              {!isHeadStabDone && (!headStabJob || (headStabJob.status !== 'ERROR' && headStabJob.status !== 'CANCELLED')) && 'Not processed'}
+                              {!selectedAsset && 'No video asset'}
+                              {selectedAsset && isHeadStabDone && 'Stabilized'}
+                              {selectedAsset && !isHeadStabDone && headStabJob?.status === 'ERROR' && 'Error – retry'}
+                              {selectedAsset && !isHeadStabDone && headStabJob?.status === 'CANCELLED' && 'Cancelled'}
+                              {selectedAsset && !isHeadStabDone && (!headStabJob || (headStabJob.status !== 'ERROR' && headStabJob.status !== 'CANCELLED')) && 'Not processed'}
                             </span>
                           )}
                           {isHeadStabProcessing ? (
@@ -599,11 +603,11 @@ export default function Inspector({
                             >
                               Cancel
                             </button>
-                          ) : (
+                          ) : selectedAsset ? (
                             <button
                               className="btn btn-ghost"
                               style={{ fontSize: 11, border: '1px solid rgba(13,148,136,0.28)', padding: '4px 10px', color: '#0d9488' }}
-                              onClick={() => selectedAsset && onStartHeadStabilization(selectedAsset.id, {
+                              onClick={() => onStartHeadStabilization(selectedAsset.id, {
                                 smoothingX: cfg.smoothingX ?? 0.7,
                                 smoothingY: cfg.smoothingY ?? 0.7,
                                 smoothingZ: cfg.smoothingZ ?? 0.0,
@@ -611,7 +615,7 @@ export default function Inspector({
                             >
                               {isHeadStabDone || headStabJob?.status === 'CANCELLED' ? 'Re-process' : 'Process'}
                             </button>
-                          )}
+                          ) : null}
                         </div>
                         {isHeadStabProcessing && headStabLogLines.length > 0 && (
                           <div style={{

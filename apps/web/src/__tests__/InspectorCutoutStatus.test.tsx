@@ -251,6 +251,178 @@ describe('Inspector – cutout status via parent track resolution', () => {
     expect(screen.getByRole('button', { name: 'Process' })).toBeDefined();
   });
 
+  it('shows "Cutout ready" when parentTrackId is missing but a video track exists (legacy project fallback)', () => {
+    // Simulates projects created before parentTrackId was tracked
+    const asset = makeAsset({ id: 'asset_1', maskPath: 'masks/asset_1.mp4' });
+
+    const videoTrack = {
+      id: 'track_video',
+      type: 'video' as const,
+      name: 'Video 1',
+      muted: false,
+      clips: [
+        {
+          id: 'clip_video',
+          assetId: 'asset_1',
+          trackId: 'track_video',
+          timelineStart: 0,
+          timelineEnd: 10,
+          sourceStart: 0,
+          sourceEnd: 10,
+        },
+      ],
+    };
+
+    const effectClipId = 'clip_effect_legacy';
+    const effectTrack = {
+      id: 'track_effect_legacy',
+      type: 'effect' as const,
+      effectType: 'cutout' as const,
+      // No parentTrackId — simulates legacy/old project data
+      parentTrackId: undefined as unknown as string,
+      name: 'Cutout 1',
+      muted: false,
+      clips: [
+        {
+          id: effectClipId,
+          assetId: '',
+          trackId: 'track_effect_legacy',
+          timelineStart: 0,
+          timelineEnd: 10,
+          sourceStart: 0,
+          sourceEnd: 10,
+          effectConfig: {
+            effectType: 'cutout' as const,
+            enabled: true,
+            background: { type: 'solid' as const, color: '#000000' },
+          },
+        },
+      ],
+    };
+
+    const project = makeProject({ tracks: [effectTrack, videoTrack] });
+
+    render(
+      <Inspector
+        {...baseProps}
+        project={project}
+        selectedClipId={effectClipId}
+        assets={[asset]}
+      />,
+    );
+
+    // Falls back to the only video track → asset has maskPath → should show "Cutout ready"
+    expect(screen.getByText('✓ Cutout ready')).toBeDefined();
+    expect(screen.queryByText('Not processed')).toBeNull();
+    expect(screen.queryByText('No video asset')).toBeNull();
+  });
+
+  it('shows "Cutout ready" when parentTrackId points to a deleted track (invalid id fallback)', () => {
+    const asset = makeAsset({ id: 'asset_1', maskPath: 'masks/asset_1.mp4' });
+
+    const videoTrack = {
+      id: 'track_video',
+      type: 'video' as const,
+      name: 'Video 1',
+      muted: false,
+      clips: [
+        {
+          id: 'clip_video',
+          assetId: 'asset_1',
+          trackId: 'track_video',
+          timelineStart: 0,
+          timelineEnd: 10,
+          sourceStart: 0,
+          sourceEnd: 10,
+        },
+      ],
+    };
+
+    const effectClipId = 'clip_effect_stale';
+    const effectTrack = {
+      id: 'track_effect_stale',
+      type: 'effect' as const,
+      effectType: 'cutout' as const,
+      parentTrackId: 'track_deleted_long_ago', // no longer exists in tracks
+      name: 'Cutout 1',
+      muted: false,
+      clips: [
+        {
+          id: effectClipId,
+          assetId: '',
+          trackId: 'track_effect_stale',
+          timelineStart: 0,
+          timelineEnd: 10,
+          sourceStart: 0,
+          sourceEnd: 10,
+          effectConfig: {
+            effectType: 'cutout' as const,
+            enabled: true,
+            background: { type: 'solid' as const, color: '#000000' },
+          },
+        },
+      ],
+    };
+
+    const project = makeProject({ tracks: [effectTrack, videoTrack] });
+
+    render(
+      <Inspector
+        {...baseProps}
+        project={project}
+        selectedClipId={effectClipId}
+        assets={[asset]}
+      />,
+    );
+
+    // Falls back to the first video track → asset has maskPath → "Cutout ready"
+    expect(screen.getByText('✓ Cutout ready')).toBeDefined();
+    expect(screen.queryByText('Not processed')).toBeNull();
+  });
+
+  it('shows "No video asset" and no Process button when there are no video tracks at all', () => {
+    const effectClipId = 'clip_effect_novideo';
+    const effectTrack = {
+      id: 'track_effect_novideo',
+      type: 'effect' as const,
+      effectType: 'cutout' as const,
+      parentTrackId: undefined as unknown as string,
+      name: 'Cutout 1',
+      muted: false,
+      clips: [
+        {
+          id: effectClipId,
+          assetId: '',
+          trackId: 'track_effect_novideo',
+          timelineStart: 0,
+          timelineEnd: 10,
+          sourceStart: 0,
+          sourceEnd: 10,
+          effectConfig: {
+            effectType: 'cutout' as const,
+            enabled: true,
+            background: { type: 'solid' as const, color: '#000000' },
+          },
+        },
+      ],
+    };
+
+    const project = makeProject({ tracks: [effectTrack] }); // no video track
+
+    render(
+      <Inspector
+        {...baseProps}
+        project={project}
+        selectedClipId={effectClipId}
+        assets={[]}
+      />,
+    );
+
+    expect(screen.getByText('No video asset')).toBeDefined();
+    expect(screen.queryByText('Not processed')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Process' })).toBeNull();
+  });
+
   it('shows "Re-process" button when cutout is already done', () => {
     const asset = makeAsset({ id: 'asset_1', maskPath: 'masks/asset_1.mp4' });
 
