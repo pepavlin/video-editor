@@ -6,6 +6,7 @@ import { useProject } from '@/hooks/useProject';
 import { usePlayback } from '@/hooks/usePlayback';
 import { useHistory } from '@/hooks/useHistory';
 import * as api from '@/lib/api';
+import { genId } from '@/lib/utils';
 import MediaBin from './MediaBin';
 import Preview from './Preview';
 import Timeline from './Timeline';
@@ -300,13 +301,13 @@ export default function Editor() {
   const handleDropAssetNewTrack = useCallback(
     (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => {
       updateProject((p) => {
-        const count = p.tracks.filter((t) => t.type === assetType || (assetType === 'video' && t.type === 'text')).length;
+        const count = p.tracks.filter((t) => t.type === assetType).length;
         const baseName = assetType === 'audio' ? 'Audio' : 'Video';
         const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
-        const trackId = `track_${Date.now()}`;
+        const trackId = genId('track');
         const isVideo = assetType === 'video';
         const newClip = {
-          id: `clip_${Date.now()}`,
+          id: genId('clip'),
           assetId,
           trackId,
           timelineStart,

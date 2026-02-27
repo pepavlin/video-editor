@@ -1,3 +1,26 @@
+import type { Track } from '@video-editor/shared';
+
+// ─── Track type compatibility ─────────────────────────────────────────────────
+
+/**
+ * Returns true if a clip from a track of `sourceType` can be moved to `targetTrack`.
+ * Effect clips and effect tracks are always incompatible with everything else.
+ * All other types must match exactly (audio→audio, video→video, lyrics→lyrics, etc.).
+ */
+export function isCompatibleTrackType(sourceType: Track['type'], targetTrack: Track): boolean {
+  if (sourceType === 'effect' || targetTrack.type === 'effect') return false;
+  return sourceType === targetTrack.type;
+}
+
+/**
+ * Returns true if a MediaBin asset of `assetType` can be dropped onto `targetTrack`.
+ * Video assets go on video tracks only; audio assets go on audio tracks only.
+ * Text, lyrics, and effect tracks are not valid targets for asset drops.
+ */
+export function isAssetCompatibleWithTrack(assetType: 'video' | 'audio', track: Track): boolean {
+  return (assetType as string) === track.type;
+}
+
 // ─── Time formatting ──────────────────────────────────────────────────────────
 
 export function formatTime(seconds: number): string {

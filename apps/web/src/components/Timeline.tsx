@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from 'react';
 import type { Project, Track, Clip, Asset, WaveformData, BeatsData, EffectType } from '@video-editor/shared';
-import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
+import { getClipColor, clamp, snap, formatTime, isCompatibleTrackType, isAssetCompatibleWithTrack } from '@/lib/utils';
 import { useThemeContext } from '@/contexts/ThemeContext';
 
 const TRACK_HEIGHT = 56;
@@ -23,14 +23,6 @@ const TOUCH_SNAP_THRESHOLD_PX = 16; // larger snap zone for touch
 
 function getTrackH(track: Track): number {
   return track.type === 'effect' ? EFFECT_TRACK_HEIGHT : TRACK_HEIGHT;
-}
-
-// Returns true if a clip from a track of sourceType can be moved to targetTrack
-function isCompatibleTrackType(sourceType: Track['type'], targetTrack: Track): boolean {
-  // Effect clips and effect tracks are never valid targets for clip movement
-  if (sourceType === 'effect' || targetTrack.type === 'effect') return false;
-  // Each track type can only accept clips of the same type
-  return sourceType === targetTrack.type;
 }
 
 // Ghost clip state during drag-over
@@ -1588,11 +1580,11 @@ export default function Timeline({
     let ghostTrackId: string | null = null;
     let ghostTrackY = 0;
 
-    if (trackResult) {
+    if (trackResult && isAssetCompatibleWithTrack(draggedAsset.type, trackResult.track)) {
       ghostTrackId = trackResult.track.id;
       ghostTrackY = trackResult.trackY;
     } else if (y > RULER_HEIGHT) {
-      // Below all existing tracks → new track zone
+      // Below all existing tracks, or over an incompatible track → new track zone
       ghostTrackId = null;
       const numTracks = propsRef.current.project?.tracks.length ?? 0;
       ghostTrackY = RULER_HEIGHT + numTracks * TRACK_HEIGHT;
@@ -1638,10 +1630,11 @@ export default function Timeline({
       const trackResult = getTrackAtY(y);
 
       if (assetId) {
-        if (trackResult) {
+        if (trackResult && isAssetCompatibleWithTrack(assetType, trackResult.track)) {
+          // Drop onto an existing compatible track
           onDropAsset(trackResult.track.id, assetId, t, duration);
         } else if (y > RULER_HEIGHT) {
-          // Below all tracks → create a new track
+          // Below all tracks, or over an incompatible track → create a new track
           onDropAssetNewTrack(assetType, assetId, t, duration);
         }
       }
