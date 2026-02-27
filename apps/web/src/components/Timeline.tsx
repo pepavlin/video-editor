@@ -3,6 +3,7 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import type { Project, Track, Clip, Asset, WaveformData, BeatsData, EffectType } from '@video-editor/shared';
 import { getClipColor, clamp, snap, formatTime } from '@/lib/utils';
+import { isAssetCompatibleWithTrack, getClipMediaType } from '@/lib/trackUtils';
 import { useThemeContext } from '@/contexts/ThemeContext';
 
 const TRACK_HEIGHT = 56;
@@ -1145,8 +1146,12 @@ export default function Timeline({
           (c) => c.id !== clip.id && Math.abs(c.timelineStart - clip.timelineEnd) < 0.001
         )?.id ?? null;
         setDrag({ type: 'moveClip', clipId: clip.id, trackId: track.id, offsetSeconds, leftAdjacentId, rightAdjacentId });
-        // Initialise cross-track drag state
-        clipDragStateRef.current = { currentTrackId: track.id, sourceTrackType: track.type, insertAfterIdx: null, leftAdjacentId, rightAdjacentId };
+        // Initialise cross-track drag state.
+        // Use the clip's intrinsic media type (derived from content/asset) rather than
+        // the track type, so clips that ended up on the wrong track still produce the
+        // correct new-track type when dragged out.
+        const clipMediaType = getClipMediaType(clip, track, propsRef.current.assets);
+        clipDragStateRef.current = { currentTrackId: track.id, sourceTrackType: clipMediaType, insertAfterIdx: null, leftAdjacentId, rightAdjacentId };
       }
       return true;
     },
@@ -1588,13 +1593,14 @@ export default function Timeline({
     let ghostTrackId: string | null = null;
     let ghostTrackY = 0;
 
-    if (trackResult) {
+    const numTracks = propsRef.current.project?.tracks.length ?? 0;
+    if (trackResult && isAssetCompatibleWithTrack(draggedAsset.type, trackResult.track)) {
+      // Compatible track – show ghost on that track
       ghostTrackId = trackResult.track.id;
       ghostTrackY = trackResult.trackY;
     } else if (y > RULER_HEIGHT) {
-      // Below all existing tracks → new track zone
+      // Incompatible track or below all tracks → ghost in new-track zone
       ghostTrackId = null;
-      const numTracks = propsRef.current.project?.tracks.length ?? 0;
       ghostTrackY = RULER_HEIGHT + numTracks * TRACK_HEIGHT;
     }
 
@@ -1638,10 +1644,12 @@ export default function Timeline({
       const trackResult = getTrackAtY(y);
 
       if (assetId) {
-        if (trackResult) {
+        if (trackResult && isAssetCompatibleWithTrack(assetType, trackResult.track)) {
+          // Compatible existing track – add clip to it
           onDropAsset(trackResult.track.id, assetId, t, duration);
         } else if (y > RULER_HEIGHT) {
-          // Below all tracks → create a new track
+          // Incompatible track or below all tracks → create a new track.
+          // This prevents cross-type contamination (e.g. video asset on lyrics track).
           onDropAssetNewTrack(assetType, assetId, t, duration);
         }
       }

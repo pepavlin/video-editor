@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { Asset, BeatsData, WaveformData } from '@video-editor/shared';
-import { useProject } from '@/hooks/useProject';
+import { useProject, getDefaultTrackName } from '@/hooks/useProject';
 import { usePlayback } from '@/hooks/usePlayback';
 import { useHistory } from '@/hooks/useHistory';
 import * as api from '@/lib/api';
+import { genId } from '@/lib/utils';
 import MediaBin from './MediaBin';
 import Preview from './Preview';
 import Timeline from './Timeline';
@@ -296,17 +297,15 @@ export default function Editor() {
 
   const draggedAsset = assets.find((a) => a.id === draggedAssetId) ?? null;
 
-  // Handle drop that creates a new track + adds clip atomically
+  // Handle drop that creates a new track + adds clip atomically.
+  // Uses getDefaultTrackName for consistent naming with all other track-creation paths.
   const handleDropAssetNewTrack = useCallback(
     (assetType: 'video' | 'audio', assetId: string, timelineStart: number, duration: number) => {
       updateProject((p) => {
-        const count = p.tracks.filter((t) => t.type === assetType || (assetType === 'video' && t.type === 'text')).length;
-        const baseName = assetType === 'audio' ? 'Audio' : 'Video';
-        const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
-        const trackId = `track_${Date.now()}`;
+        const trackId = genId('track');
         const isVideo = assetType === 'video';
         const newClip = {
-          id: `clip_${Date.now()}`,
+          id: genId('clip'),
           assetId,
           trackId,
           timelineStart,
@@ -322,7 +321,7 @@ export default function Editor() {
         const newTrack = {
           id: trackId,
           type: assetType,
-          name,
+          name: getDefaultTrackName(assetType, p.tracks),
           isMaster: false,
           muted: false,
           clips: [newClip],
