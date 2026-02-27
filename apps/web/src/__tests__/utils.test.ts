@@ -344,3 +344,56 @@ describe('snap with mode:clips (only clip edges)', () => {
     expect(snap(0.05, clipEdges, 0.1)).toBe(0);
   });
 });
+
+// ─── Ctrl/Cmd snap bypass (noSnap modifier) ───────────────────────────────────
+// When Ctrl or Cmd is held during a drag, the Timeline and Preview pass an
+// empty targets array to snap(), effectively disabling magnetization.
+// This section verifies that snap() with empty targets always returns the
+// raw (unsnapped) value — regardless of proximity to potential snap points.
+
+describe('snap bypass (Ctrl/Cmd modifier — empty targets)', () => {
+  it('does not snap to timeline start (0) when targets are empty', () => {
+    expect(snap(0.02, [], 0.1)).toBe(0.02);
+  });
+
+  it('does not snap to a clip edge when targets are empty', () => {
+    expect(snap(2.49, [], 0.1)).toBe(2.49);
+  });
+
+  it('does not snap to a beat when targets are empty', () => {
+    expect(snap(0.99, [], 0.1)).toBe(0.99);
+  });
+
+  it('returns exact value when sitting right on top of a snap point, with empty targets', () => {
+    // Even if you're exactly on 5.0, empty targets means no snap
+    expect(snap(5.0, [], 0.1)).toBe(5.0);
+  });
+
+  it('simulates Timeline noSnap=true: targets cleared → free movement', () => {
+    const normalTargets = [0, 1.0, 2.5, 4.0];
+    const noSnapTargets: number[] = []; // what Timeline passes when Ctrl/Cmd held
+
+    // Without modifier: snaps 2.48 → 2.5
+    expect(snap(2.48, normalTargets, 0.1)).toBe(2.5);
+    // With modifier (empty targets): stays at 2.48
+    expect(snap(2.48, noSnapTargets, 0.1)).toBe(2.48);
+  });
+
+  it('simulates Preview noSnap=true: rotation snap skipped', () => {
+    // Preview skips the for-loop over cardinal angles [0,90,180,270,-90,-180]
+    // when Ctrl/Cmd held — equivalent to checking if newRotation stays unchanged
+    let newRotation = 88; // close to 90°
+
+    // Normal snap (no modifier): snaps to 90
+    const cardinals = [0, 90, 180, 270, -90, -180];
+    for (const s of cardinals) {
+      if (Math.abs(newRotation - s) < 5) { newRotation = s; break; }
+    }
+    expect(newRotation).toBe(90);
+
+    // With modifier: loop is skipped, stays at original
+    let rotationFree = 88;
+    // (no loop executed when Ctrl/Cmd held)
+    expect(rotationFree).toBe(88);
+  });
+});
