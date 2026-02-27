@@ -1229,42 +1229,46 @@ export default function Preview({
         let newY = drag.startTY + dy;
 
         // ── Snap to canvas edges and center ──────────────────────────────────
+        // Hold Ctrl/Cmd to temporarily disable snapping
+        const snapDisabled = e.ctrlKey || e.metaKey;
         const W = canvas.width;
         const H = canvas.height;
         const { boundsW, boundsH, offsetX, offsetY } = drag;
         const activeSnapX: number[] = [];
         const activeSnapY: number[] = [];
 
-        // Projected bounds edges at current position
-        const bLeft   = newX + offsetX;
-        const bRight  = bLeft + boundsW;
-        const bCenterX = bLeft + boundsW / 2;
-        const bTop    = newY + offsetY;
-        const bBottom = bTop + boundsH;
-        const bCenterY = bTop + boundsH / 2;
+        if (!snapDisabled) {
+          // Projected bounds edges at current position
+          const bLeft   = newX + offsetX;
+          const bRight  = bLeft + boundsW;
+          const bCenterX = bLeft + boundsW / 2;
+          const bTop    = newY + offsetY;
+          const bBottom = bTop + boundsH;
+          const bCenterY = bTop + boundsH / 2;
 
-        // Snap X: left edge→0, right edge→W, center→W/2
-        if (Math.abs(bLeft) < PREVIEW_SNAP_THRESHOLD) {
-          newX = -offsetX;
-          activeSnapX.push(0);
-        } else if (Math.abs(bRight - W) < PREVIEW_SNAP_THRESHOLD) {
-          newX = W - boundsW - offsetX;
-          activeSnapX.push(W);
-        } else if (Math.abs(bCenterX - W / 2) < PREVIEW_SNAP_THRESHOLD) {
-          newX = W / 2 - boundsW / 2 - offsetX;
-          activeSnapX.push(W / 2);
-        }
+          // Snap X: left edge→0, right edge→W, center→W/2
+          if (Math.abs(bLeft) < PREVIEW_SNAP_THRESHOLD) {
+            newX = -offsetX;
+            activeSnapX.push(0);
+          } else if (Math.abs(bRight - W) < PREVIEW_SNAP_THRESHOLD) {
+            newX = W - boundsW - offsetX;
+            activeSnapX.push(W);
+          } else if (Math.abs(bCenterX - W / 2) < PREVIEW_SNAP_THRESHOLD) {
+            newX = W / 2 - boundsW / 2 - offsetX;
+            activeSnapX.push(W / 2);
+          }
 
-        // Snap Y: top edge→0, bottom edge→H, center→H/2
-        if (Math.abs(bTop) < PREVIEW_SNAP_THRESHOLD) {
-          newY = -offsetY;
-          activeSnapY.push(0);
-        } else if (Math.abs(bBottom - H) < PREVIEW_SNAP_THRESHOLD) {
-          newY = H - boundsH - offsetY;
-          activeSnapY.push(H);
-        } else if (Math.abs(bCenterY - H / 2) < PREVIEW_SNAP_THRESHOLD) {
-          newY = H / 2 - boundsH / 2 - offsetY;
-          activeSnapY.push(H / 2);
+          // Snap Y: top edge→0, bottom edge→H, center→H/2
+          if (Math.abs(bTop) < PREVIEW_SNAP_THRESHOLD) {
+            newY = -offsetY;
+            activeSnapY.push(0);
+          } else if (Math.abs(bBottom - H) < PREVIEW_SNAP_THRESHOLD) {
+            newY = H - boundsH - offsetY;
+            activeSnapY.push(H);
+          } else if (Math.abs(bCenterY - H / 2) < PREVIEW_SNAP_THRESHOLD) {
+            newY = H / 2 - boundsH / 2 - offsetY;
+            activeSnapY.push(H / 2);
+          }
         }
 
         snapLinesRef.current = { x: activeSnapX, y: activeSnapY };
@@ -1294,8 +1298,10 @@ export default function Preview({
         const angle = Math.atan2(my - drag.centerY, mx - drag.centerX);
         const deltaAngle = ((angle - drag.startAngle) * 180) / Math.PI;
         let newRotation = drag.startRotation + deltaAngle;
-        for (const snap of [0, 90, 180, 270, -90, -180]) {
-          if (Math.abs(newRotation - snap) < 5) { newRotation = snap; break; }
+        if (!(e.ctrlKey || e.metaKey)) {
+          for (const snap of [0, 90, 180, 270, -90, -180]) {
+            if (Math.abs(newRotation - snap) < 5) { newRotation = snap; break; }
+          }
         }
         const prev = liveTransformRef.current!;
         liveTransformRef.current = {

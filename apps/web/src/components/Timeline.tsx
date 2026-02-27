@@ -1155,7 +1155,7 @@ export default function Timeline({
 
   // ─── Shared pointer-move logic (mouse + touch) ─────────────────────────
   const handlePointerMove = useCallback(
-    (x: number, y: number, isTouch: boolean) => {
+    (x: number, y: number, isTouch: boolean, noSnap = false) => {
       if (!project) return;
       const Z = zoomRef.current;
       const SL = scrollLeftRef.current;
@@ -1199,7 +1199,7 @@ export default function Timeline({
         if (!clip || !clipTrack) return;
 
         const dur = clip.timelineEnd - clip.timelineStart;
-        const snapTargets = getSnapTargets(d.clipId);
+        const snapTargets = noSnap ? [] : getSnapTargets(d.clipId);
         t = snap(t, snapTargets, snapThreshold);
         t = snap(t + dur, snapTargets, snapThreshold) - dur;
         t = Math.max(0, t);
@@ -1342,7 +1342,7 @@ export default function Timeline({
         if (!clip) return;
 
         const minTimelineStart = Math.max(0, clip.timelineStart - clip.sourceStart);
-        const snapTargets = getSnapTargets(d.clipId);
+        const snapTargets = noSnap ? [] : getSnapTargets(d.clipId);
         t = snap(t, snapTargets, snapThreshold);
         t = clamp(t, minTimelineStart, clip.timelineEnd - 0.1);
 
@@ -1364,7 +1364,7 @@ export default function Timeline({
         const maxSourceRemaining = asset ? asset.duration - clip.sourceStart : 9999;
         const maxTimelineEnd = clip.timelineStart + maxSourceRemaining;
 
-        const snapTargets = getSnapTargets(d.clipId);
+        const snapTargets = noSnap ? [] : getSnapTargets(d.clipId);
         t = snap(t, snapTargets, snapThreshold);
         t = clamp(t, clip.timelineStart + 0.1, maxTimelineEnd);
 
@@ -1382,7 +1382,7 @@ export default function Timeline({
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const rect = canvasRef.current!.getBoundingClientRect();
-      handlePointerMove(e.clientX - rect.left, e.clientY - rect.top, false);
+      handlePointerMove(e.clientX - rect.left, e.clientY - rect.top, false, e.ctrlKey || e.metaKey);
     },
     [handlePointerMove]
   );
@@ -1572,7 +1572,7 @@ export default function Timeline({
     const SL = scrollLeftRef.current;
 
     const rawT = Math.max(0, (x + SL - HEADER_WIDTH) / Z);
-    const snapTargets = getSnapTargets();
+    const snapTargets = (e.ctrlKey || e.metaKey) ? [] : getSnapTargets();
     const snappedT = snap(rawT, snapTargets, SNAP_THRESHOLD_PX / Z);
 
     const trackResult = getTrackAtY(y);
