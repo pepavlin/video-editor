@@ -5,6 +5,35 @@ import { genId } from '@/lib/utils';
 
 const DEFAULT_TRANSFORM: Transform = { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
 
+// Track type → default display name
+const TRACK_BASE_NAMES: Record<Track['type'], string> = {
+  video: 'Video',
+  audio: 'Audio',
+  text: 'Text',
+  lyrics: 'Lyrics',
+  effect: 'Effect',
+};
+
+/**
+ * Pure helper: build a new Track object for `newTrackType`, numbered
+ * consistently with existing tracks of the same type.
+ * The first track of a type gets name "Video", subsequent ones "Video 2", "Video 3", etc.
+ */
+export function buildNewTrack(newTrackType: Track['type'], existingTracks: Track[], foundClip: Clip): Track {
+  const newTrackId = genId('track');
+  const count = existingTracks.filter((t) => t.type === newTrackType).length;
+  const baseName = TRACK_BASE_NAMES[newTrackType] ?? 'Track';
+  const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
+  return {
+    id: newTrackId,
+    type: newTrackType,
+    name,
+    isMaster: false,
+    muted: false,
+    clips: [{ ...foundClip, trackId: newTrackId }],
+  };
+}
+
 const AUTOSAVE_DELAY = 1500;
 
 export function useProject() {
@@ -181,7 +210,7 @@ export function useProject() {
     (type: 'video' | 'audio', options: { name?: string; isMaster?: boolean } = {}): string => {
       const trackId = genId('track');
       updateProject((p) => {
-        const count = p.tracks.filter((t) => t.type === type || (type === 'video' && t.type === 'text')).length;
+        const count = p.tracks.filter((t) => t.type === type).length;
         const baseName = type === 'audio' ? 'Audio' : 'Video';
         const name = options.name ?? (count === 0 ? baseName : `${baseName} ${count + 1}`);
         const newTrack: Track = {
@@ -353,10 +382,11 @@ export function useProject() {
       };
       updateProject((p) => {
         const count = p.tracks.filter((t) => t.type === 'lyrics').length;
+        const name = count === 0 ? 'Lyrics' : `Lyrics ${count + 1}`;
         const newTrack: Track = {
           id: trackId,
           type: 'lyrics',
-          name: `Lyrics ${count + 1}`,
+          name,
           muted: false,
           clips: [
             {
@@ -522,26 +552,6 @@ export function useProject() {
     },
     [updateProject]
   );
-
-  // Helper to build a new Track object for the given type
-  function buildNewTrack(newTrackType: Track['type'], existingTracks: Track[], foundClip: Clip): Track {
-    const newTrackId = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const count = existingTracks.filter((t) => t.type === newTrackType).length;
-    const baseName =
-      newTrackType === 'audio' ? 'Audio'
-      : newTrackType === 'text' ? 'Text'
-      : newTrackType === 'lyrics' ? 'Lyrics'
-      : 'Video';
-    const name = count === 0 ? baseName : `${baseName} ${count + 1}`;
-    return {
-      id: newTrackId,
-      type: newTrackType,
-      name,
-      isMaster: false,
-      muted: false,
-      clips: [{ ...foundClip, trackId: newTrackId }],
-    };
-  }
 
   // Move clip to a brand-new track appended at the end
   const moveClipToNewTrack = useCallback(
