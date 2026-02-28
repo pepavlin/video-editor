@@ -84,9 +84,6 @@ export type {
   // Shared types
   Bounds,
   EffectSource,
-  // Legacy (kept for backwards compatibility)
-  ElementPreviewRenderer,
-  VideoClipFilterResult,
 } from './types';
 
 // ─── Clip element exports ─────────────────────────────────────────────────────

@@ -5,7 +5,7 @@
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │  PREVIEW: Canvas 2D — CSS filter (fast) + optional pixel manipulation   │
- * │  EXPORT:  FFmpeg — eq filter + optional hue filter                      │
+ * │  EXPORT:  FFmpeg — eq + hue + geq (shadows/highlights) filters          │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
  * Config params (from EffectClipConfig):
@@ -16,9 +16,18 @@
  *   shadows         — -1..1 (0 = no change) — lifts/crushes dark pixels
  *   highlights      — -1..1 (0 = no change) — boosts/reduces bright pixels
  *
- * Known limitation: shadows/highlights are preview-only.
- * The FFmpeg eq filter does not support shadow/highlight lifting.
- * To add export support, implement curves or LUT-based approach in buildFilter.
+ * ## Export filter chain
+ *
+ * The export builds up to three chained filters depending on active params:
+ *   1. eq=contrast:brightness:saturation  — basic adjustments (FFmpeg eq filter)
+ *   2. hue=h=<degrees>                   — hue rotation (FFmpeg hue filter)
+ *   3. format=rgb24,geq=r/g/b,format=yuv420p — shadows/highlights (FFmpeg geq)
+ *
+ * The shadows/highlights formula is IDENTICAL to the preview Canvas 2D implementation:
+ *   v_out = clamp(v + shadows*(1-v)^2 + highlights*v^2, 0, 1)
+ *
+ * The geq filter requires format=rgb24 for per-channel RGB access, then converts back.
+ * This ensures pixel-accurate match between preview and export for shadows/highlights.
  */
 
 import type { Clip, Track, EffectClipConfig } from '@video-editor/shared';
@@ -158,6 +167,23 @@ const colorGradePreview: EffectPreviewApi = {
   },
 };
 
+// ─── Export: per-channel geq expression for shadows/highlights ────────────────
+
+/**
+ * Build the per-channel FFmpeg geq expression for shadows/highlights.
+ *
+ * Matches the preview Canvas 2D formula exactly:
+ *   v_out = clamp(v + shadows*(1-v)^2 + highlights*v^2, 0, 1)
+ *
+ * The channel functions r(X,Y), g(X,Y), b(X,Y) return 0–255 in rgb24 format.
+ */
+function buildShadowsHighlightsExpr(channel: string, shadows: number, highlights: number): string {
+  const s = shadows.toFixed(6);
+  const h = highlights.toFixed(6);
+  const v = `${channel}(X,Y)/255`;
+  return `clip(${v}+${s}*(1-${v})*(1-${v})+${h}*${v}*${v},0,1)*255`;
+}
+
 // ─── Export implementation ────────────────────────────────────────────────────
 
 const colorGradeExport: EffectExportApi = {
@@ -166,11 +192,18 @@ const colorGradeExport: EffectExportApi = {
   },
 
   /**
-   * Builds FFmpeg eq + hue filters for color grading.
+   * Builds the FFmpeg filter chain for color grading.
    *
-   * Note: shadows and highlights are not supported in export.
-   * The FFmpeg eq filter doesn't support shadow/highlight lifting.
-   * To add support, implement using the curves or LUT filter.
+   * Chains up to three filters in sequence (each only added when non-default):
+   *   1. eq=contrast:brightness:saturation  — basic color adjustments
+   *   2. hue=h=<degrees>                   — hue rotation
+   *   3. format=rgb24,geq=r/g/b,format=yuv420p — shadows/highlights
+   *
+   * The shadows/highlights step converts to RGB, applies the quadratic formula
+   * (identical to the preview Canvas 2D path), then converts back to yuv420p.
+   *
+   * When this effect doesn't look right in export:
+   *   → Every ColorGrade parameter is handled here — no need to look elsewhere.
    */
   buildFilter(
     inputPad: string,
@@ -186,30 +219,57 @@ const colorGradeExport: EffectExportApi = {
     const brightness = cfg.brightness ?? 1;
     const colorSaturation = cfg.colorSaturation ?? 1;
     const hue = cfg.hue ?? 0;
+    const shadows = cfg.shadows ?? 0;
+    const highlights = cfg.highlights ?? 0;
 
-    const outPad = `cg_${filterIdx}`;
+    const filters: string[] = [];
+    let pad = inputPad;
+    let nodeIdx = 0;
 
+    // ── Step 1: eq (contrast, brightness, saturation) ──────────────────────────
     const eqParts: string[] = [];
     if (contrast !== 1) eqParts.push(`contrast=${contrast.toFixed(4)}`);
     if (brightness !== 1) eqParts.push(`brightness=${(brightness - 1).toFixed(4)}`);
     if (colorSaturation !== 1) eqParts.push(`saturation=${colorSaturation.toFixed(4)}`);
 
-    const filters: string[] = [];
+    if (eqParts.length > 0) {
+      const outPad = `cg${nodeIdx}_${filterIdx}`;
+      filters.push(`[${pad}]eq=${eqParts.join(':')}[${outPad}]`);
+      pad = outPad;
+      nodeIdx++;
+    }
 
-    if (eqParts.length > 0 && hue !== 0) {
-      const eqPad = `cgeq_${filterIdx}`;
-      filters.push(`[${inputPad}]eq=${eqParts.join(':')}[${eqPad}]`);
-      filters.push(`[${eqPad}]hue=h=${hue.toFixed(2)}[${outPad}]`);
-    } else if (eqParts.length > 0) {
-      filters.push(`[${inputPad}]eq=${eqParts.join(':')}[${outPad}]`);
-    } else if (hue !== 0) {
-      filters.push(`[${inputPad}]hue=h=${hue.toFixed(2)}[${outPad}]`);
-    } else {
-      // All params at neutral — isActive() should have caught this, but be safe
+    // ── Step 2: hue rotation ──────────────────────────────────────────────────
+    if (hue !== 0) {
+      const outPad = `cg${nodeIdx}_${filterIdx}`;
+      filters.push(`[${pad}]hue=h=${hue.toFixed(2)}[${outPad}]`);
+      pad = outPad;
+      nodeIdx++;
+    }
+
+    // ── Step 3: shadows/highlights via geq ────────────────────────────────────
+    // Converts to RGB for per-channel access, applies the formula, converts back.
+    // Formula: v_out = clamp(v + shadows*(1-v)^2 + highlights*v^2, 0, 1)
+    if (shadows !== 0 || highlights !== 0) {
+      const rExpr = buildShadowsHighlightsExpr('r', shadows, highlights);
+      const gExpr = buildShadowsHighlightsExpr('g', shadows, highlights);
+      const bExpr = buildShadowsHighlightsExpr('b', shadows, highlights);
+      const outPad = `cg${nodeIdx}_${filterIdx}`;
+      filters.push(
+        `[${pad}]format=rgb24,` +
+        `geq=r='${rExpr}':g='${gExpr}':b='${bExpr}',` +
+        `format=yuv420p[${outPad}]`
+      );
+      pad = outPad;
+      nodeIdx++;
+    }
+
+    // All params at neutral — passthrough
+    if (filters.length === 0) {
       return { filters: [], outputPad: inputPad };
     }
 
-    return { filters, outputPad: outPad };
+    return { filters, outputPad: pad };
   },
 };
 

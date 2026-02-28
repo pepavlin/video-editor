@@ -150,25 +150,15 @@ export interface ClipFilterResult {
 }
 
 /**
- * @deprecated Use ClipFilterResult instead.
- * Kept for backwards compatibility with VideoClipFilter.ts.
+ * Result returned by an effect's export.buildFilter().
+ * Effects use this (not ClipFilterResult) because effects chain within a single
+ * clip element and do not manage the global filterIdx counter.
  */
 export interface EffectFilterResult {
   /** FFmpeg filter graph fragments for this effect */
   filters: string[];
   /** The name of the output pad after this effect's filters */
   outputPad: string;
-}
-
-/**
- * @deprecated Use ClipFilterResult instead.
- * Kept for backwards compatibility with VideoClipFilter.ts during migration.
- */
-export interface VideoClipFilterResult {
-  filters: string[];
-  outputPad: string;
-  nextFilterIdx: number;
-  nextPrevPad: string;
 }
 
 // ─── Unified Clip Element Definition ──────────────────────────────────────────
@@ -383,25 +373,3 @@ export interface EffectDefinition {
   readonly export: EffectExportApi;
 }
 
-// ─── Legacy: Element Preview Renderer (for non-video clips) ──────────────────
-
-/**
- * @deprecated Use ClipElementDefinition instead.
- * Kept for backwards compatibility during migration.
- */
-export interface ElementPreviewRenderer {
-  canRender(clip: Clip, track: Track): boolean;
-  render(
-    ctx: CanvasRenderingContext2D,
-    clip: Clip,
-    track: Track,
-    transform: Transform,
-    context: PreviewRenderContext
-  ): void;
-  getBounds(
-    clip: Clip,
-    track: Track,
-    transform: Transform,
-    context: { W: number; H: number; ctx: CanvasRenderingContext2D }
-  ): Bounds | null;
-}
