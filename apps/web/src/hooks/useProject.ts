@@ -15,6 +15,15 @@ const TRACK_BASE_NAMES: Record<Track['type'], string> = {
 };
 
 /**
+ * Pure helper: remove tracks that have no clips, preserving master tracks.
+ * Master tracks (isMaster === true) are kept even when empty so that the
+ * primary audio/video channel is always available as a drop target.
+ */
+export function removeEmptyTracks(tracks: Track[]): Track[] {
+  return tracks.filter((t) => t.clips.length > 0 || t.isMaster);
+}
+
+/**
  * Pure helper: build a new Track object for `newTrackType`, numbered
  * consistently with existing tracks of the same type.
  * The first track of a type gets name "Video", subsequent ones "Video 2", "Video 3", etc.
@@ -462,10 +471,12 @@ export function useProject() {
     (clipId: string) => {
       updateProject((p) => ({
         ...p,
-        tracks: p.tracks.map((t) => ({
-          ...t,
-          clips: t.clips.filter((c) => c.id !== clipId),
-        })),
+        tracks: removeEmptyTracks(
+          p.tracks.map((t) => ({
+            ...t,
+            clips: t.clips.filter((c) => c.id !== clipId),
+          }))
+        ),
       }));
     },
     [updateProject]
@@ -544,8 +555,10 @@ export function useProject() {
         if (!movedClip) return p;
         return {
           ...p,
-          tracks: tracksWithoutClip.map((t) =>
-            t.id === toTrackId ? { ...t, clips: [...t.clips, movedClip!] } : t
+          tracks: removeEmptyTracks(
+            tracksWithoutClip.map((t) =>
+              t.id === toTrackId ? { ...t, clips: [...t.clips, movedClip!] } : t
+            )
           ),
         };
       });
@@ -568,7 +581,7 @@ export function useProject() {
         });
         if (!movedClip) return p;
         const newTrack = buildNewTrack(newTrackType, p.tracks, movedClip);
-        return { ...p, tracks: [...tracksWithoutClip, newTrack] };
+        return { ...p, tracks: removeEmptyTracks([...tracksWithoutClip, newTrack]) };
       });
     },
     [updateProject]
@@ -592,7 +605,7 @@ export function useProject() {
         const insertAt = Math.max(0, Math.min(insertAfterIdx + 1, tracksWithoutClip.length));
         const newTracks = [...tracksWithoutClip];
         newTracks.splice(insertAt, 0, newTrack);
-        return { ...p, tracks: newTracks };
+        return { ...p, tracks: removeEmptyTracks(newTracks) };
       });
     },
     [updateProject]
