@@ -416,7 +416,7 @@ describe('Cutout.export', () => {
     expect(cutout.export.isActive(clip, track, context)).toBe(false);
   });
 
-  it('buildFilter generates multiply+addition blend chain when mask is available', () => {
+  it('buildFilter generates split+negate+multiply+addition blend chain (removeBg)', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cutout');
@@ -432,9 +432,62 @@ describe('Cutout.export', () => {
 
     const filterStr = result!.filters.join('; ');
     expect(filterStr).toContain('[2:v]'); // mask input
+    // Must have split to duplicate the mask — avoids double-consuming the same pad
+    expect(filterStr).toContain('split');
     expect(filterStr).toContain('negate'); // inverted mask for background
     expect(filterStr).toContain('blend=all_mode=multiply'); // multiply for subject
     expect(filterStr).toContain('blend=all_mode=addition'); // addition to composite
     expect(result!.outputPad).toBe('cut_out_4');
+
+    // Each pad must appear as output exactly once and as input at most once
+    // (verify no double-consumption of labeled pads)
+    const padOutputRegex = /\[([^\]]+)\](?=\s*$|\s*;)/g;
+    const padInputRegex = /(?:^|;[^[]*)\[([^\]]+)\](?=[a-z])/g;
+    // Simpler: count occurrences of the trimmed mask pad in filter string
+    const trimmedMaskPad = 'cut_maskt_4';
+    const occurrences = (filterStr.match(new RegExp(`\\[${trimmedMaskPad}\\]`, 'g')) ?? []).length;
+    // trimmedMaskPad should appear exactly twice: once as output of trim, once as input to split
+    expect(occurrences).toBe(2);
+  });
+
+  it('buildFilter generates split+negate+multiply+addition blend chain (removePerson)', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', { cutoutMode: 'removePerson', background: { type: 'solid', color: '#ffffff' } })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 3]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 7, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    expect(filterStr).toContain('[3:v]');
+    expect(filterStr).toContain('split');
+    expect(filterStr).toContain('negate');
+    expect(filterStr).toContain('blend=all_mode=multiply');
+    expect(filterStr).toContain('blend=all_mode=addition');
+    expect(result!.outputPad).toBe('cut_out_7');
+
+    // The trimmed mask pad must only be consumed once (by split)
+    const trimmedMaskPad = 'cut_maskt_7';
+    const occurrences = (filterStr.match(new RegExp(`\\[${trimmedMaskPad}\\]`, 'g')) ?? []).length;
+    expect(occurrences).toBe(2); // once as output, once as input to split
+  });
+
+  it('isActive returns true when mask is registered and effect is enabled', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout')];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+    expect(cutout.export.isActive(clip, track, context)).toBe(true);
   });
 });

@@ -242,7 +242,9 @@ const cutoutExport: EffectExportApi = {
     const clipDuration = clip.timelineEnd - clip.timelineStart;
 
     // Pad names
-    const maskTrimmed = `cut_mask_${filterIdx}`;
+    const maskTrimmed = `cut_maskt_${filterIdx}`;
+    const maskA = `cut_maska_${filterIdx}`;  // split output A → negate → maskInv
+    const maskB = `cut_maskb_${filterIdx}`;  // split output B → multiply blend
     const maskInv = `cut_minv_${filterIdx}`;
     const bgPad = `cut_bg_${filterIdx}`;
     const bgMasked = `cut_bgm_${filterIdx}`;
@@ -260,8 +262,12 @@ const cutoutExport: EffectExportApi = {
     const filters: string[] = [
       // Trim and scale the mask to match the clip's output dimensions
       `[${maskInputIdx}:v]${trimFilter}[${maskTrimmed}]`,
+      // Split the mask into two copies — FFmpeg requires split because a labeled pad
+      // can only be consumed by a single filter. We need the mask twice:
+      // once for negate (→ inverted mask for background) and once for blend (→ subject).
+      `[${maskTrimmed}]split[${maskA}][${maskB}]`,
       // Create inverted mask (for the background region)
-      `[${maskTrimmed}]negate[${maskInv}]`,
+      `[${maskA}]negate[${maskInv}]`,
       // Create background fill at clip dimensions
       `color=c=${bgColor}:s=${scaledW}x${scaledH}:r=30:d=${clipDuration.toFixed(4)}[${bgPad}]`,
     ];
@@ -270,14 +276,14 @@ const cutoutExport: EffectExportApi = {
       // Keep person (subject), replace background
       // subject = clip × mask / 255  (pixels where mask is white)
       // bg_area = bg × inv_mask / 255  (pixels where mask is black)
-      filters.push(`[${inputPad}][${maskTrimmed}]blend=all_mode=multiply[${subjMasked}]`);
+      filters.push(`[${inputPad}][${maskB}]blend=all_mode=multiply[${subjMasked}]`);
       filters.push(`[${bgPad}][${maskInv}]blend=all_mode=multiply[${bgMasked}]`);
     } else {
       // removePerson: keep background, replace person
       // bg_area = clip × inv_mask / 255  (pixels where mask is black = bg region)
       // subject_area = bg × mask / 255  (pixels where mask is white = person region)
       filters.push(`[${inputPad}][${maskInv}]blend=all_mode=multiply[${subjMasked}]`);
-      filters.push(`[${bgPad}][${maskTrimmed}]blend=all_mode=multiply[${bgMasked}]`);
+      filters.push(`[${bgPad}][${maskB}]blend=all_mode=multiply[${bgMasked}]`);
     }
 
     // Composite: add the two masked regions together
