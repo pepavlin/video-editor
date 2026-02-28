@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Track, Clip } from '@video-editor/shared';
 import { isCompatibleTrackType, isAssetCompatibleWithTrack } from '../lib/utils';
-import { buildNewTrack } from '../hooks/useProject';
+import { buildNewTrack, removeEmptyTracks } from '../hooks/useProject';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -210,6 +210,66 @@ describe('buildNewTrack — naming', () => {
   it('new track is not muted', () => {
     const track = buildNewTrack('video', [], clip);
     expect(track.muted).toBe(false);
+  });
+});
+
+// ─── removeEmptyTracks ────────────────────────────────────────────────────────
+
+describe('removeEmptyTracks', () => {
+  const clip = makeClip();
+
+  it('keeps tracks that have clips', () => {
+    const tracks = [makeTrack('video', { id: 'v1', clips: [clip] })];
+    expect(removeEmptyTracks(tracks)).toHaveLength(1);
+  });
+
+  it('removes tracks that have no clips', () => {
+    const tracks = [
+      makeTrack('video', { id: 'v1', clips: [clip] }),
+      makeTrack('audio', { id: 'a1', clips: [] }),
+    ];
+    const result = removeEmptyTracks(tracks);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('v1');
+  });
+
+  it('removes all empty tracks when all are empty', () => {
+    const tracks = [
+      makeTrack('video', { id: 'v1', clips: [] }),
+      makeTrack('audio', { id: 'a1', clips: [] }),
+    ];
+    expect(removeEmptyTracks(tracks)).toHaveLength(0);
+  });
+
+  it('preserves master tracks even when they have no clips', () => {
+    const tracks = [
+      makeTrack('audio', { id: 'master', clips: [], isMaster: true }),
+      makeTrack('video', { id: 'v1', clips: [] }),
+    ];
+    const result = removeEmptyTracks(tracks);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('master');
+  });
+
+  it('preserves relative order of remaining tracks', () => {
+    const tracks = [
+      makeTrack('video', { id: 'v1', clips: [clip] }),
+      makeTrack('audio', { id: 'a1', clips: [] }),      // empty → removed
+      makeTrack('video', { id: 'v2', clips: [clip] }),
+    ];
+    const result = removeEmptyTracks(tracks);
+    expect(result.map((t) => t.id)).toEqual(['v1', 'v2']);
+  });
+
+  it('returns an empty array when given an empty array', () => {
+    expect(removeEmptyTracks([])).toEqual([]);
+  });
+
+  it('does not mutate the input array', () => {
+    const tracks = [makeTrack('video', { id: 'v1', clips: [] })];
+    const original = [...tracks];
+    removeEmptyTracks(tracks);
+    expect(tracks).toEqual(original);
   });
 });
 
