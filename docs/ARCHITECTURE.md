@@ -37,15 +37,9 @@ packages/shared/             ← Data types, utility functions
 
 apps/web/src/elements/       ← Preview pipeline orchestration (thin layer only)
   PreviewPipeline.ts         ← Uses CLIP_REGISTRY, iterates tracks/clips
-  VideoClipRenderer.ts       ← Re-export shim (logic moved to packages/elements)
-  TextClipRenderer.ts        ← Re-export shim
-  RectangleClipRenderer.ts   ← Re-export shim
-  LyricsClipRenderer.ts      ← Re-export shim
 
 apps/api/src/elements/       ← Export pipeline orchestration (thin layer only)
   ExportPipeline.ts          ← Uses CLIP_REGISTRY, collects FFmpeg inputs
-  VideoClipFilter.ts         ← Re-export shim (logic moved to packages/elements)
-  LyricsFilter.ts            ← Re-export shim
 ```
 
 ---
@@ -283,7 +277,10 @@ PreviewPipeline.renderFrame()
 
 | Feature | Preview | Export |
 |---------|---------|--------|
-| ColorGrade shadows/highlights | ✅ Per-pixel Canvas operation | ❌ Not supported by FFmpeg `eq` filter |
-| Rectangle border radius | ✅ Canvas arcTo | ❌ FFmpeg drawbox has no border-radius |
+| ColorGrade shadows/highlights | ✅ Per-pixel Canvas (quadratic curve) | ✅ FFmpeg geq with identical formula (format=rgb24 conversion) |
+| Rectangle border radius | ✅ Canvas arcTo | ❌ FFmpeg drawbox has no border-radius (sharp corners) |
 | Font rendering | Browser system fonts | Server system fonts (must be installed) |
 | Cartoon edges | Sobel kernel (Canvas) | Canny via `edgedetect` filter (visually similar) |
+
+> **ColorGrade note**: Shadows/highlights use `format=rgb24 → geq → format=yuv420p` in export.
+> The geq expression matches the preview formula exactly: `v_out = clamp(v + s*(1-v)^2 + h*v^2, 0, 1)`

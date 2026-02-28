@@ -164,26 +164,28 @@ const rectangleClipExport: ClipExportApi = {
     const duration = clip.timelineEnd - clip.timelineStart;
     const enableExpr = `between(t,${delay.toFixed(4)},${(delay + duration).toFixed(4)})`;
 
+    // Determine which optional steps are needed upfront so pad names can be set correctly
+    const hasBorder = !!(style.borderColor && style.borderWidth && style.borderWidth > 0);
+    const hasRotation = transform.rotation !== 0 && Math.abs(transform.rotation) > 0.01;
+
     const allFilters: string[] = [];
     let currentPad = prevPad;
-    let localIdx = filterIdx;
 
     // ── Fill rectangle ────────────────────────────────────────────────────────
     // Note: FFmpeg drawbox does NOT support border-radius (rounded corners).
     // Rounded corners are visible in preview but will appear as sharp corners in export.
     // For rounded corner support in export, a PNG overlay approach would be needed.
-    const fillPad = `rect${localIdx}`;
+    const fillPad = hasBorder || hasRotation ? `rect_f${filterIdx}` : `recto${filterIdx}`;
     allFilters.push(
       `[${currentPad}]drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${fillColor}@${fillOpacity.toFixed(3)}:t=fill:enable='${enableExpr}'[${fillPad}]`
     );
     currentPad = fillPad;
-    localIdx++;
 
     // ── Optional border ───────────────────────────────────────────────────────
-    if (style.borderColor && style.borderWidth && style.borderWidth > 0) {
-      const borderWidth = Math.max(1, Math.round(style.borderWidth * scale));
-      const borderColor = hexToFFmpegColor(style.borderColor);
-      const borderPad = `rectb${filterIdx}`;
+    if (hasBorder) {
+      const borderWidth = Math.max(1, Math.round(style.borderWidth! * scale));
+      const borderColor = hexToFFmpegColor(style.borderColor!);
+      const borderPad = hasRotation ? `rect_b${filterIdx}` : `recto${filterIdx}`;
       allFilters.push(
         `[${currentPad}]drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${borderColor}@${transform.opacity.toFixed(3)}:t=${borderWidth}:enable='${enableExpr}'[${borderPad}]`
       );
@@ -191,25 +193,16 @@ const rectangleClipExport: ClipExportApi = {
     }
 
     // ── Optional rotation ─────────────────────────────────────────────────────
-    if (transform.rotation !== 0 && Math.abs(transform.rotation) > 0.01) {
+    if (hasRotation) {
       const rad = (transform.rotation * Math.PI) / 180;
-      const rotPad = `rectr${filterIdx}`;
       allFilters.push(
-        `[${currentPad}]rotate=${rad.toFixed(6)}:fillcolor=none:enable='${enableExpr}'[${rotPad}]`
+        `[${currentPad}]rotate=${rad.toFixed(6)}:fillcolor=none:enable='${enableExpr}'[recto${filterIdx}]`
       );
-      currentPad = rotPad;
-    }
-
-    // Rename last pad to our canonical output pad
-    const outPad = `recto${filterIdx}`;
-    if (currentPad !== outPad) {
-      // Rename via null filter (copy)
-      allFilters.push(`[${currentPad}]null[${outPad}]`);
     }
 
     return {
       filters: allFilters,
-      outputPad: outPad,
+      outputPad: `recto${filterIdx}`,
       nextFilterIdx: filterIdx + 1,
     };
   },
