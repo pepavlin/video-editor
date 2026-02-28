@@ -71,6 +71,8 @@ const ROTATE_CURSOR = `url("data:image/svg+xml,${_ROTATE_CURSOR_SVG}") 12 12, gr
 const HANDLE_RADIUS = 7;
 const ROTATE_HANDLE_OFFSET = 28;
 const PREVIEW_SNAP_THRESHOLD = 12; // canvas pixels — snap to edges/center within this distance
+const CLICK_CYCLE_THRESHOLD = 5; // canvas pixels — max distance to same spot to trigger cycling
+const HIT_ALPHA_THRESHOLD = 10; // out of 255 — minimum pixel alpha to count as a hit
 const DEFAULT_TRANSFORM: Transform = { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
 const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: 'Arial',
@@ -537,6 +539,109 @@ function isInRect(mx: number, my: number, b: Bounds): boolean {
   return mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
 }
 
+/**
+ * Rotation-aware hit test: transforms the mouse point into clip-local space
+ * before doing the AABB check. This correctly handles rotated elements.
+ */
+function isInRotatedRect(mx: number, my: number, bounds: Bounds, rotation: number): boolean {
+  if (rotation === 0) return isInRect(mx, my, bounds);
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+  const rad = -(rotation * Math.PI) / 180;
+  const dx = mx - cx;
+  const dy = my - cy;
+  // Rotate mouse point into clip-local space (inverse rotation)
+  const ldx = dx * Math.cos(rad) - dy * Math.sin(rad);
+  const ldy = dx * Math.sin(rad) + dy * Math.cos(rad);
+  return Math.abs(ldx) <= bounds.w / 2 && Math.abs(ldy) <= bounds.h / 2;
+}
+
+// ─── Pixel hit-test canvas (for text clips with irregular alpha) ──────────────
+
+let _pixelHitCanvas: HTMLCanvasElement | null = null;
+let _pixelHitCtx: CanvasRenderingContext2D | null = null;
+
+function getPixelHitCtx(W: number, H: number): CanvasRenderingContext2D | null {
+  if (!_pixelHitCanvas || _pixelHitCanvas.width !== W || _pixelHitCanvas.height !== H) {
+    _pixelHitCanvas = document.createElement('canvas');
+    _pixelHitCanvas.width = W;
+    _pixelHitCanvas.height = H;
+    _pixelHitCtx = _pixelHitCanvas.getContext('2d', { willReadFrequently: true }) ?? null;
+  }
+  return _pixelHitCtx;
+}
+
+/**
+ * Tests whether canvas point (mx, my) lands on an opaque pixel of a cutout clip.
+ * Renders the masked video to the shared cutout canvases and samples the alpha.
+ * Returns true if the pixel is opaque enough to count as a hit.
+ * Falls back to true (AABB hit) on CORS errors or missing data.
+ */
+function testCutoutPixelHit(
+  videoEl: HTMLVideoElement,
+  maskEl: HTMLVideoElement,
+  bounds: Bounds,
+  mx: number,
+  my: number,
+  mode: 'removeBg' | 'removePerson',
+  rotation: number
+): boolean {
+  if (!isInRotatedRect(mx, my, bounds, rotation)) return false;
+
+  const { x, y, w, h } = bounds;
+  const iw = Math.max(2, Math.round(w));
+  const ih = Math.max(2, Math.round(h));
+
+  const { videoCanvas, maskCanvas } = getCutoutCanvases(iw, ih);
+  const videoCtx = videoCanvas.getContext('2d', { willReadFrequently: true });
+  const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+  if (!videoCtx || !maskCtx) return true;
+
+  try {
+    videoCtx.clearRect(0, 0, iw, ih);
+    videoCtx.drawImage(videoEl, 0, 0, iw, ih);
+
+    maskCtx.clearRect(0, 0, iw, ih);
+    maskCtx.drawImage(maskEl, 0, 0, iw, ih);
+    const maskData = maskCtx.getImageData(0, 0, iw, ih);
+    const invert = mode === 'removePerson';
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      const lum = maskData.data[i] * 0.299 + maskData.data[i + 1] * 0.587 + maskData.data[i + 2] * 0.114;
+      maskData.data[i + 3] = invert ? Math.round(255 - lum) : Math.round(lum);
+      maskData.data[i] = maskData.data[i + 1] = maskData.data[i + 2] = 255;
+    }
+    maskCtx.putImageData(maskData, 0, 0);
+
+    videoCtx.globalCompositeOperation = 'destination-in';
+    videoCtx.drawImage(maskCanvas, 0, 0);
+    videoCtx.globalCompositeOperation = 'source-over';
+
+    // Map canvas click point to videoCanvas-local coordinates, accounting for rotation
+    let lx: number, ly: number;
+    if (rotation !== 0) {
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const rad = -(rotation * Math.PI) / 180;
+      const dx = mx - cx;
+      const dy = my - cy;
+      const ldx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const ldy = dx * Math.sin(rad) + dy * Math.cos(rad);
+      lx = Math.round((ldx + w / 2) / w * iw);
+      ly = Math.round((ldy + h / 2) / h * ih);
+    } else {
+      lx = Math.round((mx - x) / w * iw);
+      ly = Math.round((my - y) / h * ih);
+    }
+
+    if (lx < 0 || ly < 0 || lx >= iw || ly >= ih) return false;
+    const pixel = videoCtx.getImageData(lx, ly, 1, 1).data;
+    return pixel[3] > 10;
+  } catch {
+    // CORS or security error — fall back to bounding-box hit
+    return true;
+  }
+}
+
 function getHandlePositions(bounds: Bounds): Record<Handle, [number, number]> {
   const { x, y, w, h } = bounds;
   const cx = x + w / 2;
@@ -786,6 +891,10 @@ export default function Preview({
 
   // Drag state
   const dragRef = useRef<DragState>({ type: 'none' });
+
+  // Layer cycling: tracks the last click position and which clips were hit, so that
+  // subsequent clicks at the same spot cycle through overlapping layers.
+  const clickCycleRef = useRef<{ x: number; y: number; hits: string[]; index: number } | null>(null);
 
   // Active snap guide lines drawn during move drag { x: canvas-x[], y: canvas-y[] }
   const snapLinesRef = useRef<{ x: number[]; y: number[] }>({ x: [], y: [] });
@@ -1483,10 +1592,10 @@ export default function Preview({
         }
       }
 
-      // ── Step 2: Hit-test all clips at current time (topmost first) ─────────
-      // Build list of all visible clips. Tracks are now rendered in reverse order
-      // (index 0 = top of timeline = rendered last = visually on top), so we
-      // collect in reverse order and test forward (first = topmost on screen).
+      // ── Step 2: Build pixel-accurate hit list (all layers, topmost first) ────
+      // Tracks are rendered in reverse order: index 0 = top of timeline = rendered
+      // last = visually on top. We collect in that same order so hitClipIds[0] is
+      // the topmost visible element at the click point.
       const clipsAtTime: Clip[] = [];
       for (const track of [...project.tracks].reverse()) {
         if (track.type === 'audio' || track.muted) continue;
@@ -1497,31 +1606,119 @@ export default function Preview({
         }
       }
 
-      // Test forward (topmost rendered = first in list, since we reversed above)
-      for (let i = 0; i < clipsAtTime.length; i++) {
-        const clip = clipsAtTime[i];
-        const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
+      const hitClipIds: string[] = [];
+
+      for (const clip of clipsAtTime) {
+        const live = liveTransformRef.current;
+        const transform = (live?.clipId === clip.id)
+          ? live.transform
+          : (clip.transform ?? { ...DEFAULT_TRANSFORM });
+
+        // Skip nearly invisible clips
+        if ((transform.opacity ?? 1) < 0.05) continue;
+
         const bounds = getClipBounds(clip, transform, W, H, ctx);
-        if (bounds && isInRect(mx, my, bounds)) {
-          onClipSelect(clip.id);
-          // Start move drag for the hit clip
+        if (!bounds) continue;
+
+        const rotation = transform.rotation ?? 0;
+
+        // Fast rotation-aware AABB reject before expensive pixel tests
+        if (!isInRotatedRect(mx, my, bounds, rotation)) continue;
+
+        const track = project.tracks.find((t) => t.clips.some((c) => c.id === clip.id));
+
+        if (clip.textContent) {
+          // Text clips have irregular alpha — render to offscreen canvas and sample
+          const hitCtx = getPixelHitCtx(W, H);
+          if (hitCtx) {
+            hitCtx.clearRect(0, 0, W, H);
+            drawTextClip(hitCtx, clip, transform, W, H);
+            try {
+              const px = Math.max(0, Math.min(W - 1, Math.round(mx)));
+              const py = Math.max(0, Math.min(H - 1, Math.round(my)));
+              const data = hitCtx.getImageData(px, py, 1, 1).data;
+              if (data[3] < HIT_ALPHA_THRESHOLD) continue;
+            } catch {
+              // CORS or security error — fall back to rotated-AABB hit (already passed)
+            }
+          }
+        } else if (track?.type === 'video') {
+          // Video clip — check for cutout effect which creates transparent regions
+          const cutoutEffectTrack = project.tracks.find(
+            (t) => t.type === 'effect' && t.effectType === 'cutout' && t.parentTrackId === track.id
+          );
+          const cutoutClip = cutoutEffectTrack?.clips.find(
+            (ec) => currentTime >= ec.timelineStart && currentTime <= ec.timelineEnd
+          );
+
+          if (cutoutClip?.effectConfig?.enabled) {
+            const asset = assetMap.current.get(clip.assetId);
+            const videoEl = asset?.proxyPath ? videoElementCache.get(asset.id) : undefined;
+            // The mask video is keyed by asset.id (same as main video) and stored in maskVideoCache
+            const maskEl = (asset && asset.maskPath)
+              ? maskVideoCache.get(`mask-${asset.id}`)
+              : undefined;
+
+            if (videoEl && maskEl) {
+              const mode = cutoutClip.effectConfig?.cutoutMode ?? 'removeBg';
+              if (!testCutoutPixelHit(videoEl, maskEl, bounds, mx, my, mode, rotation)) continue;
+            }
+          }
+          // Regular video clip: rotated-AABB hit already passed above — it counts
+        }
+        // Rectangle clips: rotated-AABB is sufficient (solid fill)
+
+        hitClipIds.push(clip.id);
+      }
+
+      // ── Step 3: Apply layer cycling or fresh selection ─────────────────────
+      if (hitClipIds.length === 0) {
+        // Clicked empty space: deselect and reset cycle
+        clickCycleRef.current = null;
+        onClipSelect(null);
+        return;
+      }
+
+      const cycle = clickCycleRef.current;
+      const isSameSpot =
+        cycle !== null &&
+        Math.abs(mx - cycle.x) <= CLICK_CYCLE_THRESHOLD &&
+        Math.abs(my - cycle.y) <= CLICK_CYCLE_THRESHOLD;
+
+      let selectedIndex = 0;
+      if (isSameSpot && cycle && hitClipIds.length > 1) {
+        // Cycle to the next layer at this position
+        selectedIndex = (cycle.index + 1) % hitClipIds.length;
+      }
+
+      const selectedId = hitClipIds[selectedIndex];
+      clickCycleRef.current = { x: mx, y: my, hits: hitClipIds, index: selectedIndex };
+
+      onClipSelect(selectedId);
+
+      // Start move drag for the selected clip
+      const selectedClip = project.tracks.flatMap((t) => t.clips).find((c) => c.id === selectedId);
+      if (selectedClip) {
+        const live = liveTransformRef.current;
+        const transform = (live?.clipId === selectedId)
+          ? live.transform
+          : (selectedClip.transform ?? { ...DEFAULT_TRANSFORM });
+        const bounds = getClipBounds(selectedClip, transform, W, H, ctx);
+        if (bounds) {
           dragRef.current = {
             type: 'move',
-            clipId: clip.id,
+            clipId: selectedId,
             startMouseX: mx, startMouseY: my,
             startTX: transform.x, startTY: transform.y,
             boundsW: bounds.w, boundsH: bounds.h,
             offsetX: bounds.x - transform.x,
             offsetY: bounds.y - transform.y,
           };
-          liveTransformRef.current = { clipId: clip.id, transform: { ...transform } };
-          e.preventDefault();
-          return;
+          liveTransformRef.current = { clipId: selectedId, transform: { ...transform } };
         }
       }
 
-      // Clicked empty space: deselect
-      onClipSelect(null);
+      e.preventDefault();
     },
     [getClipBounds, onClipSelect]
   );
@@ -1547,7 +1744,7 @@ export default function Preview({
           if (currentTime < clip.timelineStart || currentTime >= clip.timelineEnd) continue;
           const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
           const bounds = getTextBounds(clip, transform, ctx, W, H);
-          if (isInRect(mx, my, bounds)) {
+          if (isInRotatedRect(mx, my, bounds, transform.rotation ?? 0)) {
             onClipSelect(clip.id);
             const style = clip.textStyle ?? DEFAULT_TEXT_STYLE;
             const fontSize = Math.round((style.fontSize / 1920) * H * transform.scale);
@@ -1608,7 +1805,7 @@ export default function Preview({
                 return;
               }
             }
-            if (isInRect(mx, my, bounds)) {
+            if (isInRotatedRect(mx, my, bounds, transform.rotation ?? 0)) {
               canvas.style.cursor = 'move';
               return;
             }
@@ -1616,15 +1813,16 @@ export default function Preview({
         }
       }
 
-      // Check clip bodies
+      // Check clip bodies (use rotation-aware hit test for accurate cursor feedback)
       let foundClip = false;
-      for (const track of project.tracks) {
+      for (const track of [...project.tracks].reverse()) {
         if (track.type === 'audio' || track.muted) continue;
         for (const clip of track.clips) {
           if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
             const transform = clip.transform ?? { ...DEFAULT_TRANSFORM };
+            if ((transform.opacity ?? 1) < 0.05) continue;
             const bounds = getClipBounds(clip, transform, W, H, ctx);
-            if (bounds && isInRect(mx, my, bounds)) {
+            if (bounds && isInRotatedRect(mx, my, bounds, transform.rotation ?? 0)) {
               foundClip = true;
               break;
             }
