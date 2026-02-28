@@ -1281,28 +1281,54 @@ export default function Preview({
   }, [currentTime, isPlaying, drawFrame, project, selectedClipId]);
 
   // ── Canvas resize ─────────────────────────────────────────────────────────
+  //
+  // The canvas internal resolution is kept STABLE (derived from outputResolution,
+  // capped at 1280 px) so that transform.x / transform.y coordinates remain
+  // visually consistent no matter how the preview panel is resized.
+  //
+  // Only the CSS display size (canvas.style.width / height) changes with the
+  // container — the canvas content itself is not redrawn on every panel resize.
 
   useEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
 
+    const outW = project?.outputResolution.w ?? 1920;
+    const outH = project?.outputResolution.h ?? 1080;
+
+    // Reference resolution: output resolution scaled down to max 1280 px on the
+    // longest axis. This stays constant for a given project output resolution.
+    const MAX_PREVIEW_DIM = 1280;
+    const scaleFactor = Math.min(1, MAX_PREVIEW_DIM / Math.max(outW, outH));
+    const refW = Math.round(outW * scaleFactor);
+    const refH = Math.round(outH * scaleFactor);
+
+    // Apply internal resolution only when it actually changes (project swap, etc.)
+    if (canvas.width !== refW || canvas.height !== refH) {
+      canvas.width = refW;
+      canvas.height = refH;
+      drawFrame();
+    }
+
+    const aspect = outW / outH;
+
     const ro = new ResizeObserver(() => {
       const { clientWidth, clientHeight } = container;
       // Skip when container is hidden (display:none / visibility:hidden collapses to 0)
       if (clientWidth === 0 || clientHeight === 0) return;
-      const aspect = project
-        ? project.outputResolution.w / project.outputResolution.h
-        : 9 / 16;
-      let w = clientWidth;
-      let h = w / aspect;
-      if (h > clientHeight) {
-        h = clientHeight;
-        w = h * aspect;
+
+      // Calculate CSS size that fits the container while preserving aspect ratio
+      let cssW = clientWidth;
+      let cssH = cssW / aspect;
+      if (cssH > clientHeight) {
+        cssH = clientHeight;
+        cssW = cssH * aspect;
       }
-      canvas.width = Math.round(w);
-      canvas.height = Math.round(h);
-      drawFrame();
+
+      // Update only the CSS display size — internal canvas resolution stays fixed
+      canvas.style.width = `${Math.round(cssW)}px`;
+      canvas.style.height = `${Math.round(cssH)}px`;
     });
     ro.observe(container);
     return () => ro.disconnect();
