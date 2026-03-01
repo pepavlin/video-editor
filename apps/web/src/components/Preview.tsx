@@ -857,6 +857,9 @@ export default function Preview({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const selectionSvgRef = useRef<SVGSVGElement>(null);
+  // Tracks canvas CSS display dimensions so we can convert internal canvas
+  // coordinates → CSS pixels for DOM overlays (e.g. inline textarea editor).
+  const canvasCssDimsRef = useRef({ w: 0, h: 0 });
 
   // ── Viewport zoom / pan ───────────────────────────────────────────────────
   const [viewZoom, setViewZoom] = useState(1);
@@ -1311,6 +1314,14 @@ export default function Preview({
       drawFrame();
     }
 
+    // Keep the SVG selection overlay's coordinate space in sync with the canvas
+    // internal resolution. Without a viewBox the SVG user units would map 1:1 to
+    // CSS pixels (matching canvas.style.width/height), causing handles to appear
+    // at wrong positions when the CSS display size differs from the internal size.
+    if (selectionSvgRef.current) {
+      selectionSvgRef.current.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
+    }
+
     const aspect = outW / outH;
 
     const ro = new ResizeObserver(() => {
@@ -1326,9 +1337,14 @@ export default function Preview({
         cssW = cssH * aspect;
       }
 
+      const roundedW = Math.round(cssW);
+      const roundedH = Math.round(cssH);
       // Update only the CSS display size — internal canvas resolution stays fixed
-      canvas.style.width = `${Math.round(cssW)}px`;
-      canvas.style.height = `${Math.round(cssH)}px`;
+      canvas.style.width = `${roundedW}px`;
+      canvas.style.height = `${roundedH}px`;
+      // Track CSS dims so DOM overlays (textarea, etc.) can convert internal
+      // canvas coordinates to CSS pixels using the ratio cssW / canvas.width.
+      canvasCssDimsRef.current = { w: roundedW, h: roundedH };
     });
     ro.observe(container);
     return () => ro.disconnect();
@@ -1926,7 +1942,18 @@ export default function Preview({
           const clip = project.tracks.flatMap((t) => t.clips).find((c) => c.id === editingState.clipId);
           if (!clip) return null;
           const { canvasCX, canvasCY, fontSize, style } = editingState;
-          const textWidth = Math.max(200, fontSize * 12);
+          // Convert internal canvas coordinates → CSS pixels so the textarea
+          // appears at the correct position regardless of preview section size.
+          // canvasCX/canvasCY are in canvas internal space (0..canvas.width/height);
+          // CSS positions are relative to the zoom wrapper sized to canvas CSS dims.
+          const canvas = canvasRef.current;
+          const cssDims = canvasCssDimsRef.current;
+          const internalW = canvas?.width ?? cssDims.w;
+          const cssRatio = internalW > 0 && cssDims.w > 0 ? cssDims.w / internalW : 1;
+          const cssFontSize = Math.round(fontSize * cssRatio);
+          const textWidth = Math.max(200, cssFontSize * 12);
+          const cssLeft = canvasCX * cssRatio - textWidth / 2;
+          const cssTop = canvasCY * cssRatio - cssFontSize * 1.5;
           return (
             <textarea
               key={editingState.clipId}
@@ -1946,15 +1973,15 @@ export default function Preview({
               }}
               style={{
                 position: 'absolute',
-                left: canvasCX - textWidth / 2,
-                top: canvasCY - fontSize * 1.5,
+                left: cssLeft,
+                top: cssTop,
                 width: textWidth,
-                minHeight: fontSize * 3,
+                minHeight: cssFontSize * 3,
                 background: 'rgba(0,0,0,0.55)',
                 border: '2px solid rgba(255,255,255,0.85)',
                 borderRadius: 4,
                 color: style.color,
-                fontSize: fontSize,
+                fontSize: cssFontSize,
                 fontFamily: style.fontFamily,
                 fontWeight: style.bold ? 'bold' : 'normal',
                 fontStyle: style.italic ? 'italic' : 'normal',

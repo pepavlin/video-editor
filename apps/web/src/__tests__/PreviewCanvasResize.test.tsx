@@ -190,3 +190,71 @@ describe('Preview canvas internal resolution stability', () => {
     expect(canvas.height).toBe(720);
   });
 });
+
+// ── SVG viewBox sync tests ─────────────────────────────────────────────────────
+//
+// The SVG selection overlay must carry a viewBox that maps its user coordinate
+// space to the canvas INTERNAL resolution (canvas.width × canvas.height).
+// Without it the SVG user units equal CSS pixels, causing selection handles to
+// appear at wrong positions whenever the CSS display size differs from the
+// internal canvas size (i.e. always, since the preview panel can be resized).
+
+describe('Preview SVG selection overlay viewBox', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedROCallback = null;
+    capturedContainer = null;
+  });
+
+  it('sets SVG viewBox to match canvas internal resolution on mount', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const svg = container.querySelector('svg')!;
+
+    // Canvas internal dims are 1280×720 for a 1920×1080 project
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1280 720');
+  });
+
+  it('sets SVG viewBox for a vertical (9:16) project', () => {
+    const project = makeProject(1080, 1920);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const svg = container.querySelector('svg')!;
+
+    // Canvas internal dims are 720×1280 for a 1080×1920 project
+    expect(svg.getAttribute('viewBox')).toBe('0 0 720 1280');
+  });
+
+  it('SVG viewBox stays correct after container resize', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+    const svg = container.querySelector('svg')!;
+
+    const internalW = canvas.width;
+    const internalH = canvas.height;
+
+    // Simulate multiple panel resizes — CSS dims change, internal must not
+    simulateContainerResize(600, 400);
+    simulateContainerResize(300, 200);
+    simulateContainerResize(1920, 1080);
+
+    expect(canvas.width).toBe(internalW);
+    expect(canvas.height).toBe(internalH);
+    expect(svg.getAttribute('viewBox')).toBe(`0 0 ${internalW} ${internalH}`);
+  });
+
+  it('updates SVG viewBox when project output resolution changes', () => {
+    const project1080p = makeProject(1920, 1080);
+    const project720p  = makeProject(1280, 720);
+
+    const { container, rerender } = render(<Preview {...defaultProps} project={project1080p} />);
+    const svg = container.querySelector('svg')!;
+
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1280 720');
+
+    rerender(<Preview {...defaultProps} project={project720p} />);
+
+    // 1280×720 is ≤ 1280 on longest axis → canvas stays 1280×720
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1280 720');
+  });
+});
