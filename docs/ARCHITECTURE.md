@@ -273,6 +273,36 @@ PreviewPipeline.renderFrame()
 
 ---
 
+## Preview Canvas Display System
+
+The preview is rendered on a `<canvas>` element whose **internal resolution** is fixed at a scaled-down version of the project's `outputResolution` (capped at 1280 px on the longest axis). This ensures `transform.x / transform.y` coordinates are always in stable, panel-size-independent pixels.
+
+### Key invariant: CSS = internal resolution
+
+The canvas CSS dimensions (`canvas.style.width / height`) are **always equal to the canvas's internal pixel dimensions** — they are never derived from or changed by the panel / container size. This makes the preview completely stable:
+
+- Resizing the preview panel does **not** move or rescale video elements.
+- The user uses the zoom / pan controls (scroll wheel, + / − buttons) to navigate.
+- On project load the view is auto-fitted so the canvas fills the container.
+
+### Visual scaling via viewZoom
+
+All visual scaling is done by a CSS `transform: scale(viewZoom)` on the zoom-wrapper `<div>` that wraps the canvas. Because CSS transforms are applied after layout, the canvas's layout dimensions (= internal resolution) remain stable while the visual appearance changes.
+
+| Aspect | Mechanism |
+|--------|-----------|
+| Visual scaling | `transform: scale(viewZoom)` on zoom wrapper |
+| Canvas CSS size | Fixed = internal resolution (never changes on resize) |
+| Mouse → canvas coords | `canvas.getBoundingClientRect()` accounts for CSS transform scale |
+| SVG overlay coords | `viewBox="0 0 W H"` matches internal resolution; scales with CSS transform |
+| Inline textarea position | Positioned in zoom wrapper's coordinate space (same as internal pixels) |
+
+### Fit to window
+
+`resetView()` and the ⊡ button calculate `fitZoom = min(containerW/canvasW, containerH/canvasH)` and apply it as `viewZoom`. This fills the container at the correct aspect ratio without touching the canvas CSS dimensions.
+
+---
+
 ## Known Preview/Export Differences
 
 | Feature | Preview | Export |

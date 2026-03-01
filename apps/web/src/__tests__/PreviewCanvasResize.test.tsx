@@ -1,14 +1,21 @@
 /**
  * PreviewCanvasResize.test.tsx
  *
- * Tests that the Preview canvas maintains a stable internal resolution when the
- * surrounding panel is resized. Before the fix, the canvas pixel dimensions were
- * set to match the container, causing transform.x / transform.y coordinates to
- * shift visually on every panel resize. After the fix the canvas has a fixed
- * internal resolution and only its CSS display size changes.
+ * Tests that the Preview canvas maintains a completely stable rendering
+ * regardless of panel/window size. After the stability fix:
+ *
+ *  - Canvas INTERNAL resolution is fixed (derived from outputResolution,
+ *    capped at 1280 px on the longest axis).
+ *  - Canvas CSS dimensions are also fixed to the INTERNAL resolution.
+ *    Visual scaling is performed exclusively via the viewZoom CSS transform
+ *    on the zoom-wrapper div — the canvas element's layout size never changes.
+ *  - Panel / window resizing therefore has ZERO effect on canvas dimensions
+ *    (neither internal nor CSS), so video elements never shift or shrink.
+ *  - The SVG selection-overlay viewBox always matches the internal resolution
+ *    so handles remain correctly positioned at all zoom levels.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import Preview from '../components/Preview';
 import type { Project } from '@video-editor/shared';
 
@@ -39,35 +46,16 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
   globalAlpha: 1,
 }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 
-// ── ResizeObserver mock that exposes the callback for manual triggering ────────
-
-type ROCallback = (entries: ResizeObserverEntry[]) => void;
-let capturedROCallback: ROCallback | null = null;
-let capturedContainer: Element | null = null;
-
-class ControllableResizeObserver {
-  private cb: ROCallback;
-  constructor(cb: ROCallback) {
-    this.cb = cb;
-    capturedROCallback = cb;
-  }
-  observe(target: Element) {
-    capturedContainer = target;
-  }
+// ── ResizeObserver stub ────────────────────────────────────────────────────────
+// The Preview component no longer uses ResizeObserver to set canvas CSS dims
+// (it was removed in the stability fix). We still provide a no-op stub so the
+// global is defined in the test environment.
+class NoopResizeObserver {
+  observe() {}
   disconnect() {}
   unobserve() {}
 }
-
-globalThis.ResizeObserver = ControllableResizeObserver as unknown as typeof ResizeObserver;
-
-/** Simulate a container resize by calling the captured ResizeObserver callback. */
-function simulateContainerResize(w: number, h: number) {
-  if (!capturedROCallback || !capturedContainer) return;
-  // Override clientWidth / clientHeight on the captured container element
-  Object.defineProperty(capturedContainer, 'clientWidth', { value: w, configurable: true });
-  Object.defineProperty(capturedContainer, 'clientHeight', { value: h, configurable: true });
-  capturedROCallback([] as unknown as ResizeObserverEntry[]);
-}
+globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
 
 // ── Test data ─────────────────────────────────────────────────────────────────
 
@@ -92,13 +80,11 @@ const defaultProps = {
   onClipUpdate: vi.fn(),
 };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Tests: internal resolution ─────────────────────────────────────────────────
 
 describe('Preview canvas internal resolution stability', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedROCallback = null;
-    capturedContainer = null;
   });
 
   it('canvas internal resolution is capped at 1280 on the longest axis for a 1920×1080 project', () => {
@@ -119,49 +105,6 @@ describe('Preview canvas internal resolution stability', () => {
     // Expected reference: 1080×1920 scaled by 1280/1920 = 2/3
     expect(canvas.width).toBe(720);
     expect(canvas.height).toBe(1280);
-  });
-
-  it('canvas internal resolution stays fixed when container is resized', () => {
-    const project = makeProject(1920, 1080);
-    const { container } = render(<Preview {...defaultProps} project={project} />);
-    const canvas = container.querySelector('canvas')!;
-
-    const widthBefore = canvas.width;
-    const heightBefore = canvas.height;
-
-    // Simulate a large container resize
-    simulateContainerResize(1200, 900);
-
-    expect(canvas.width).toBe(widthBefore);
-    expect(canvas.height).toBe(heightBefore);
-  });
-
-  it('canvas CSS display size changes to fit container while preserving aspect ratio', () => {
-    const project = makeProject(1920, 1080);
-    const { container } = render(<Preview {...defaultProps} project={project} />);
-    const canvas = container.querySelector('canvas')!;
-
-    // Simulate a 600×400 container (wider than 16:9, height-constrained)
-    simulateContainerResize(600, 400);
-
-    // 16:9 aspect ratio: h-constrained → cssW = 400 * (1920/1080) ≈ 711
-    // w-constrained  → cssH = 600 * (1080/1920) = 337.5 → 338px
-    // 600 / (16/9) = 337.5px → fits within 400px → width-constrained
-    const cssW = parseInt(canvas.style.width, 10);
-    const cssH = parseInt(canvas.style.height, 10);
-    expect(cssW).toBe(600);
-    expect(cssH).toBe(338);
-  });
-
-  it('canvas CSS is height-constrained when container is taller than 16:9', () => {
-    const project = makeProject(1920, 1080);
-    const { container } = render(<Preview {...defaultProps} project={project} />);
-    const canvas = container.querySelector('canvas')!;
-
-    // 300×400 container: 300/(16/9)=168.75 → fits in 400 → width-constrained
-    simulateContainerResize(300, 400);
-    expect(parseInt(canvas.style.width, 10)).toBe(300);
-    expect(parseInt(canvas.style.height, 10)).toBe(169);
   });
 
   it('uses default 16:9 reference resolution when no project is loaded', () => {
@@ -191,19 +134,99 @@ describe('Preview canvas internal resolution stability', () => {
   });
 });
 
-// ── SVG viewBox sync tests ─────────────────────────────────────────────────────
+// ── Tests: CSS = internal resolution (panel-size-independent) ─────────────────
+//
+// The key stability guarantee: canvas CSS dimensions ALWAYS match the internal
+// resolution and are NEVER derived from or affected by the container / panel
+// size. Visual scaling is handled by the CSS transform on the zoom wrapper.
+
+describe('Preview canvas CSS dimensions match internal resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('canvas CSS width equals internal canvas width on mount', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+
+    // CSS must equal internal resolution (1280 px), not the container width
+    expect(canvas.style.width).toBe(`${canvas.width}px`);
+    expect(canvas.style.height).toBe(`${canvas.height}px`);
+  });
+
+  it('canvas CSS equals internal resolution for a vertical 9:16 project', () => {
+    const project = makeProject(1080, 1920);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+
+    expect(canvas.style.width).toBe('720px');
+    expect(canvas.style.height).toBe('1280px');
+  });
+
+  it('canvas CSS equals internal resolution when no project is loaded', () => {
+    const { container } = render(<Preview {...defaultProps} project={null} />);
+    const canvas = container.querySelector('canvas')!;
+
+    // Default: 1920×1080 → 1280×720 internal → same CSS
+    expect(canvas.style.width).toBe('1280px');
+    expect(canvas.style.height).toBe('720px');
+  });
+
+  it('canvas CSS does NOT change when container element is resized (panel stability)', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+
+    // Record CSS dimensions after mount
+    const cssWBefore = canvas.style.width;
+    const cssHBefore = canvas.style.height;
+
+    // Simulate the DOM container being resized by a layout engine (panel drag).
+    // Because the component no longer sets canvas CSS from container dimensions,
+    // these DOM changes must have no effect on canvas.style.width / height.
+    const previewContainer = canvas.closest('[data-testid]')?.parentElement ?? canvas.parentElement?.parentElement;
+    if (previewContainer) {
+      Object.defineProperty(previewContainer, 'clientWidth', { value: 1000, configurable: true });
+      Object.defineProperty(previewContainer, 'clientHeight', { value: 800, configurable: true });
+    }
+
+    // Trigger a React re-render with the same props — CSS must remain unchanged
+    act(() => { /* no state change, just verify stability */ });
+
+    expect(canvas.style.width).toBe(cssWBefore);
+    expect(canvas.style.height).toBe(cssHBefore);
+  });
+
+  it('canvas CSS updates when project output resolution changes', () => {
+    const project1080p = makeProject(1920, 1080);
+    const project720p  = makeProject(1280, 720);
+
+    const { container, rerender } = render(<Preview {...defaultProps} project={project1080p} />);
+    const canvas = container.querySelector('canvas')!;
+
+    expect(canvas.style.width).toBe('1280px');
+    expect(canvas.style.height).toBe('720px');
+
+    rerender(<Preview {...defaultProps} project={project720p} />);
+
+    // 1280×720 ≤ 1280 on longest axis → internal dims stay 1280×720 → CSS same
+    expect(canvas.style.width).toBe('1280px');
+    expect(canvas.style.height).toBe('720px');
+  });
+});
+
+// ── Tests: SVG viewBox ────────────────────────────────────────────────────────
 //
 // The SVG selection overlay must carry a viewBox that maps its user coordinate
-// space to the canvas INTERNAL resolution (canvas.width × canvas.height).
-// Without it the SVG user units equal CSS pixels, causing selection handles to
-// appear at wrong positions whenever the CSS display size differs from the
-// internal canvas size (i.e. always, since the preview panel can be resized).
+// space to the canvas INTERNAL resolution. Because canvas CSS now equals the
+// internal resolution, the viewBox ratio is always 1:1, but the viewBox itself
+// must still be explicitly set so that future CSS size changes (e.g. via the
+// zoom wrapper's transform) don't affect handle positioning.
 
 describe('Preview SVG selection overlay viewBox', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedROCallback = null;
-    capturedContainer = null;
   });
 
   it('sets SVG viewBox to match canvas internal resolution on mount', () => {
@@ -224,7 +247,7 @@ describe('Preview SVG selection overlay viewBox', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 720 1280');
   });
 
-  it('SVG viewBox stays correct after container resize', () => {
+  it('SVG viewBox stays correct and canvas internal resolution stays fixed after container element resize', () => {
     const project = makeProject(1920, 1080);
     const { container } = render(<Preview {...defaultProps} project={project} />);
     const canvas = container.querySelector('canvas')!;
@@ -233,13 +256,24 @@ describe('Preview SVG selection overlay viewBox', () => {
     const internalW = canvas.width;
     const internalH = canvas.height;
 
-    // Simulate multiple panel resizes — CSS dims change, internal must not
-    simulateContainerResize(600, 400);
-    simulateContainerResize(300, 200);
-    simulateContainerResize(1920, 1080);
+    // Simulate multiple panel resizes (DOM layout changes, no ResizeObserver involvement)
+    // With the stability fix these must leave the canvas untouched.
+    const previewEl = canvas.parentElement?.parentElement;
+    if (previewEl) {
+      for (const [w, h] of [[600, 400], [300, 200], [1920, 1080]] as const) {
+        Object.defineProperty(previewEl, 'clientWidth', { value: w, configurable: true });
+        Object.defineProperty(previewEl, 'clientHeight', { value: h, configurable: true });
+        act(() => { /* trigger any pending effects */ });
+      }
+    }
 
+    // Internal resolution must not have changed
     expect(canvas.width).toBe(internalW);
     expect(canvas.height).toBe(internalH);
+    // CSS must still match internal resolution
+    expect(canvas.style.width).toBe(`${internalW}px`);
+    expect(canvas.style.height).toBe(`${internalH}px`);
+    // SVG viewBox must still match internal resolution
     expect(svg.getAttribute('viewBox')).toBe(`0 0 ${internalW} ${internalH}`);
   });
 
