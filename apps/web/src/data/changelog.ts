@@ -12,6 +12,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-03-01',
+    title: '1. března 2026',
+    items: [
+      'Stabilní náhled videa – prvky v náhledu se již nepohybují ani nezmenšují při změně velikosti panelu',
+      'Zoom v náhledu se automaticky přizpůsobí rozlišení projektu při prvním načtení',
+      'Tlačítko pro resetování pohledu nyní přizpůsobí zoom tak, aby canvas přesně zaplnil panel (Fit to window)',
+    ],
+  },
+  {
     date: '2026-02-23',
     title: '23. února 2026',
     items: [

@@ -878,10 +878,19 @@ export default function Preview({
     setViewPan(p);
   }, []);
 
+  // Compute the zoom level that fits the canvas exactly in the current container.
+  const computeFitZoom = useCallback(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || container.clientWidth === 0 || container.clientHeight === 0) return 1;
+    return Math.min(container.clientWidth / canvas.width, container.clientHeight / canvas.height);
+  }, []);
+
+  // "Fit to window" — scale the canvas so it fills the available container space.
   const resetView = useCallback(() => {
-    setZoom(1);
+    setZoom(clamp(computeFitZoom(), MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
     setPan({ x: 0, y: 0 });
-  }, [setZoom, setPan]);
+  }, [computeFitZoom, setZoom, setPan]);
 
   // Keep latest props in refs to avoid stale closures in rAF
   const propsRef = useRef({ project, assets, currentTime, isPlaying, beatsData, selectedClipId });
@@ -1285,23 +1294,28 @@ export default function Preview({
 
   // ── Canvas resize ─────────────────────────────────────────────────────────
   //
-  // The canvas internal resolution is kept STABLE (derived from outputResolution,
-  // capped at 1280 px) so that transform.x / transform.y coordinates remain
-  // visually consistent no matter how the preview panel is resized.
+  // The canvas INTERNAL resolution is fixed (derived from outputResolution,
+  // capped at 1280 px). The canvas CSS dimensions are ALSO fixed to match the
+  // internal resolution — visual scaling is handled exclusively by the viewZoom
+  // CSS transform on the zoom wrapper div.
   //
-  // Only the CSS display size (canvas.style.width / height) changes with the
-  // container — the canvas content itself is not redrawn on every panel resize.
+  // This means the preview is completely STABLE: resizing the panel does NOT
+  // change the canvas CSS size, the rendered content, or element positions.
+  // The user uses the zoom / pan controls (or scroll wheel) to navigate.
+  //
+  // On project load or output-resolution change the view is auto-fitted to the
+  // container so the canvas fills the available space at the correct aspect ratio.
 
   useEffect(() => {
-    const container = containerRef.current;
     const canvas = canvasRef.current;
-    if (!container || !canvas) return;
+    const container = containerRef.current;
+    if (!canvas) return;
 
     const outW = project?.outputResolution.w ?? 1920;
     const outH = project?.outputResolution.h ?? 1080;
 
     // Reference resolution: output resolution scaled down to max 1280 px on the
-    // longest axis. This stays constant for a given project output resolution.
+    // longest axis. Stays constant for a given project output resolution.
     const MAX_PREVIEW_DIM = 1280;
     const scaleFactor = Math.min(1, MAX_PREVIEW_DIM / Math.max(outW, outH));
     const refW = Math.round(outW * scaleFactor);
@@ -1311,44 +1325,41 @@ export default function Preview({
     if (canvas.width !== refW || canvas.height !== refH) {
       canvas.width = refW;
       canvas.height = refH;
-      drawFrame();
+      // Use ref to avoid adding drawFrame to this effect's dependency array,
+      // which would cause the auto-fit zoom to reset on every clip edit.
+      drawFrameRef.current();
     }
+
+    // Canvas CSS is fixed at the internal resolution — the zoom wrapper's CSS
+    // transform (scale) is the sole mechanism for visual scaling. This prevents
+    // the canvas from changing apparent size when the panel is resized.
+    canvas.style.width = `${refW}px`;
+    canvas.style.height = `${refH}px`;
+
+    // Inline text-editor overlays are absolutely positioned inside the zoom
+    // wrapper which shares the same coordinate space as the canvas CSS (both
+    // at internal resolution), so the ratio is always 1:1 and no conversion is
+    // needed. We still update the ref so the rest of the positioning code works
+    // without special-casing.
+    canvasCssDimsRef.current = { w: refW, h: refH };
 
     // Keep the SVG selection overlay's coordinate space in sync with the canvas
-    // internal resolution. Without a viewBox the SVG user units would map 1:1 to
-    // CSS pixels (matching canvas.style.width/height), causing handles to appear
-    // at wrong positions when the CSS display size differs from the internal size.
+    // internal resolution so handles are drawn at the correct positions.
     if (selectionSvgRef.current) {
-      selectionSvgRef.current.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
+      selectionSvgRef.current.setAttribute('viewBox', `0 0 ${refW} ${refH}`);
     }
 
-    const aspect = outW / outH;
-
-    const ro = new ResizeObserver(() => {
-      const { clientWidth, clientHeight } = container;
-      // Skip when container is hidden (display:none / visibility:hidden collapses to 0)
-      if (clientWidth === 0 || clientHeight === 0) return;
-
-      // Calculate CSS size that fits the container while preserving aspect ratio
-      let cssW = clientWidth;
-      let cssH = cssW / aspect;
-      if (cssH > clientHeight) {
-        cssH = clientHeight;
-        cssW = cssH * aspect;
-      }
-
-      const roundedW = Math.round(cssW);
-      const roundedH = Math.round(cssH);
-      // Update only the CSS display size — internal canvas resolution stays fixed
-      canvas.style.width = `${roundedW}px`;
-      canvas.style.height = `${roundedH}px`;
-      // Track CSS dims so DOM overlays (textarea, etc.) can convert internal
-      // canvas coordinates to CSS pixels using the ratio cssW / canvas.width.
-      canvasCssDimsRef.current = { w: roundedW, h: roundedH };
-    });
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [drawFrame, project?.outputResolution]);
+    // Auto-fit zoom: scale the canvas so it fills the container whenever the
+    // output resolution changes (new project, first load, etc.).
+    if (container && container.clientWidth > 0 && container.clientHeight > 0) {
+      const fitZoom = Math.min(container.clientWidth / refW, container.clientHeight / refH);
+      setZoom(clamp(fitZoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
+      setPan({ x: 0, y: 0 });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.outputResolution?.w, project?.outputResolution?.h, setZoom, setPan]);
+  // Note: drawFrame is intentionally omitted — drawFrameRef.current() is used
+  // instead so that clip edits (which recreate drawFrame) do not reset the zoom.
 
   // ── Mouse interactions ────────────────────────────────────────────────────
 
@@ -2035,7 +2046,7 @@ export default function Preview({
         <button
           data-testid="zoom-reset-btn"
           onClick={resetView}
-          title="Reset zoom (100%)"
+          title="Fit to window (reset view)"
           style={{
             background: 'none',
             border: 'none',
@@ -2077,7 +2088,7 @@ export default function Preview({
         <button
           data-testid="view-center-btn"
           onClick={resetView}
-          title="Reset view — přesune pohled zpět na video"
+          title="Fit to window — přizpůsobí zoom velikosti panelu"
           style={{
             background: 'none',
             border: 'none',
