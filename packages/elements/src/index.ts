@@ -114,34 +114,17 @@ export {
 
 // ─── Effect exports ───────────────────────────────────────────────────────────
 
-export { BeatZoomEffect, computeBeatZoomScale } from './effects/BeatZoom';
-export { CartoonEffect, processCartoonFrame } from './effects/Cartoon';
-export { ColorGradeEffect, processColorGradeFrame, buildColorGradeCssFilter } from './effects/ColorGrade';
-export { CutoutEffect, getOrCreateMaskVideoEl, maskVideoCache, applyCutoutPreview } from './effects/Cutout';
-
-// ─── EFFECT_REGISTRY ──────────────────────────────────────────────────────────
-
-import type { EffectDefinition } from './types';
-import { BeatZoomEffect } from './effects/BeatZoom';
-import { CutoutEffect } from './effects/Cutout';
-import { CartoonEffect } from './effects/Cartoon';
-import { ColorGradeEffect } from './effects/ColorGrade';
-
-/**
- * Ordered registry of all video clip effects.
- *
- * Applied within VideoClip rendering in this exact order (both preview and export).
- * To change the order or add a new effect, modify this array.
- *
- * Current order and rationale:
- *   1. BeatZoom   — Phase 1 (modifies transform BEFORE bounds computed)
- *   2. Cutout     — Phase 2 first: draws background, returns masked canvas
- *   3. Cartoon    — Phase 2 second: stylizes the (possibly masked) source
- *   4. ColorGrade — Phase 2 last: color correction on top of everything
- */
-export const EFFECT_REGISTRY: readonly EffectDefinition[] = [
+export {
   BeatZoomEffect,
-  CutoutEffect,
+  computeBeatZoomScale,
   CartoonEffect,
+  processCartoonFrame,
   ColorGradeEffect,
-];
+  processColorGradeFrame,
+  buildColorGradeCssFilter,
+  CutoutEffect,
+  getOrCreateMaskVideoEl,
+  maskVideoCache,
+  applyCutoutPreview,
+  EFFECT_REGISTRY,
+} from './effects/index';
