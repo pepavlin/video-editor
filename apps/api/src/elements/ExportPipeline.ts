@@ -234,7 +234,8 @@ export class ExportPipeline {
         videoOutPad,
         project.lyrics,
         projectDir,
-        (filePath, content) => fs.writeFileSync(filePath, content)
+        (filePath, content) => fs.writeFileSync(filePath, content),
+        masterAudioClip
       );
       if (lyricsResult) {
         filterParts.push(lyricsResult.filter);

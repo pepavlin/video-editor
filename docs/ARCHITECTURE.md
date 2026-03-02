@@ -237,6 +237,68 @@ PreviewPipeline.renderFrame()
 
 ---
 
+## Lyrics Clip — Timing Model
+
+The lyrics clip (LyricsClip.ts) is the most timing-sensitive element because word timestamps come from Whisper/alignment scripts and are anchored to the **master audio WAV file**, not to the video timeline.
+
+### Time Domains
+
+| Domain | Description | Example |
+|--------|-------------|---------|
+| **WAV time** | Seconds from the start of the master audio WAV file | `w.start`, `w.end` from Whisper output |
+| **Video timeline time** | Seconds from position 0 on the video timeline | `clip.timelineStart`, `currentTime` |
+
+The master audio clip connects the two domains via:
+- `masterClip.timelineStart` — where on the timeline the audio starts
+- `masterClip.sourceStart` — where in the WAV file the master clip begins
+
+**Conversion: WAV time → video timeline time**
+```
+videoTime = masterClip.timelineStart + (wavTime - masterClip.sourceStart)
+```
+
+**Conversion: video timeline time → WAV time (for preview)**
+```
+audioTimeOffset = masterClip.sourceStart - masterClip.timelineStart
+audioTime = currentTime + audioTimeOffset
+```
+
+### Chunk-Based Display
+
+Words are grouped into chunks (controlled by `lyricsStyle.wordsPerChunk`, default 3). An entire chunk is displayed while any word in it is active:
+
+- **Chunk start** = `chunk[0].start` (in WAV time)
+- **Chunk end** = first word of the NEXT chunk's `start` (WAV time), or `chunk[-1].end + 2.0` if last chunk
+- **Word highlight** extends from `word.start` to the next word's `start` (fills the gap between words)
+
+This prevents the "disappearing words" bug where a small gap between chunks would show nothing.
+
+### ASS Export Timing (`generateAssContent`)
+
+For FFmpeg export, `generateAssContent()` converts word timestamps to ASS subtitle format with optional timing offset correction:
+
+```typescript
+export interface AssGenerationOptions {
+  masterTimelineStart?: number; // masterClip.timelineStart
+  masterSourceStart?: number;   // masterClip.sourceStart
+  clipTimelineStart?: number;   // clip.timelineStart (for visibility clamping)
+  clipTimelineEnd?: number;     // clip.timelineEnd   (for visibility clamping)
+}
+```
+
+- Without `opts`: timestamps are used as-is (raw WAV time, for project-level lyrics overlay when master starts at t=0)
+- With `opts`: timestamps are converted from WAV time to video timeline time and clamped to the clip's visibility window
+
+### Moving a Lyrics Clip
+
+When the user moves the lyrics clip on the timeline, the word positions stay correct because they're always computed relative to the master audio. Only the clip's visibility window changes (`clip.timelineStart / clip.timelineEnd`). No reprocessing is needed.
+
+### Timeline Visualization
+
+The timeline renders colored blocks for each word chunk inside the lyrics clip row (lower 55% of the clip height). Alternating purple shades show which groups of words display together. The block positions are computed from WAV timestamps converted back to timeline pixels using the same `audioTimeOffset`.
+
+---
+
 ## Adding a New Element Type
 
 1. Create `packages/elements/src/clips/MyElement.ts`
@@ -270,6 +332,10 @@ PreviewPipeline.renderFrame()
 | Wrong element dispatch (wrong element handles clip) | `packages/elements/src/clips/index.ts` → `CLIP_REGISTRY` order |
 | Cutout mask not collected | `apps/api/src/elements/ExportPipeline.ts` → mask input collection section |
 | Project lyrics not showing | `packages/elements/src/clips/LyricsClip.ts` → `buildProjectLyricsFilter` |
+| Lyrics words wrong timing in preview | `apps/web/src/components/Preview.tsx` → `drawClipLyricsOverlay` (check `audioTimeOffset`) |
+| Lyrics words wrong timing in export | `packages/elements/src/clips/LyricsClip.ts` → `generateAssContent` + `AssGenerationOptions` |
+| Lyrics words disappear between chunks | `packages/elements/src/clips/LyricsClip.ts` → chunk end calculation (use next chunk first word) |
+| Lyrics timeline blocks missing | `apps/web/src/components/Timeline.tsx` → lyrics word-chunk visualization block |
 
 ---
 

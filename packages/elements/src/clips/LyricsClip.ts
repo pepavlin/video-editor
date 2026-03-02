@@ -72,11 +72,17 @@ export function drawLyricsWords(
   const chunkSize = style.wordsPerChunk;
   const fontSize = Math.round((style.fontSize / 1920) * H);
 
-  // Find the chunk that contains the current time
+  // Find the chunk that is active at audioTime.
+  // A chunk is visible from its first word's start until the NEXT chunk's first word's start.
+  // This eliminates display gaps between lines.
   let chunkStart = -1;
   for (let i = 0; i < words.length; i += chunkSize) {
     const chunk = words.slice(i, i + chunkSize);
-    if (audioTime >= chunk[0].start && audioTime <= (chunk[chunk.length - 1].end + 0.5)) {
+    const nextChunkFirstWord = words[i + chunkSize];
+    const displayEnd = nextChunkFirstWord
+      ? nextChunkFirstWord.start
+      : chunk[chunk.length - 1].end + 2.0;
+    if (audioTime >= chunk[0].start && audioTime < displayEnd) {
       chunkStart = i;
       break;
     }
@@ -107,7 +113,10 @@ export function drawLyricsWords(
 
   for (let i = 0; i < chunk.length; i++) {
     const w = chunk[i];
-    const isCurrentWord = audioTime >= w.start && audioTime <= w.end;
+    // Highlight the word during its own time window; extend the last word to chunk boundary
+    const nextWord = chunk[i + 1];
+    const wordDisplayEnd = nextWord ? nextWord.start : chunk[chunk.length - 1].end + 2.0;
+    const isCurrentWord = audioTime >= w.start && audioTime < wordDisplayEnd;
     ctx.fillStyle = isCurrentWord ? style.highlightColor : style.color;
     const wordText = i < chunk.length - 1 ? w.word + ' ' : w.word;
     ctx.fillText(wordText, x + ctx.measureText(wordText).width / 2, y);
@@ -136,11 +145,42 @@ function hex2ass(hex: string): string {
 }
 
 /**
+ * Options for generating ASS subtitle content with correct video timeline timing.
+ *
+ * Word timestamps from Whisper are relative to the master audio WAV file start.
+ * In the exported video, WAV time T corresponds to video time:
+ *   videoTime = masterTimelineStart + (T - masterSourceStart)
+ *
+ * clipTimelineStart/End (optional) restricts events to the lyrics clip's visible window.
+ */
+export interface AssGenerationOptions {
+  /** masterAudioClip.timelineStart – when master audio begins on the video timeline */
+  masterTimelineStart?: number;
+  /** masterAudioClip.sourceStart – where in the WAV file the master audio starts */
+  masterSourceStart?: number;
+  /** clip.timelineStart – earliest video time to emit events for */
+  clipTimelineStart?: number;
+  /** clip.timelineEnd – latest video time to emit events for */
+  clipTimelineEnd?: number;
+}
+
+/** Convert a WAV-relative timestamp to video timeline time. */
+function wavToVideoTime(wavTime: number, opts?: AssGenerationOptions): number {
+  const tlStart = opts?.masterTimelineStart ?? 0;
+  const srcStart = opts?.masterSourceStart ?? 0;
+  return tlStart + (wavTime - srcStart);
+}
+
+/**
  * Generate ASS subtitle content string from lyrics data.
  * Does not write to disk — the caller provides file I/O via context.writeFile.
  * Exported for use in ExportPipeline (project-level lyrics).
+ *
+ * @param lyrics  Lyrics data with word timestamps (WAV-relative seconds)
+ * @param opts    Optional timing offsets to convert WAV time → video time and
+ *                restrict events to the lyrics clip's visible timeline window.
  */
-export function generateAssContent(lyrics: LyricsData): string {
+export function generateAssContent(lyrics: LyricsData, opts?: AssGenerationOptions): string {
   const style = lyrics.style ?? DEFAULT_LYRICS_STYLE;
 
   const alignmentMap: Record<string, number> = { top: 8, center: 5, bottom: 2 };
@@ -164,15 +204,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   const chunkSize = Math.max(1, style.wordsPerChunk);
   const events: string[] = [];
 
+  // Clip-level visibility window in video time (for restricting ASS events)
+  const clipStart = opts?.clipTimelineStart ?? -Infinity;
+  const clipEnd = opts?.clipTimelineEnd ?? Infinity;
+
   for (let i = 0; i < words.length; i += chunkSize) {
     const chunk = words.slice(i, i + chunkSize);
     if (chunk.length === 0) continue;
 
+    // The chunk displays from its first word until the NEXT chunk's first word starts
+    const nextChunkFirstWord = words[i + chunkSize];
+    const chunkWavEnd = nextChunkFirstWord
+      ? nextChunkFirstWord.start
+      : chunk[chunk.length - 1].end + 2.0;
+
     for (let j = 0; j < chunk.length; j++) {
       const w = chunk[j];
-      const wordStart = w.start;
-      const wordEnd = j < chunk.length - 1 ? chunk[j + 1].start : w.end + 0.1;
-      const chunkEnd = chunk[chunk.length - 1].end + 0.1;
+      // Each word is "highlighted" from its start until the NEXT word's start
+      const nextWord = chunk[j + 1];
+      const wordWavStart = w.start;
+      const wordWavEnd = nextWord ? nextWord.start : chunkWavEnd;
+
+      // Convert WAV times → video timeline times
+      const evtStart = wavToVideoTime(wordWavStart, opts);
+      const evtEnd = wavToVideoTime(wordWavEnd, opts);
+
+      // Clamp to the lyrics clip's visible time window
+      const clampedStart = Math.max(evtStart, clipStart);
+      const clampedEnd = Math.min(evtEnd, clipEnd);
+      if (clampedStart >= clampedEnd) continue; // fully outside clip window
 
       // Build karaoke text: highlight current word, show others in default color
       let text = '';
@@ -187,7 +247,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       text = text.trim();
 
       events.push(
-        `Dialogue: 0,${toAssTime(wordStart)},${toAssTime(Math.min(wordEnd, chunkEnd))},Default,,0,0,0,,${text}`
+        `Dialogue: 0,${toAssTime(clampedStart)},${toAssTime(clampedEnd)},Default,,0,0,0,,${text}`
       );
     }
   }
@@ -247,8 +307,18 @@ const lyricsClipExport: ClipExportApi = {
       enabled: true,
     };
 
+    // Build timing options: convert WAV timestamps → video timeline time,
+    // and restrict events to the lyrics clip's visible time window.
+    const masterClip = context.masterAudioClip;
+    const assOpts: AssGenerationOptions = {
+      masterTimelineStart: masterClip?.timelineStart ?? 0,
+      masterSourceStart: masterClip?.sourceStart ?? 0,
+      clipTimelineStart: clip.timelineStart,
+      clipTimelineEnd: clip.timelineEnd,
+    };
+
     // Generate ASS content and write via context.writeFile (provided by ExportPipeline)
-    const assContent = generateAssContent(lyricsData);
+    const assContent = generateAssContent(lyricsData, assOpts);
     const assPath = `${context.projectDir}/lyrics_${filterIdx}.ass`;
     context.writeFile(assPath, assContent);
 
@@ -312,21 +382,28 @@ export function renderProjectLyricsOverlay(
  * Called by ExportPipeline after all track clips have been processed.
  * Writes the ASS file via writeFile callback (provided by ExportPipeline).
  *
- * @param prevPad     Current accumulated video output pad name
- * @param lyrics      Project lyrics data
- * @param projectDir  Absolute path to the project directory
- * @param writeFile   File writing callback (injected from ExportPipeline)
+ * @param prevPad      Current accumulated video output pad name
+ * @param lyrics       Project lyrics data
+ * @param projectDir   Absolute path to the project directory
+ * @param writeFile    File writing callback (injected from ExportPipeline)
+ * @param masterClip   Master audio clip (for WAV → video time conversion)
  * @returns Filter string and output pad, or null if no lyrics data
  */
 export function buildProjectLyricsFilter(
   prevPad: string,
   lyrics: NonNullable<Project['lyrics']>,
   projectDir: string,
-  writeFile: (filePath: string, content: string) => void
+  writeFile: (filePath: string, content: string) => void,
+  masterClip?: import('@video-editor/shared').Clip
 ): { filter: string; outputPad: string } | null {
   if (!lyrics.words || lyrics.words.length === 0) return null;
 
-  const assContent = generateAssContent(lyrics as LyricsData);
+  const assOpts: AssGenerationOptions = {
+    masterTimelineStart: masterClip?.timelineStart ?? 0,
+    masterSourceStart: masterClip?.sourceStart ?? 0,
+  };
+
+  const assContent = generateAssContent(lyrics as LyricsData, assOpts);
   const assPath = `${projectDir}/lyrics.ass`;
   writeFile(assPath, assContent);
 
