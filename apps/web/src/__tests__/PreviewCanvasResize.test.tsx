@@ -2,15 +2,17 @@
  * PreviewCanvasResize.test.tsx
  *
  * Tests that the Preview canvas maintains a completely stable rendering
- * regardless of panel/window size. After the stability fix:
+ * regardless of panel/window size:
  *
  *  - Canvas INTERNAL resolution is fixed (derived from outputResolution,
  *    capped at 1280 px on the longest axis).
  *  - Canvas CSS dimensions are also fixed to the INTERNAL resolution.
  *    Visual scaling is performed exclusively via the viewZoom CSS transform
  *    on the zoom-wrapper div — the canvas element's layout size never changes.
- *  - Panel / window resizing therefore has ZERO effect on canvas dimensions
- *    (neither internal nor CSS), so video elements never shift or shrink.
+ *  - Panel / window resizing has ZERO effect on canvas dimensions
+ *    (neither internal nor CSS). Only viewZoom is adjusted to keep the canvas
+ *    filling the panel in "fit" mode (the default), which prevents video
+ *    elements from appearing to shift when the preview section is resized.
  *  - The SVG selection-overlay viewBox always matches the internal resolution
  *    so handles remain correctly positioned at all zoom levels.
  */
@@ -47,15 +49,32 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
 }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 
 // ── ResizeObserver stub ────────────────────────────────────────────────────────
-// The Preview component no longer uses ResizeObserver to set canvas CSS dims
-// (it was removed in the stability fix). We still provide a no-op stub so the
-// global is defined in the test environment.
-class NoopResizeObserver {
-  observe() {}
-  disconnect() {}
-  unobserve() {}
+// The Preview component uses a ResizeObserver to auto-fit zoom when the panel
+// is resized (in "fit" mode). Canvas CSS dimensions are never changed by it —
+// only viewZoom is updated via the zoom CSS transform.
+//
+// We provide a controllable stub so tests can:
+//  1. Keep the default no-op behaviour (canvas stability tests)
+//  2. Manually fire resize callbacks to test the auto-fit zoom logic
+type ResizeCallback = (entries: ResizeObserverEntry[]) => void;
+const resizeCallbacks = new Map<Element, ResizeCallback>();
+
+class ControllableResizeObserver {
+  private cb: ResizeCallback;
+  constructor(cb: ResizeCallback) { this.cb = cb; }
+  observe(el: Element) { resizeCallbacks.set(el, this.cb); }
+  unobserve(el: Element) { resizeCallbacks.delete(el); }
+  disconnect() { resizeCallbacks.clear(); }
 }
-globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver = ControllableResizeObserver as unknown as typeof ResizeObserver;
+
+/** Fire a resize callback for `el` with the given clientWidth/clientHeight. */
+function fireResize(el: Element, clientWidth: number, clientHeight: number) {
+  Object.defineProperty(el, 'clientWidth',  { value: clientWidth,  configurable: true });
+  Object.defineProperty(el, 'clientHeight', { value: clientHeight, configurable: true });
+  const cb = resizeCallbacks.get(el);
+  if (cb) cb([{ target: el } as ResizeObserverEntry]);
+}
 
 // ── Test data ─────────────────────────────────────────────────────────────────
 
@@ -290,5 +309,72 @@ describe('Preview SVG selection overlay viewBox', () => {
 
     // 1280×720 is ≤ 1280 on longest axis → canvas stays 1280×720
     expect(svg.getAttribute('viewBox')).toBe('0 0 1280 720');
+  });
+});
+
+// ── Tests: auto-fit zoom on panel resize ──────────────────────────────────────
+//
+// The ResizeObserver detects container size changes and, when in "fit" mode,
+// recomputes viewZoom so the canvas always fills the available panel space.
+// This prevents video elements from appearing to shift when the panel is resized.
+//
+// Canvas CSS dimensions are NEVER changed — only the zoom CSS transform changes.
+
+describe('Preview auto-fit zoom on panel resize', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resizeCallbacks.clear();
+  });
+
+  it('canvas CSS dimensions do NOT change when container is resized', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+
+    const cssWBefore = canvas.style.width;
+    const cssHBefore = canvas.style.height;
+
+    // Simulate panel resize via ResizeObserver callback
+    const previewContainer = canvas.parentElement?.parentElement as HTMLElement;
+    if (previewContainer) {
+      act(() => { fireResize(previewContainer, 600, 400); });
+    }
+
+    // CSS dimensions must stay fixed at internal resolution — only zoom changes
+    expect(canvas.style.width).toBe(cssWBefore);
+    expect(canvas.style.height).toBe(cssHBefore);
+  });
+
+  it('zoom wrapper receives updated CSS transform scale when panel is resized in fit mode', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+    const zoomWrapper = container.querySelector('[data-testid="preview-zoom-wrapper"]') as HTMLElement;
+
+    // Simulate panel resize to a specific size
+    const previewContainer = canvas.parentElement?.parentElement as HTMLElement;
+    if (previewContainer && zoomWrapper) {
+      act(() => { fireResize(previewContainer, 640, 360); });
+      // canvas is 1280×720; container is 640×360 → fitZoom = min(640/1280, 360/720) = 0.5
+      const transform = zoomWrapper.style.transform;
+      expect(transform).toContain('scale(0.5)');
+    }
+  });
+
+  it('canvas internal resolution is unchanged after panel resize', () => {
+    const project = makeProject(1920, 1080);
+    const { container } = render(<Preview {...defaultProps} project={project} />);
+    const canvas = container.querySelector('canvas')!;
+
+    const internalW = canvas.width; // 1280
+    const internalH = canvas.height; // 720
+
+    const previewContainer = canvas.parentElement?.parentElement as HTMLElement;
+    if (previewContainer) {
+      act(() => { fireResize(previewContainer, 400, 300); });
+    }
+
+    expect(canvas.width).toBe(internalW);
+    expect(canvas.height).toBe(internalH);
   });
 });
