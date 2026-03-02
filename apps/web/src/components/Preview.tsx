@@ -868,6 +868,10 @@ export default function Preview({
   const viewZoomRef = useRef(1);
   const viewPanRef = useRef({ x: 0, y: 0 });
   const midPanDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
+  // Tracks whether the view is in "fit" mode (auto-fit on panel resize) or
+  // "manual" mode (user has zoomed/panned manually). True by default so the
+  // initial project load auto-fit propagates through panel resize as well.
+  const isFitModeRef = useRef(true);
 
   const setZoom = useCallback((z: number) => {
     viewZoomRef.current = z;
@@ -887,7 +891,9 @@ export default function Preview({
   }, []);
 
   // "Fit to window" — scale the canvas so it fills the available container space.
+  // Resets to fit mode so subsequent panel resizes continue to auto-fit.
   const resetView = useCallback(() => {
+    isFitModeRef.current = true;
     setZoom(clamp(computeFitZoom(), MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
     setPan({ x: 0, y: 0 });
   }, [computeFitZoom, setZoom, setPan]);
@@ -1351,8 +1357,10 @@ export default function Preview({
 
     // Auto-fit zoom: scale the canvas so it fills the container whenever the
     // output resolution changes (new project, first load, etc.).
+    // Reset to fit mode so subsequent panel resizes continue to auto-fit.
     if (container && container.clientWidth > 0 && container.clientHeight > 0) {
       const fitZoom = Math.min(container.clientWidth / refW, container.clientHeight / refH);
+      isFitModeRef.current = true;
       setZoom(clamp(fitZoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
       setPan({ x: 0, y: 0 });
     }
@@ -1360,6 +1368,40 @@ export default function Preview({
   }, [project?.outputResolution?.w, project?.outputResolution?.h, setZoom, setPan]);
   // Note: drawFrame is intentionally omitted — drawFrameRef.current() is used
   // instead so that clip edits (which recreate drawFrame) do not reset the zoom.
+
+  // ── Panel resize → auto-refit zoom ───────────────────────────────────────
+  //
+  // When the user drags a dock split handle to resize the preview panel, a
+  // ResizeObserver detects the container dimension change and, if we are still
+  // in "fit" mode (isFitModeRef = true), recalculates the zoom so the canvas
+  // continues to fill the available space. This prevents video elements from
+  // appearing to shift position as the panel grows or shrinks.
+  //
+  // Canvas CSS dimensions and internal resolution are NEVER modified here —
+  // only the viewZoom CSS transform on the zoom wrapper is updated.
+  //
+  // "fit" mode is true by default and after a project load or resetView click.
+  // It switches to false (manual mode) when the user zooms/pans manually so
+  // that their custom zoom level is preserved across panel resizes.
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const observer = new ResizeObserver(() => {
+      if (!isFitModeRef.current) return;
+      const refW = canvas.width;
+      const refH = canvas.height;
+      if (!refW || !refH || !container.clientWidth || !container.clientHeight) return;
+      const fitZoom = Math.min(container.clientWidth / refW, container.clientHeight / refH);
+      setZoom(clamp(fitZoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
+      setPan({ x: 0, y: 0 });
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [setZoom, setPan]);
 
   // ── Mouse interactions ────────────────────────────────────────────────────
 
@@ -1507,6 +1549,8 @@ export default function Preview({
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      // User is manually zooming — disable auto-fit on panel resize.
+      isFitModeRef.current = false;
       const rect = container.getBoundingClientRect();
       const containerCX = rect.left + rect.width / 2;
       const containerCY = rect.top + rect.height / 2;
@@ -1548,6 +1592,8 @@ export default function Preview({
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 1) return; // middle button only
       e.preventDefault();
+      // User is manually panning — disable auto-fit on panel resize.
+      isFitModeRef.current = false;
       midPanDragRef.current = {
         startX: e.clientX,
         startY: e.clientY,
@@ -1892,11 +1938,13 @@ export default function Preview({
   // ── Zoom button handlers ──────────────────────────────────────────────────
 
   const handleZoomIn = useCallback(() => {
+    isFitModeRef.current = false;
     const newZoom = clamp(viewZoomRef.current + ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
     setZoom(newZoom);
   }, [setZoom]);
 
   const handleZoomOut = useCallback(() => {
+    isFitModeRef.current = false;
     const newZoom = clamp(viewZoomRef.current - ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
     setZoom(newZoom);
   }, [setZoom]);
