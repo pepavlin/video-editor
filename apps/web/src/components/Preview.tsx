@@ -2177,10 +2177,18 @@ function drawClipLyricsOverlay(
   const chunkSize = style.wordsPerChunk;
   const fontSize = Math.round((style.fontSize / 1920) * H);
 
+  // Find the chunk that is active at audioTime.
+  // A chunk is active from its first word's start until the NEXT chunk's first word's start.
+  // This eliminates gaps between chunks.
   let chunkStart = -1;
   for (let i = 0; i < words.length; i += chunkSize) {
     const chunk = words.slice(i, i + chunkSize);
-    if (audioTime >= chunk[0].start && audioTime <= (chunk[chunk.length - 1].end + 0.5)) {
+    const nextChunkFirstWord = words[i + chunkSize];
+    // Chunk is visible from chunk[0].start until next chunk starts (or +2s after last word)
+    const displayEnd = nextChunkFirstWord
+      ? nextChunkFirstWord.start
+      : chunk[chunk.length - 1].end + 2.0;
+    if (audioTime >= chunk[0].start && audioTime < displayEnd) {
       chunkStart = i;
       break;
     }
@@ -2210,7 +2218,11 @@ function drawClipLyricsOverlay(
 
   for (let i = 0; i < chunk.length; i++) {
     const w = chunk[i];
-    const isCurrentWord = audioTime >= w.start && audioTime <= w.end;
+    // Highlight word when audio is within its start..end window;
+    // after the last word ends, keep it highlighted until the chunk changes
+    const nextWord = chunk[i + 1];
+    const wordDisplayEnd = nextWord ? nextWord.start : chunk[chunk.length - 1].end + 2.0;
+    const isCurrentWord = audioTime >= w.start && audioTime < wordDisplayEnd;
     ctx.fillStyle = isCurrentWord ? style.highlightColor : style.color;
     const wordText = i < chunk.length - 1 ? w.word + ' ' : w.word;
     ctx.fillText(wordText, x + ctx.measureText(wordText).width / 2, y);

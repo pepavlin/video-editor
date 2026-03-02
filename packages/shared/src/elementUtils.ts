@@ -1,103 +1,90 @@
 /**
- * Element utility functions for shared use across packages.
+ * Shared element utility functions.
  *
- * These helpers look up effect configuration from the project data model.
- * They are used by effect implementations in @video-editor/elements to find
- * the active EffectClipConfig for a given video track and effect type.
+ * These utilities are used by effect renderers in @video-editor/elements to look up
+ * effect configurations from the project data model without importing from the
+ * elements package (which would create a circular dependency).
  */
 
 import type { Project, Track, Clip, EffectClipConfig, EffectType } from './types';
 
-// ─── Effect track lookup ──────────────────────────────────────────────────────
-
 /**
- * Finds the effect track for the given video track and effect type.
- * Returns the first effect track in project.tracks where:
- *   - track.type === 'effect'
- *   - track.effectType === effectType
- *   - track.parentTrackId === videoTrack.id
- */
-function findEffectTrack(
-  project: Project,
-  videoTrack: Track,
-  effectType: EffectType
-): Track | undefined {
-  return project.tracks.find(
-    (t) =>
-      t.type === 'effect' &&
-      t.effectType === effectType &&
-      t.parentTrackId === videoTrack.id
-  );
-}
-
-// ─── Active effect config (preview side) ─────────────────────────────────────
-
-/**
- * Returns the EffectClipConfig for the effect of `effectType` that is active
- * at `currentTime` on the effect track linked to `videoTrack`.
+ * Finds the effective effect config for a given video track and effect type at a specific time.
  *
- * "Active" means currentTime falls within [clip.timelineStart, clip.timelineEnd).
+ * Looks for effect tracks whose parentTrackId matches the given video track's id,
+ * then finds the effect clip active at `currentTime`.
  *
- * Returns null if:
- *   - No effect track of the given type is linked to videoTrack
- *   - No clip is active at currentTime
- *   - The active clip has no effectConfig
+ * Used by preview renderers (isActive / modifyTransform / applyRender).
+ *
+ * @param project     The current project
+ * @param track       The video track being rendered
+ * @param effectType  The type of effect to look for (e.g. 'beatZoom', 'cutout')
+ * @param currentTime The timeline position in seconds
+ * @returns The active EffectClipConfig, or null if no active effect found
  */
 export function getActiveEffectConfig(
   project: Project,
-  videoTrack: Track,
+  track: Track,
   effectType: EffectType,
   currentTime: number
 ): EffectClipConfig | null {
-  const effectTrack = findEffectTrack(project, videoTrack, effectType);
-  if (!effectTrack) return null;
-
-  const activeClip = effectTrack.clips.find(
-    (c) => currentTime >= c.timelineStart && currentTime < c.timelineEnd
-  );
-  return activeClip?.effectConfig ?? null;
+  for (const t of project.tracks) {
+    if (t.type !== 'effect') continue;
+    if (t.parentTrackId !== track.id) continue;
+    if (t.effectType !== effectType) continue;
+    for (const clip of t.clips) {
+      if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
+        return clip.effectConfig ?? null;
+      }
+    }
+  }
+  return null;
 }
 
-// ─── Overlapping effect config (export side) ──────────────────────────────────
-
 /**
- * Returns the EffectClipConfig for the effect of `effectType` whose clip
- * overlaps with `videoClip` on the effect track linked to `videoTrack`.
+ * Finds the effective effect config for a given video track and effect type that
+ * OVERLAPS with the provided clip's time range.
  *
- * "Overlapping" means the effect clip's time range intersects the video clip's
- * time range: effectClip.timelineStart < videoClip.timelineEnd AND
- *              effectClip.timelineEnd   > videoClip.timelineStart
+ * Used by export renderers (isActive / buildFilter) where currentTime is not available
+ * but we need to check whether any effect applies during the clip's duration.
  *
- * Returns null if:
- *   - No effect track of the given type is linked to videoTrack
- *   - No effect clip overlaps with videoClip
- *   - The overlapping clip has no effectConfig
+ * @param project    The current project
+ * @param track      The video track being exported
+ * @param effectType The type of effect to look for
+ * @param clip       The video clip whose time range is checked
+ * @returns The overlapping EffectClipConfig, or null if none found
  */
 export function getOverlappingEffectConfig(
   project: Project,
-  videoTrack: Track,
+  track: Track,
   effectType: EffectType,
-  videoClip: Clip
+  clip: Clip
 ): EffectClipConfig | null {
-  const effectTrack = findEffectTrack(project, videoTrack, effectType);
-  if (!effectTrack) return null;
-
-  const overlappingClip = effectTrack.clips.find(
-    (c) =>
-      c.timelineStart < videoClip.timelineEnd &&
-      c.timelineEnd > videoClip.timelineStart
-  );
-  return overlappingClip?.effectConfig ?? null;
+  for (const t of project.tracks) {
+    if (t.type !== 'effect') continue;
+    if (t.parentTrackId !== track.id) continue;
+    if (t.effectType !== effectType) continue;
+    for (const effectClip of t.clips) {
+      // Overlaps if the effect clip's range intersects with the video clip's range
+      if (effectClip.timelineStart < clip.timelineEnd && effectClip.timelineEnd > clip.timelineStart) {
+        return effectClip.effectConfig ?? null;
+      }
+    }
+  }
+  return null;
 }
 
-// ─── Beat division filter ──────────────────────────────────────────────────────
-
 /**
- * Filters a beat array based on the beatDivision parameter.
+ * Filters beat timestamps based on beat division setting.
  *
- * beatDivision controls how many beats trigger an effect:
- *   >= 1  → use every Nth beat (1=every beat, 2=every 2nd, 4=every 4th, …)
- *   < 1   → interpolate sub-beat triggers (0.5=twice per beat, 0.25=4x per beat)
+ * beatDivision >= 1 → keep every Nth beat (e.g. 2 = every 2nd beat)
+ * beatDivision < 1  → subdivide beats (e.g. 0.5 = twice per beat)
+ *
+ * Mirrors the client-side filterBeatsByDivision from apps/web/src/lib/utils.ts.
+ *
+ * @param beats        Beat timestamps in seconds
+ * @param beatDivision Division factor
+ * @returns Filtered/subdivided beat timestamps
  */
 export function filterBeatsByDivision(beats: number[], beatDivision: number): number[] {
   if (beatDivision <= 0) return beats;

@@ -493,4 +493,154 @@ describe('generateAssContent', () => {
     // Top alignment = 8 in ASS
     expect(content).toMatch(/Style:.*,8,/);
   });
+
+  // ─── Timing offset tests (WAV → video time conversion) ─────────────────────
+
+  it('uses raw WAV timestamps when no opts provided (backward compat)', () => {
+    const lyrics = {
+      text: 'Hello',
+      words: [{ word: 'Hello', start: 30.0, end: 30.5 }],
+    };
+    const content = generateAssContent(lyrics);
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    expect(dialogues).toHaveLength(1);
+    // Word at WAV 30s → ASS time should be 0:00:30.00 (raw WAV time, no offset)
+    expect(dialogues[0]).toContain('0:00:30.00');
+  });
+
+  it('offsets timestamps when masterTimelineStart differs from masterSourceStart', () => {
+    // Master audio: starts at WAV 10s, placed at timeline 0s
+    // audioTimeOffset = sourceStart - timelineStart = 10 - 0 = 10
+    // WAV time T → video time = timelineStart + (T - sourceStart) = 0 + (T - 10)
+    // Word at WAV 15s → video time 5s
+    const lyrics = {
+      text: 'Hello',
+      words: [{ word: 'Hello', start: 15.0, end: 15.5 }],
+    };
+    const content = generateAssContent(lyrics, {
+      masterTimelineStart: 0,
+      masterSourceStart: 10,
+    });
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    expect(dialogues).toHaveLength(1);
+    // Video time = 0 + (15 - 10) = 5s → ASS: 0:00:05.00
+    expect(dialogues[0]).toContain('0:00:05.00');
+  });
+
+  it('offsets timestamps when master audio starts mid-timeline', () => {
+    // Master audio: starts at WAV 0s, placed at timeline 5s
+    // WAV time T → video time = 5 + (T - 0) = T + 5
+    // Word at WAV 3s → video time 8s
+    const lyrics = {
+      text: 'Hello',
+      words: [{ word: 'Hello', start: 3.0, end: 3.5 }],
+    };
+    const content = generateAssContent(lyrics, {
+      masterTimelineStart: 5,
+      masterSourceStart: 0,
+    });
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    expect(dialogues).toHaveLength(1);
+    // Video time = 5 + (3 - 0) = 8s → ASS: 0:00:08.00
+    expect(dialogues[0]).toContain('0:00:08.00');
+  });
+
+  it('excludes events fully outside clip visibility window', () => {
+    // Lyrics clip is visible from 10-20s on the timeline (wordsPerChunk=1, each word is own chunk).
+    // Word 'a' (5-8s WAV): its chunk extends to next chunk start (12s) → clamped display [10,12] → EMITTED.
+    // Word 'b' (12-15s WAV): chunk extends to 25s → clamped [12,20] → EMITTED.
+    // Word 'c' (25-28s WAV): starts at 25s > clipEnd 20s → EXCLUDED.
+    const lyrics = {
+      text: 'a b c',
+      words: [
+        { word: 'a', start: 5.0, end: 8.0 },   // chunk overlaps [10-20] via extension to 12s
+        { word: 'b', start: 12.0, end: 15.0 },  // fully inside [10-20]
+        { word: 'c', start: 25.0, end: 28.0 },  // fully outside [10-20]
+      ],
+      style: { fontSize: 48, color: '#FFFFFF', highlightColor: '#FFE600', position: 'bottom' as const, wordsPerChunk: 1 },
+    };
+    const content = generateAssContent(lyrics, {
+      masterTimelineStart: 0,
+      masterSourceStart: 0,
+      clipTimelineStart: 10,
+      clipTimelineEnd: 20,
+    });
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    // 'a' and 'b' chunks overlap the window; 'c' is fully excluded
+    expect(dialogues).toHaveLength(2);
+    // First event for 'a' is clamped to start at 10s
+    expect(dialogues[0]).toContain('0:00:10.00');
+    // Second event for 'b' starts at 12s
+    expect(dialogues[1]).toContain('0:00:12.00');
+  });
+
+  it('clamps events to clip boundaries (partial overlap at start)', () => {
+    // Word at 8-13s WAV, clip window [10-20] → event clamped to [10, 13]
+    const lyrics = {
+      text: 'Hello',
+      words: [{ word: 'Hello', start: 8.0, end: 13.0 }],
+      style: { fontSize: 48, color: '#FFFFFF', highlightColor: '#FFE600', position: 'bottom' as const, wordsPerChunk: 1 },
+    };
+    const content = generateAssContent(lyrics, {
+      masterTimelineStart: 0,
+      masterSourceStart: 0,
+      clipTimelineStart: 10,
+      clipTimelineEnd: 20,
+    });
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    expect(dialogues).toHaveLength(1);
+    // Start must be clamped to clip start (10s)
+    expect(dialogues[0]).toContain('0:00:10.00');
+  });
+
+  // ─── Chunk gap / display continuity tests ──────────────────────────────────
+
+  it('chunk 1 display extends to chunk 2 start (no gap between chunks)', () => {
+    // Two chunks: chunk1 (words 'a' at 0-1s, 'b' at 1-2s) and chunk2 (words 'c' at 5-6s, 'd' at 6-7s)
+    // The last word of chunk 1 ('b') should have its END time = chunk2's first word start = 5.0s
+    const lyrics = {
+      text: 'a b c d',
+      words: [
+        { word: 'a', start: 0.0, end: 1.0 },
+        { word: 'b', start: 1.0, end: 2.0 },
+        { word: 'c', start: 5.0, end: 6.0 },
+        { word: 'd', start: 6.0, end: 7.0 },
+      ],
+      style: { fontSize: 48, color: '#FFFFFF', highlightColor: '#FFE600', position: 'bottom' as const, wordsPerChunk: 2 },
+    };
+    const content = generateAssContent(lyrics);
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    // 4 words / 2 per chunk = 2 chunks → 2 dialogue lines per chunk = 4 total
+    expect(dialogues).toHaveLength(4);
+
+    // Chunk 1, word 'b' is the SECOND dialogue in the list (starts at 1.0s).
+    // Its END time should be chunk2's first word start = 5.0s.
+    // Format: "Dialogue: 0,0:00:01.00,0:00:05.00,..."
+    const chunk1WordB = dialogues[1]; // second line = word 'b'
+    expect(chunk1WordB).toContain('0:00:01.00'); // starts at b.start
+    expect(chunk1WordB).toContain('0:00:05.00'); // ends at next chunk start
+  });
+
+  it('last chunk extends 2s past its final word (no gap after song ends)', () => {
+    // Single chunk: Hello(0-0.5), World(0.5-1.0). No next chunk.
+    // Word 'World' is the LAST word → its display extends to 1.0 + 2.0 = 3.0s.
+    const lyrics = {
+      text: 'Hello World',
+      words: [
+        { word: 'Hello', start: 0.0, end: 0.5 },
+        { word: 'World', start: 0.5, end: 1.0 },
+      ],
+      style: { fontSize: 48, color: '#FFFFFF', highlightColor: '#FFE600', position: 'bottom' as const, wordsPerChunk: 2 },
+    };
+    const content = generateAssContent(lyrics);
+    const dialogues = content.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    // 2 words in one chunk → 2 dialogue lines
+    expect(dialogues).toHaveLength(2);
+
+    // Second dialogue line is for word 'World' (starts at 0.5s) → ends at 3.0s
+    // Format: "Dialogue: 0,0:00:00.50,0:00:03.00,..."
+    const lineWorld = dialogues[1]; // second line = word 'World'
+    expect(lineWorld).toContain('0:00:00.50'); // starts at World.start
+    expect(lineWorld).toContain('0:00:03.00'); // ends at 1.0 + 2.0
+  });
 });

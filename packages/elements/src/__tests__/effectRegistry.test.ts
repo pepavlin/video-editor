@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { EFFECT_REGISTRY } from '../effects/index';
+import { EFFECT_REGISTRY } from '../index';
 import type { Clip, Track, Project, BeatsData } from '@video-editor/shared';
 import type { ExportFilterContext } from '../types';
 

@@ -489,9 +489,9 @@ export default function Timeline({
       const trackH = getTrackH(track);
       const isAudio = track.type === 'audio';
       const isGhostTrack = ghost?.trackId === track.id;
-      // text/lyrics tracks are treated as video tracks visually (no separate row type)
-      const isTextTrack = false;
-      const isLyricsTrack = false;
+      // text/lyrics tracks get distinct visual treatment
+      const isTextTrack = track.type === 'text';
+      const isLyricsTrack = track.type === 'lyrics';
       const isEffectTrack = track.type === 'effect';
 
       // Highlight if being reordered over
@@ -830,6 +830,67 @@ export default function Timeline({
           ctx.fillText(label, visX + 4, trackY + 14);
           ctx.shadowBlur = 0;
 
+          // ─── Lyrics word-chunk visualization ─────────────────────────────
+          // Draw alternating colored blocks for each word chunk so the user
+          // can see WHEN each group of words appears on the timeline.
+          // Chunk timing is in master-audio WAV time; convert to timeline px.
+          if (isLyrics && clip.lyricsWords && clip.lyricsWords.length > 0) {
+            const lyricsWords = clip.lyricsWords;
+            const chunkSize = clip.lyricsStyle?.wordsPerChunk ?? 3;
+            const audioTimeOffset = masterClip
+              ? masterClip.sourceStart - masterClip.timelineStart
+              : 0;
+
+            const chunkColors = [
+              'rgba(168,85,247,0.80)',
+              'rgba(109,40,217,0.80)',
+            ] as const;
+
+            const blockAreaTop = clipTop + Math.round(clipH * 0.45);
+            const blockAreaH = clipH - Math.round(clipH * 0.45) - 1;
+
+            for (let ci = 0; ci < lyricsWords.length; ci += chunkSize) {
+              const chunk = lyricsWords.slice(ci, ci + chunkSize);
+              if (chunk.length === 0) continue;
+
+              // Chunk starts at first word, ends at next chunk's first word
+              const chunkWavStart = chunk[0].start;
+              const nextChunkFirstWord = lyricsWords[ci + chunkSize];
+              const chunkWavEnd = nextChunkFirstWord
+                ? nextChunkFirstWord.start
+                : chunk[chunk.length - 1].end + 0.3;
+
+              // Convert WAV timestamps → timeline pixel positions
+              const chunkTlStart = chunkWavStart - audioTimeOffset;
+              const chunkTlEnd = chunkWavEnd - audioTimeOffset;
+
+              const bxFull = chunkTlStart * Z - SL + HEADER_WIDTH;
+              const bwFull = (chunkTlEnd - chunkTlStart) * Z;
+              if (bxFull + bwFull < visX || bxFull > visX + visW) continue;
+
+              const bx = Math.max(bxFull, visX);
+              const bw = Math.min(bxFull + bwFull, visX + visW) - bx;
+              if (bw <= 0) continue;
+
+              ctx.fillStyle = chunkColors[(ci / chunkSize) % chunkColors.length];
+              ctx.fillRect(bx, blockAreaTop, bw, blockAreaH);
+
+              // Draw separator line between chunks
+              if (bxFull > visX) {
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.fillRect(bx, blockAreaTop, 1, blockAreaH);
+              }
+
+              // Draw chunk text if there's enough room
+              if (bw > 16) {
+                const chunkText = chunk.map((w) => w.word).join(' ');
+                ctx.font = 'bold 8px sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                ctx.textAlign = 'left';
+                ctx.fillText(chunkText, bx + 3, blockAreaTop + blockAreaH - 3);
+              }
+            }
+          }
 
           ctx.restore();
 
