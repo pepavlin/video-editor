@@ -1693,11 +1693,15 @@ export default function Preview({
 
       // ── Step 2: Build pixel-accurate hit list (all layers, topmost first) ────
       // Tracks are rendered in reverse order: index 0 = top of timeline = rendered
-      // last = visually on top. We collect in that same order so hitClipIds[0] is
-      // the topmost visible element at the click point.
+      // last = visually on top. For hit testing we iterate in the ORIGINAL order
+      // so that track[0] (topmost visual layer) clips are tested first and
+      // hitClipIds[0] is the topmost visible element at the click point.
+      // Transparent parts (text alpha, cutout masks) are skipped via `continue`,
+      // naturally propagating the click to the next layer below.
       const clipsAtTime: Clip[] = [];
-      for (const track of [...project.tracks].reverse()) {
+      for (const track of project.tracks) {
         if (track.type === 'audio' || track.muted) continue;
+        if (track.type === 'effect') continue;
         for (const clip of track.clips) {
           if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
             clipsAtTime.push(clip);
@@ -1836,7 +1840,8 @@ export default function Preview({
       if (!project) return;
 
       // Find topmost text clip at the double-click position
-      for (const track of [...project.tracks].reverse()) {
+      // Iterate in original order: track[0] is the topmost visual layer
+      for (const track of project.tracks) {
         if (track.muted) continue;
         for (const clip of track.clips) {
           if (!clip.textContent) continue;
@@ -1913,8 +1918,9 @@ export default function Preview({
       }
 
       // Check clip bodies (use rotation-aware hit test for accurate cursor feedback)
+      // Iterate in original order: track[0] is topmost visual layer
       let foundClip = false;
-      for (const track of [...project.tracks].reverse()) {
+      for (const track of project.tracks) {
         if (track.type === 'audio' || track.muted) continue;
         for (const clip of track.clips) {
           if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
