@@ -66,11 +66,12 @@ video-editor/
 ├── docker-compose.yml         # Docker orchestration
 ├── requirements.txt           # Python deps
 ├── packages/
-│   └── shared/                # Shared TypeScript types
+│   ├── shared/                # Shared TypeScript types & utilities
+│   └── elements/              # Clip & effect registries (preview + export)
 └── apps/
     ├── api/                   # Fastify API (Node.js + TypeScript)
     │   └── Dockerfile
-    └── web/                   # Next.js UI
+    └── web/                   # Next.js UI (multi-stage Docker build)
         └── Dockerfile
 scripts/
 ├── beat_detect.py             # librosa beat detection
