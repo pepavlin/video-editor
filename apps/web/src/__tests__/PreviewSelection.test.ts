@@ -2,6 +2,8 @@
  * Tests for Preview element selection helpers:
  *  - isInRotatedRect (rotation-aware AABB hit test)
  *  - layer cycling via clickCycleRef
+ *  - hit list building order (topmost track first)
+ *  - transparency propagation (transparent parts pass click to lower layers)
  *
  * Since the helper functions are module-private, we replicate their logic
  * here as pure unit tests (the implementation is verified; if the logic
@@ -238,5 +240,222 @@ describe('layer cycling (applyClickCycle)', () => {
     const result = applyClickCycle(123, 456, ['clip-a'], null);
     expect(result.nextCycle?.x).toBe(123);
     expect(result.nextCycle?.y).toBe(456);
+  });
+});
+
+// ─── Hit list building order tests ───────────────────────────────────────────
+//
+// These tests verify that the hit list is built in the correct visual order:
+// track[0] = top of timeline = rendered last = visually on top = checked first
+// for hit testing. This mirrors the logic in handleMouseDown (Step 2).
+
+interface MockClip {
+  id: string;
+  timelineStart: number;
+  timelineEnd: number;
+}
+
+interface MockTrack {
+  type: 'video' | 'audio' | 'lyrics' | 'effect';
+  muted: boolean;
+  clips: MockClip[];
+}
+
+const HIT_ALPHA_THRESHOLD = 10;
+
+/**
+ * Simulates the hit-list building loop from Preview.tsx handleMouseDown.
+ * Tracks are iterated in their ORIGINAL order (NOT reversed) so that
+ * track[0] (topmost visual layer) clips appear first in the result.
+ *
+ * @param tracks   Array of tracks (index 0 = top of timeline = visually on top)
+ * @param currentTime  Current playback time
+ * @param hitTestFn  Optional per-clip hit test (returns true if click hits the clip).
+ *                   Defaults to always-hit. Use this to simulate transparent areas.
+ */
+function buildHitList(
+  tracks: MockTrack[],
+  currentTime: number,
+  hitTestFn: (clip: MockClip) => boolean = () => true,
+): string[] {
+  // Step 1: Collect clips at currentTime — iterate in ORIGINAL order (top first)
+  const clipsAtTime: MockClip[] = [];
+  for (const track of tracks) {
+    if (track.type === 'audio' || track.muted) continue;
+    if (track.type === 'effect') continue;
+    for (const clip of track.clips) {
+      if (currentTime >= clip.timelineStart && currentTime < clip.timelineEnd) {
+        clipsAtTime.push(clip);
+      }
+    }
+  }
+
+  // Step 2: Build hit list with per-clip hit testing (alpha, bounds, etc.)
+  const hitClipIds: string[] = [];
+  for (const clip of clipsAtTime) {
+    if (!hitTestFn(clip)) continue; // Transparent at click point → skip
+    hitClipIds.push(clip.id);
+  }
+  return hitClipIds;
+}
+
+describe('hit list building order (buildHitList)', () => {
+  it('topmost track clips appear first in hit list', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'top-clip', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'bottom-clip', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    const hits = buildHitList(tracks, 5);
+    expect(hits).toEqual(['top-clip', 'bottom-clip']);
+    // First hit = topmost visual layer
+    expect(hits[0]).toBe('top-clip');
+  });
+
+  it('selecting first hit gives the topmost clip', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'top', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'mid', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'bot', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    const hits = buildHitList(tracks, 5);
+    const result = applyClickCycle(100, 100, hits, null);
+    expect(result.selectedId).toBe('top');
+  });
+
+  it('skips audio and muted tracks', () => {
+    const tracks: MockTrack[] = [
+      { type: 'audio', muted: false, clips: [{ id: 'audio', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: true, clips: [{ id: 'muted', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'visible', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    const hits = buildHitList(tracks, 5);
+    expect(hits).toEqual(['visible']);
+  });
+
+  it('skips effect tracks', () => {
+    const tracks: MockTrack[] = [
+      { type: 'effect', muted: false, clips: [{ id: 'effect-clip', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'video-clip', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    const hits = buildHitList(tracks, 5);
+    expect(hits).toEqual(['video-clip']);
+  });
+
+  it('only includes clips at the current time', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [
+        { id: 'early', timelineStart: 0, timelineEnd: 5 },
+        { id: 'current', timelineStart: 5, timelineEnd: 10 },
+        { id: 'late', timelineStart: 10, timelineEnd: 15 },
+      ]},
+    ];
+    const hits = buildHitList(tracks, 7);
+    expect(hits).toEqual(['current']);
+  });
+
+  it('multiple clips from same track are included in array order', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [
+        { id: 'a', timelineStart: 0, timelineEnd: 10 },
+        { id: 'b', timelineStart: 0, timelineEnd: 10 },
+      ]},
+    ];
+    const hits = buildHitList(tracks, 5);
+    expect(hits).toEqual(['a', 'b']);
+  });
+});
+
+// ─── Transparency propagation tests ─────────────────────────────────────────
+//
+// These tests verify that transparent parts of elements propagate clicks
+// to lower layers. When a clip's hit test fails (transparent at click point),
+// it is skipped and the next layer below is tested.
+
+describe('transparency propagation', () => {
+  it('transparent top element passes click to element below', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'transparent-top', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'opaque-bottom', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    // Top clip is transparent at click point, bottom is opaque
+    const hits = buildHitList(tracks, 5, (clip) => clip.id !== 'transparent-top');
+    expect(hits).toEqual(['opaque-bottom']);
+
+    const result = applyClickCycle(100, 100, hits, null);
+    expect(result.selectedId).toBe('opaque-bottom');
+  });
+
+  it('partially transparent top allows both to be in hit list', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'top', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'bottom', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    // Both clips are opaque at click point
+    const hits = buildHitList(tracks, 5, () => true);
+    expect(hits).toEqual(['top', 'bottom']);
+    // First click selects topmost
+    const result = applyClickCycle(100, 100, hits, null);
+    expect(result.selectedId).toBe('top');
+  });
+
+  it('all transparent layers result in no selection', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'a', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'b', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    const hits = buildHitList(tracks, 5, () => false);
+    expect(hits).toEqual([]);
+
+    const result = applyClickCycle(100, 100, hits, null);
+    expect(result.selectedId).toBeNull();
+  });
+
+  it('middle layer transparent — top and bottom both in hit list', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'top', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'mid', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'bot', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    // Middle clip is transparent
+    const hits = buildHitList(tracks, 5, (clip) => clip.id !== 'mid');
+    expect(hits).toEqual(['top', 'bot']);
+
+    // First click selects top, cycling selects bot (skipping mid)
+    let cycle: CycleState | null = null;
+    const click1 = applyClickCycle(100, 100, hits, cycle);
+    expect(click1.selectedId).toBe('top');
+    cycle = click1.nextCycle;
+
+    const click2 = applyClickCycle(100, 100, hits, cycle);
+    expect(click2.selectedId).toBe('bot');
+  });
+
+  it('layer cycling integrates with transparency: cycles only through opaque hits', () => {
+    const tracks: MockTrack[] = [
+      { type: 'video', muted: false, clips: [{ id: 'a', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'b-transparent', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'c', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'd-transparent', timelineStart: 0, timelineEnd: 10 }] },
+      { type: 'video', muted: false, clips: [{ id: 'e', timelineStart: 0, timelineEnd: 10 }] },
+    ];
+    const hits = buildHitList(tracks, 5, (clip) => !clip.id.includes('transparent'));
+    expect(hits).toEqual(['a', 'c', 'e']);
+
+    // Full cycle: a → c → e → a
+    let cycle: CycleState | null = null;
+    const r1 = applyClickCycle(50, 50, hits, cycle);
+    expect(r1.selectedId).toBe('a');
+    cycle = r1.nextCycle;
+
+    const r2 = applyClickCycle(50, 50, hits, cycle);
+    expect(r2.selectedId).toBe('c');
+    cycle = r2.nextCycle;
+
+    const r3 = applyClickCycle(50, 50, hits, cycle);
+    expect(r3.selectedId).toBe('e');
+    cycle = r3.nextCycle;
+
+    const r4 = applyClickCycle(50, 50, hits, cycle);
+    expect(r4.selectedId).toBe('a');
   });
 });
