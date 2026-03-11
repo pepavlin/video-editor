@@ -35,6 +35,7 @@ COPY package.json package-lock.json ./
 
 # Copy ALL workspace package.json files so npm can resolve the monorepo
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/elements/package.json ./packages/elements/
 COPY apps/api/package.json ./apps/api/
 # Create empty web package.json so npm workspace glob doesn't fail
 COPY apps/web/package.json ./apps/web/
@@ -46,6 +47,11 @@ RUN npm ci --ignore-scripts
 COPY packages/shared/tsconfig.json ./packages/shared/
 COPY packages/shared/src ./packages/shared/src
 RUN npm run build -w packages/shared
+
+# Build elements package (depends on shared)
+COPY packages/elements/tsconfig.json ./packages/elements/
+COPY packages/elements/src ./packages/elements/src
+RUN npm run build -w packages/elements
 
 # Copy API source
 COPY apps/api/tsconfig.json ./apps/api/
