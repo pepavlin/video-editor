@@ -11,6 +11,7 @@ const buildId =
   process.env.NODE_ENV === 'development' ? 'development' : Date.now().toString();
 
 const nextConfig = {
+  transpilePackages: ['@video-editor/elements', '@video-editor/shared'],
   reactStrictMode: false, // disabled to avoid double-mount issues with WebAudio
   generateBuildId: async () => buildId,
   env: {
