@@ -13,7 +13,7 @@ interface Props {
   assets: Asset[];
   onAssetsChange: () => void;
   onDragAsset?: (assetId: string) => void;
-  assetJobs?: Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry }>;
+  assetJobs?: Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry; aiStyle?: AssetJobEntry }>;
   /** Called on mobile when user taps the "+" button to add an asset to the timeline. */
   onAddToTimeline?: (assetId: string, assetType: string, duration: number) => void;
 }
@@ -387,6 +387,7 @@ export default function MediaBin({ assets, onAssetsChange, onDragAsset, assetJob
                 onDragStart={handleAssetDragStart}
                 onAddToTimeline={onAddToTimeline}
                 cutoutJob={assetJobs?.[asset.id]?.cutout}
+                aiStyleJob={assetJobs?.[asset.id]?.aiStyle}
               />
             ))}
           </div>
@@ -403,6 +404,7 @@ function AssetItem({
   onDragStart,
   onAddToTimeline,
   cutoutJob,
+  aiStyleJob,
 }: {
   asset: Asset;
   index?: number;
@@ -410,6 +412,7 @@ function AssetItem({
   onDragStart: (e: React.DragEvent, asset: Asset) => void;
   onAddToTimeline?: (assetId: string, assetType: string, duration: number) => void;
   cutoutJob?: AssetJobEntry;
+  aiStyleJob?: AssetJobEntry;
 }) {
   const isVideo = asset.type === 'video';
   const isReady = !!asset.waveformPath;
@@ -418,6 +421,10 @@ function AssetItem({
   const isCutoutRunning = cutoutJob?.status === 'RUNNING' || cutoutJob?.status === 'QUEUED';
   const isCutoutDone = !!asset.maskPath;
   const isCutoutError = cutoutJob?.status === 'ERROR';
+
+  const isAiStyleRunning = aiStyleJob?.status === 'RUNNING' || aiStyleJob?.status === 'QUEUED';
+  const isAiStyleDone = !!asset.aiStylePath;
+  const isAiStyleError = aiStyleJob?.status === 'ERROR';
 
   const handleAddToTimeline = () => {
     if (!isReady || !onAddToTimeline) return;
@@ -561,6 +568,29 @@ function AssetItem({
               )}
               {isCutoutError && !isCutoutRunning && (
                 <span style={{ fontSize: 10, color: '#f87171' }}>Cutout error</span>
+              )}
+            </div>
+          )}
+          {/* AI Style status badge */}
+          {isVideo && (isAiStyleRunning || isAiStyleDone || isAiStyleError) && (
+            <div style={{ marginTop: 4 }}>
+              {isAiStyleRunning && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#fb923c' }}>AI Style: {aiStyleJob!.progress > 0 ? `${aiStyleJob!.progress}%` : '…'}</span>
+                  <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'rgba(251,146,60,0.18)', overflow: 'hidden', maxWidth: 60 }}>
+                    {aiStyleJob!.progress > 0 ? (
+                      <div style={{ height: '100%', borderRadius: 2, background: '#fb923c', width: `${aiStyleJob!.progress}%`, transition: 'width 0.35s ease' }} />
+                    ) : (
+                      <div style={{ height: '100%', width: '40%', borderRadius: 2, background: '#fb923c', animation: 'progressIndeterminate 1.4s ease-in-out infinite' }} />
+                    )}
+                  </div>
+                </div>
+              )}
+              {isAiStyleDone && !isAiStyleRunning && (
+                <span style={{ fontSize: 10, color: '#4ade80' }}>✓ AI Style ready</span>
+              )}
+              {isAiStyleError && !isAiStyleRunning && (
+                <span style={{ fontSize: 10, color: '#f87171' }}>AI Style error</span>
               )}
             </div>
           )}

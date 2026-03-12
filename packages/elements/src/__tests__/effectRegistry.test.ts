@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { EFFECT_REGISTRY } from '../index';
+import { EFFECT_REGISTRY, processCartoonFrame, processAiStyleFrame } from '../index';
 import type { Clip, Track, Project, BeatsData } from '@video-editor/shared';
 import type { ExportFilterContext } from '../types';
 
@@ -147,6 +147,18 @@ describe('EFFECT_REGISTRY', () => {
       expect(effect.export.buildFilter, `${effect.type} should have buildFilter`).toBeTypeOf('function');
       expect(effect.export.buildBaseModifier, `${effect.type} should NOT have buildBaseModifier`).toBeUndefined();
     }
+  });
+});
+
+// ─── Cartoon preview function exports ────────────────────────────────────────
+
+describe('Cartoon preview function exports', () => {
+  it('processCartoonFrame is exported and is a function', () => {
+    expect(processCartoonFrame).toBeTypeOf('function');
+  });
+
+  it('processAiStyleFrame is exported and is a function', () => {
+    expect(processAiStyleFrame).toBeTypeOf('function');
   });
 });
 

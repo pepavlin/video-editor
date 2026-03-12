@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { Project, Asset, BeatsData, Clip, Transform, TextStyle, RectangleStyle, CartoonEffect, LyricsStyle, WordTimestamp } from '@video-editor/shared';
+import { processAiStyleFrame } from '@video-editor/elements';
 import { getBeatZoomScale, clamp } from '@/lib/utils';
 
 // ─── Zoom constants ────────────────────────────────────────────────────────────
@@ -113,12 +114,12 @@ function getCartoonCanvases(iw: number, ih: number) {
 }
 
 /**
- * Process a cartoon frame into the offscreen base canvas and return it.
+ * Process a classic cartoon frame into the offscreen base canvas and return it.
  * Does NOT blit to the main canvas — callers decide what to do with the result.
  *
  * Returns null if the offscreen context could not be obtained (extremely rare).
  */
-function processCartoonFrame(
+function processClassicCartoonFrame(
   videoEl: HTMLVideoElement,
   bounds: Bounds,
   effect: import('@video-editor/shared').EffectClipConfig
@@ -197,6 +198,20 @@ function processCartoonFrame(
   }
 
   return base;
+}
+
+/**
+ * Process a cartoon frame — dispatches to classic or AI style based on cartoonMode.
+ */
+function processCartoonFrame(
+  videoEl: HTMLVideoElement,
+  bounds: Bounds,
+  effect: import('@video-editor/shared').EffectClipConfig
+): HTMLCanvasElement | null {
+  if (effect.cartoonMode === 'aiStyle') {
+    return processAiStyleFrame(videoEl, bounds, effect);
+  }
+  return processClassicCartoonFrame(videoEl, bounds, effect);
 }
 
 /**
