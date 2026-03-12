@@ -12,8 +12,8 @@ COPY apps/web/package.json ./apps/web/
 # Create empty api package.json so npm workspace glob doesn't fail
 COPY apps/api/package.json ./apps/api/
 
-# Install all deps
-RUN npm ci --ignore-scripts
+# Install all deps and clean cache in same layer to save space (VFS driver)
+RUN npm ci --ignore-scripts && npm cache clean --force
 
 # Copy shared + elements source, build them, then copy web source and build it
 COPY packages/shared ./packages/shared
@@ -29,6 +29,9 @@ RUN npm run build -w packages/shared \
     && npm run build -w packages/elements \
     && npm run build -w apps/web
 
+# Prune dev dependencies so we can copy clean node_modules to production
+RUN npm prune --omit=dev && npm cache clean --force
+
 # --- Production stage ---
 FROM node:20-slim
 
@@ -43,10 +46,14 @@ COPY --from=builder /app/packages/elements/dist ./packages/elements/dist
 COPY --from=builder /app/apps/web/package.json ./apps/web/
 COPY --from=builder /app/apps/web/.next ./apps/web/.next
 COPY --from=builder /app/apps/web/next.config.mjs ./apps/web/
-COPY --from=builder /app/apps/api/package.json ./apps/api/
 
-# Install production deps only
-RUN npm ci --omit=dev --ignore-scripts
+# Stub api package.json so npm workspace resolution works
+RUN mkdir -p apps/api && echo '{"name":"@video-editor/api","version":"1.0.0","private":true}' > apps/api/package.json
+
+# Copy pre-pruned node_modules from builder instead of re-running npm ci
+# This avoids a second install pass and saves significant disk space
+# All deps are hoisted to root node_modules in npm workspaces
+COPY --from=builder /app/node_modules ./node_modules
 
 ENV NODE_ENV=production
 ENV PORT=3000
