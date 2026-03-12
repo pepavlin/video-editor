@@ -333,8 +333,9 @@ const cutoutExport: EffectExportApi = {
     const { W, H } = context;
     const transform = clip.transform ?? { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
     const scale = Math.max(0.01, transform.scale);
-    const scaledW = Math.round(W * scale);
-    const scaledH = Math.round(H * scale);
+    // Round to nearest even number — required for yuv420p format and libx264 encoding
+    const scaledW = Math.round(W * scale / 2) * 2 || 2;
+    const scaledH = Math.round(H * scale / 2) * 2 || 2;
 
     const mode = cfg.cutoutMode ?? 'removeBg';
     const bgColor = (cfg.background?.color ?? '#000000').replace('#', '0x');

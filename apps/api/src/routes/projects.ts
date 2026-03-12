@@ -548,7 +548,11 @@ export async function projectsRoutes(app: FastifyInstance) {
         }
         args.push(outputPath);
 
-        // Log the full command for debugging
+        // Log the full command and filter_complex for debugging
+        const fcArgIdx = args.indexOf('-filter_complex');
+        if (fcArgIdx >= 0) {
+          ws.appendJobLog(job.id, `[export] filter_complex:\n${args[fcArgIdx + 1].replace(/; /g, ';\n  ')}`);
+        }
         ws.appendJobLog(job.id, `[export] cmd: ${cmd} ${args.join(' ')}`);
         ws.appendJobLog(job.id, `[export] running ffmpeg...`);
 
@@ -561,8 +565,8 @@ export async function projectsRoutes(app: FastifyInstance) {
 
           const updateProgress = (line: string) => {
             ws.appendJobLog(job.id, line);
-            // Collect recent stderr lines for error reporting
-            if (errorLines.length >= 20) errorLines.shift();
+            // Collect recent stderr lines for error reporting (keep more for diagnostics)
+            if (errorLines.length >= 50) errorLines.shift();
             errorLines.push(line);
             const timeMatch = line.match(/time=(\d+):(\d+):(\d+\.\d+)/);
             if (timeMatch) {
@@ -581,16 +585,19 @@ export async function projectsRoutes(app: FastifyInstance) {
               const exitInfo = code !== null ? `code ${code}` : `signal ${signal ?? 'unknown'}`;
               // Prefer lines that look like actual errors; skip ffmpeg startup noise
               const startupNoise = /press \[q\]|ffmpeg version|built with|configuration:|lib[a-z]+\s+\d/i;
-              const errorDetail = errorLines
-                .filter((l) => !startupNoise.test(l) && /error|invalid|unknown|not found|failed|abort/i.test(l))
-                .pop()
+              const errorKeywords = /error|invalid|unknown|not found|failed|abort|conversion|no such|impossible|does not|cannot/i;
+              const meaningfulErrors = errorLines
+                .filter((l) => !startupNoise.test(l) && errorKeywords.test(l));
+              const errorDetail = meaningfulErrors.pop()
                 ?? errorLines.filter((l) => !startupNoise.test(l)).pop()
                 ?? errorLines[errorLines.length - 1]
                 ?? '';
-              reject(new Error(`ffmpeg exited with ${exitInfo}${errorDetail ? `: ${errorDetail.slice(0, 300)}` : ''}`));
+              reject(new Error(`ffmpeg exited with ${exitInfo}${errorDetail ? `: ${errorDetail.slice(0, 500)}` : ''}`));
             }
           });
-          child.on('error', reject);
+          child.on('error', (err) => {
+            reject(new Error(`Failed to spawn ffmpeg: ${err.message}`));
+          });
         });
 
         jq.setJobDone(job.id, outputPath);

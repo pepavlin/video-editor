@@ -232,8 +232,9 @@ const videoClipExport: ClipExportApi = {
     const ty = Math.round(transform.y);
 
     // Scale to fill canvas with aspect-aware scaling
-    const scaledW = Math.round(W * scale);
-    const scaledH = Math.round(H * scale);
+    // Round to nearest even number — libx264 and yuv420p require even dimensions
+    const scaledW = Math.round(W * scale / 2) * 2 || 2;
+    const scaledH = Math.round(H * scale / 2) * 2 || 2;
     const posX = Math.round((W - scaledW) / 2 + tx);
     const posY = Math.round((H - scaledH) / 2 + ty);
 

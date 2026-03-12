@@ -209,8 +209,9 @@ export class ExportPipeline {
     const filterParts: string[] = [];
     let filterIdx = 0;
 
-    // 1. Base canvas (black background at 30fps)
-    filterParts.push(`color=c=black:s=${W}x${H}:r=30[base]`);
+    // 1. Base canvas (black background at 30fps, explicit yuv420p to avoid
+    //    format negotiation issues with overlay — color source defaults to yuv444p)
+    filterParts.push(`color=c=black:s=${W}x${H}:r=30,format=yuv420p[base]`);
     let prevPad = 'base';
 
     // 2. ALL visual clips (reversed track order: top track renders last = on top)
@@ -310,12 +311,19 @@ export class ExportPipeline {
     }
 
     if (audioInputPads.length > 1) {
+      // Mix multiple audio streams and normalize format for AAC encoding
       filterParts.push(
-        `${audioInputPads.join('')}amix=inputs=${audioInputPads.length}[aout]`
+        `${audioInputPads.join('')}amix=inputs=${audioInputPads.length},aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]`
       );
       return '[aout]';
     } else if (audioInputPads.length === 1) {
-      return audioInputPads[0];
+      // Normalize the single audio stream format for reliable AAC encoding
+      // (WAV/PCM inputs may use s16/s32 sample formats that some AAC encoders reject)
+      const normPad = 'anorm';
+      filterParts.push(
+        `${audioInputPads[0]}aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[${normPad}]`
+      );
+      return `[${normPad}]`;
     }
 
     return null;
