@@ -133,9 +133,9 @@ export function applyPaste(project: Project, clipboard: ClipboardData): { projec
     });
   }
 
-  // Insert: effect tracks first (they render above), then the new video track.
-  // This matches the convention where effect tracks sit directly above their parent.
-  const updatedTracks = [...project.tracks, ...newEffectTracks, newTrack];
+  // Insert at the beginning so the pasted element appears in the foreground.
+  // Effect tracks sit directly above (smaller index than) their parent track.
+  const updatedTracks = [...newEffectTracks, newTrack, ...project.tracks];
 
   return {
     project: { ...project, updatedAt: new Date().toISOString(), tracks: updatedTracks },
