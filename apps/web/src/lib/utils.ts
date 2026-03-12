@@ -134,6 +134,66 @@ export function getBeatZoomScale(
   return 1;
 }
 
+// ─── Effect-parent group computation ─────────────────────────────────────────
+
+/** RGB color strings for each effect type (used for canvas rendering). */
+export const EFFECT_COLOR_MAP: Record<string, string> = {
+  beatZoom: '251,146,60',
+  cutout: '217,70,239',
+  headStabilization: '56,189,248',
+  cartoon: '132,204,22',
+  colorGrade: '251,146,60',
+};
+
+/** Describes a group of effect tracks and their parent video track. */
+export interface EffectGroup {
+  parentIdx: number;
+  effectIndices: number[];
+  effectColors: string[];
+}
+
+/**
+ * Build a map of parentTrackId → EffectGroup for all effect tracks.
+ * Used in Timeline rendering to visually connect effects to their parent tracks.
+ */
+export function buildEffectGroups(tracks: Track[]): Map<string, EffectGroup> {
+  const groups = new Map<string, EffectGroup>();
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    if (t.type === 'effect' && t.parentTrackId) {
+      const parentIdx = tracks.findIndex(pt => pt.id === t.parentTrackId);
+      if (parentIdx >= 0) {
+        if (!groups.has(t.parentTrackId!)) {
+          groups.set(t.parentTrackId!, { parentIdx, effectIndices: [], effectColors: [] });
+        }
+        const group = groups.get(t.parentTrackId!)!;
+        group.effectIndices.push(i);
+        group.effectColors.push(EFFECT_COLOR_MAP[t.effectType ?? 'beatZoom'] ?? '251,146,60');
+      }
+    }
+  }
+  return groups;
+}
+
+/**
+ * Compute track Y positions given an array of tracks and track height function.
+ * Returns an array with the Y offset for each track.
+ */
+export function computeTrackYPositions(
+  tracks: Track[],
+  rulerHeight: number,
+  scrollTop: number,
+  getHeight: (t: Track) => number
+): number[] {
+  const positions: number[] = [];
+  let y = rulerHeight - scrollTop;
+  for (let i = 0; i < tracks.length; i++) {
+    positions.push(y);
+    y += getHeight(tracks[i]);
+  }
+  return positions;
+}
+
 // ─── Clamp ────────────────────────────────────────────────────────────────────
 
 export function clamp(v: number, min: number, max: number): number {
