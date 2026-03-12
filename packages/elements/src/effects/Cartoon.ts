@@ -16,6 +16,11 @@
  * Implementation note: Preview uses Sobel kernel at half resolution for
  * performance. Export uses FFmpeg's edgedetect filter which produces similar
  * results via Canny. Both use multiply blend mode to darken edges on the base.
+ *
+ * Export blending is performed in planar RGB (gbrp) to avoid YUV chroma
+ * corruption. The edgedetect colormix output has U=128, V=128 for non-edge
+ * (white) regions — multiplying in YUV would halve chroma channels. In gbrp,
+ * white regions are R=G=B=255, so multiply correctly preserves all colors.
  */
 
 import type { Clip, Track, EffectClipConfig } from '@video-editor/shared';
@@ -178,12 +183,18 @@ const cartoonExport: EffectExportApi = {
 
   /**
    * Builds an FFmpeg filter chain that approximates the cartoon look:
-   *   split → [hqdn3d blur + eq saturate] + [edgedetect] → blend multiply
+   *   split → [hqdn3d blur → gbrp] + [edgedetect → gbrp] → blend multiply → yuv420p → eq sat
    *
    * Maps to preview params:
    *   colorSimplification → hqdn3d spatial/temporal strength
    *   edgeStrength        → edgedetect low/high thresholds
    *   saturation          → eq saturation
+   *
+   * The multiply blend is performed in planar RGB (gbrp) to avoid YUV chroma
+   * corruption. The edgedetect colormix output uses white (Y=255, U=128, V=128)
+   * for non-edge regions. In YUV, multiply with U=128 halves the chroma:
+   * blur_U * 128/255 ≈ 0.5 * blur_U. In gbrp, white is R=G=B=255, so multiply
+   * correctly preserves colors: blur_R * 255/255 = blur_R.
    */
   buildFilter(
     inputPad: string,
@@ -211,18 +222,24 @@ const cartoonExport: EffectExportApi = {
 
     const split1 = `czs1_${filterIdx}`;
     const split2 = `czs2_${filterIdx}`;
-    const blur = `czb_${filterIdx}`;
-    const edge = `cze_${filterIdx}`;
-    const blend = `czbd_${filterIdx}`;
+    const blurYuv = `czb_${filterIdx}`;
+    const blurRgb = `czb_rgb_${filterIdx}`;
+    const edgeYuv = `cze_${filterIdx}`;
+    const edgeRgb = `cze_rgb_${filterIdx}`;
+    const blendRgb = `czbd_rgb_${filterIdx}`;
+    const blendYuv = `czbd_${filterIdx}`;
     const out = `cz_${filterIdx}`;
 
     return {
       filters: [
         `[${inputPad}]split[${split1}][${split2}]`,
-        `[${split1}]hqdn3d=${ls}:${chs}:${lt}:${ct}[${blur}]`,
-        `[${split2}]edgedetect=low=${edgeLow}:high=${edgeHigh}:mode=colormix[${edge}]`,
-        `[${blur}][${edge}]blend=all_mode=multiply[${blend}]`,
-        `[${blend}]eq=saturation=${sat}[${out}]`,
+        // Apply hqdn3d blur in YUV (where it operates natively), then convert to gbrp
+        `[${split1}]hqdn3d=${ls}:${chs}:${lt}:${ct},format=gbrp[${blurRgb}]`,
+        // Edge detection in YUV (native), then convert to gbrp for blending
+        `[${split2}]edgedetect=low=${edgeLow}:high=${edgeHigh}:mode=colormix,format=gbrp[${edgeRgb}]`,
+        // Multiply blend in RGB — white (255,255,255) preserves colors correctly
+        `[${blurRgb}][${edgeRgb}]blend=all_mode=multiply,format=yuv420p[${blendYuv}]`,
+        `[${blendYuv}]eq=saturation=${sat}[${out}]`,
       ],
       outputPad: out,
     };

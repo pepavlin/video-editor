@@ -375,12 +375,19 @@ All visual scaling is done by a CSS `transform: scale(viewZoom)` on the zoom-wra
 |---------|---------|--------|
 | ColorGrade shadows/highlights | ✅ Per-pixel Canvas (quadratic curve) | ✅ FFmpeg geq with identical formula (format=rgb24 conversion) |
 | Cutout mask refinement | ✅ Canvas threshold + blur filter + pixel ops | ✅ FFmpeg lutyuv + maximum/minimum + gblur |
+| Cutout blending | Canvas 2D destination-in composite | FFmpeg multiply+addition blend in **gbrp** (planar RGB) |
+| Cartoon blending | Canvas 2D multiply composite | FFmpeg multiply blend in **gbrp** (planar RGB) |
 | Rectangle border radius | ✅ Canvas arcTo | ❌ FFmpeg drawbox has no border-radius (sharp corners) |
 | Font rendering | Browser system fonts | Server system fonts (must be installed) |
 | Cartoon edges | Sobel kernel (Canvas) | Canny via `edgedetect` filter (visually similar) |
 
 > **ColorGrade note**: Shadows/highlights use `format=rgb24 → geq → format=yuv420p` in export.
 > The geq expression matches the preview formula exactly: `v_out = clamp(v + s*(1-v)^2 + h*v^2, 0, 1)`
+>
+> **Cutout/Cartoon blending note**: Both effects perform their multiply blends in planar RGB (gbrp) color space,
+> not in YUV420p. This is necessary because grayscale mask values have U=128, V=128 in YUV — multiplying in YUV
+> would halve chroma channels, causing severe color desaturation. In gbrp, white is R=G=B=255 and black is
+> R=G=B=0, so multiply correctly preserves all color channels.
 
 ---
 
@@ -413,6 +420,13 @@ Three adjustable parameters in the effect UI, applied per-frame in real-time:
 4. Convert processed luminance → alpha channel
 
 **Export processing order** (FFmpeg filters):
-1. `lutyuv=y='if(gte(val,T),255,0)'` — threshold
+1. `lutyuv=y='if(gte(val,T),255,0)'` — threshold (in YUV, operates on Y channel)
 2. `maximum=radius=1` (repeated N times) for expand, or `minimum=radius=1` for contract
 3. `gblur=sigma=B` — edge feathering
+4. `format=gbrp` — convert processed mask to planar RGB for correct blending
+
+**Export compositing** (after mask processing):
+- Mask, clip, and background are all converted to `gbrp` (planar RGB)
+- `blend=all_mode=multiply` in RGB correctly masks both luminance and color channels
+- `blend=all_mode=addition` composites the subject and background regions
+- Final output is converted back to `format=yuv420p` for downstream effects
