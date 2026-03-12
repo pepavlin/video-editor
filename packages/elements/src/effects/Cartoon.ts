@@ -5,8 +5,9 @@
  *
  * ┌────────────────────────────────────────────────────────────────────────────┐
  * │  MODE: classic — edge-detection cartoon                                    │
- * │    PREVIEW: Canvas 2D — blur + Sobel edge detection + multiply blend       │
- * │    EXPORT:  FFmpeg — hqdn3d + edgedetect + blend multiply + eq sat         │
+ * │    PREVIEW: Canvas 2D — blur + posterize + Sobel edges + multiply blend   │
+ * │    EXPORT:  FFmpeg — smartblur + lutrgb + edgedetect(wires) + negate      │
+ * │                       + blend multiply + eq saturation                     │
  * ├────────────────────────────────────────────────────────────────────────────┤
  * │  MODE: aiStyle — painterly stylization (EbSynth-like)                      │
  * │    PREVIEW: Canvas 2D — blur + posterize + warm tones (approximation)      │
@@ -84,6 +85,13 @@ function getAiStyleCanvas(iw: number, ih: number): HTMLCanvasElement {
  * Process a source image through the classic cartoon pipeline and return the result canvas.
  * Accepts any EffectSource so it can chain after Cutout or other effects.
  * Returns null if the offscreen context cannot be obtained (extremely rare).
+ *
+ * Pipeline:
+ *   1. Smooth colors with CSS blur (GPU-accelerated bilateral approximation)
+ *   2. Posterize: quantize colors to flat levels for a cartoon/cel-shaded look
+ *   3. Boost saturation (cartoons are more colorful)
+ *   4. Sobel edge detection at half-res for bold black outlines
+ *   5. Multiply-blend edges onto the posterized base
  */
 export function processCartoonFrame(
   source: EffectSource,
@@ -101,17 +109,67 @@ export function processCartoonFrame(
   const colorSimplification = cfg.colorSimplification ?? 0.3;
   const saturation = cfg.saturation ?? 1.4;
   const edgeStrengthVal = cfg.edgeStrength ?? 0.5;
-  const blurPx = colorSimplification * 5;
+  // Scale blur: 1–8 px based on simplification (enough to flatten gradients)
+  const blurPx = 1 + colorSimplification * 7;
 
-  // 1. Color-simplified base: blur + saturation boost
+  // 1. Color-simplified base: blur (flattens gradients within regions)
   baseCtx.clearRect(0, 0, iw, ih);
-  baseCtx.filter = blurPx > 0.1
-    ? `blur(${blurPx.toFixed(1)}px) saturate(${saturation.toFixed(2)})`
-    : `saturate(${saturation.toFixed(2)})`;
+  baseCtx.filter = `blur(${blurPx.toFixed(1)}px)`;
   baseCtx.drawImage(source, 0, 0, iw, ih);
   baseCtx.filter = 'none';
 
-  // 2. Edge detection at half resolution (Sobel kernel)
+  // 2. Posterize + saturate via pixel manipulation
+  //    This is the key step that creates the "cartoon" look — flat color regions
+  //    instead of smooth gradients.
+  try {
+    const imgData = baseCtx.getImageData(0, 0, iw, ih);
+    const data = imgData.data;
+    // Number of color levels: fewer levels = more cartoon-like.
+    // Range: 6 levels (heavy simplification) to 32 levels (subtle).
+    const levels = Math.max(4, Math.round(32 - colorSimplification * 26));
+    const step = 256 / levels;
+
+    // Saturation is applied per-pixel in HSL-like space for accuracy
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i];
+      let g = data[i + 1];
+      let b = data[i + 2];
+
+      // Posterize: quantize each channel to N levels, centering within each step
+      r = Math.min(255, Math.floor(r / step) * step + step * 0.5);
+      g = Math.min(255, Math.floor(g / step) * step + step * 0.5);
+      b = Math.min(255, Math.floor(b / step) * step + step * 0.5);
+
+      // Saturation boost: scale deviation from luminance
+      if (saturation !== 1) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = Math.max(0, Math.min(255, lum + (r - lum) * saturation));
+        g = Math.max(0, Math.min(255, lum + (g - lum) * saturation));
+        b = Math.max(0, Math.min(255, lum + (b - lum) * saturation));
+      }
+
+      data[i] = Math.round(r);
+      data[i + 1] = Math.round(g);
+      data[i + 2] = Math.round(b);
+    }
+    baseCtx.putImageData(imgData, 0, 0);
+  } catch (err) {
+    // Fallback: apply saturation via CSS filter if pixel access fails (e.g. tainted canvas)
+    console.warn('[CartoonEffect] Posterization failed, applying CSS saturate fallback:', err);
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = iw;
+    tmpCanvas.height = ih;
+    const tmpCtx = tmpCanvas.getContext('2d');
+    if (tmpCtx) {
+      tmpCtx.drawImage(base, 0, 0);
+      baseCtx.clearRect(0, 0, iw, ih);
+      baseCtx.filter = `saturate(${saturation.toFixed(2)})`;
+      baseCtx.drawImage(tmpCanvas, 0, 0);
+      baseCtx.filter = 'none';
+    }
+  }
+
+  // 3. Edge detection at half resolution (Sobel kernel) for bold cartoon outlines
   try {
     edgeCtx.clearRect(0, 0, ew, eh);
     edgeCtx.drawImage(source, 0, 0, ew, eh);
@@ -127,7 +185,11 @@ export function processCartoonFrame(
       gray[i] = 0.299 * srcData[p] + 0.587 * srcData[p + 1] + 0.114 * srcData[p + 2];
     }
 
-    const rawThreshold = (1 - edgeStrengthVal) * 200;
+    // Lower threshold = more edges detected (bolder outlines)
+    // Range: edgeStrength=0 → threshold=120 (few edges), edgeStrength=1 → threshold=15 (many edges)
+    const rawThreshold = 15 + (1 - edgeStrengthVal) * 105;
+    // Transition zone: how quickly edge fades from full black to nothing
+    const transitionWidth = rawThreshold * 0.4;
 
     // Sobel operator
     for (let y = 0; y < eh; y++) {
@@ -146,23 +208,25 @@ export function processCartoonFrame(
           const gy = -tl - 2 * tm - tr + bl + 2 * bm + br;
           const mag = Math.sqrt(gx * gx + gy * gy);
           if (mag > rawThreshold) {
-            edgeVal = Math.max(0, 255 - (mag - rawThreshold) * edgeStrengthVal * 4);
+            // Sharp transition: quickly goes to black for a bold cartoon outline
+            const t = Math.min(1, (mag - rawThreshold) / transitionWidth);
+            edgeVal = Math.round(255 * (1 - t));
           }
         }
         const idx = (y * ew + x) * 4;
-        dst[idx] = dst[idx + 1] = dst[idx + 2] = Math.round(edgeVal);
+        dst[idx] = dst[idx + 1] = dst[idx + 2] = edgeVal;
         dst[idx + 3] = 255;
       }
     }
     edgeCtx.putImageData(edgeImageData, 0, 0);
 
-    // 3. Multiply edges onto the base (darkens edges, creates cartoon lines)
+    // 4. Multiply edges onto the posterized base (darkens where edges are black → cartoon outlines)
     baseCtx.save();
     baseCtx.globalCompositeOperation = 'multiply';
     baseCtx.drawImage(edge, 0, 0, ew, eh, 0, 0, iw, ih);
     baseCtx.restore();
   } catch (err) {
-    console.warn('[CartoonEffect] Edge detection failed (falling back to blur/saturation):', err);
+    console.warn('[CartoonEffect] Edge detection failed (returning posterized base):', err);
   }
 
   return base;
@@ -280,6 +344,22 @@ const cartoonPreview: EffectPreviewApi = {
 
 // ─── Export: classic cartoon filter chain builder ────────────────────────────────
 
+/**
+ * Builds FFmpeg filter chain for classic cartoon effect.
+ *
+ * Pipeline:
+ *   [input] → split → [path A: smooth + posterize (lutrgb)] → format=gbrp
+ *                    → [path B: edgedetect(wires) + negate] → format=gbrp
+ *             → blend=multiply (dark outlines on posterized colors)
+ *             → format=yuv420p → eq=saturation
+ *
+ * Key design decisions:
+ * - smartblur for edge-preserving smoothing (better than hqdn3d which is a denoiser)
+ * - lutrgb for color quantization/posterization (the essential cartoon look)
+ * - edgedetect mode=wires + negate → black edges on white background
+ *   so multiply blend darkens exactly where edges are (cartoon outlines)
+ * - Blending in gbrp (planar RGB) avoids YUV chroma corruption artifacts
+ */
 function buildClassicFilter(
   inputPad: string,
   cfg: EffectClipConfig,
@@ -289,19 +369,27 @@ function buildClassicFilter(
   const es = cfg.edgeStrength ?? 0.6;
   const sat = Math.max(0, Math.min(3, cfg.saturation ?? 1.5)).toFixed(2);
 
-  // hqdn3d: luma_spatial, chroma_spatial, luma_tmp, chroma_tmp
-  const ls = (1 + cs * 8).toFixed(1);
-  const chs = (1 + cs * 6).toFixed(1);
-  const lt = (2 + cs * 6).toFixed(1);
-  const ct = (2 + cs * 6).toFixed(1);
+  // smartblur: edge-adaptive blur (flattens gradients while keeping edges)
+  // lr=1.5–5.0 based on color simplification
+  const blurRadius = (1.5 + cs * 3.5).toFixed(2);
+  // ls=0.5–1.0: positive = blur (not sharpen)
+  const blurStrength = (0.5 + cs * 0.5).toFixed(2);
 
-  // edgedetect thresholds
-  const edgeLow = (es * 0.06).toFixed(3);
-  const edgeHigh = (0.05 + es * 0.20).toFixed(3);
+  // lutrgb: color posterization — quantize each channel to N levels
+  // step=10 (many levels, subtle) to step=48 (few levels, heavy cartoon)
+  const lutStep = Math.max(8, Math.round(10 + cs * 38));
+  // Center each quantized value in its bucket for better color reproduction
+  const halfStep = Math.round(lutStep / 2);
+  const lutExpr = `'clip(trunc(val/${lutStep})*${lutStep}+${halfStep},0,255)'`;
+
+  // edgedetect: mode=wires produces white edges on black background
+  // After negate: black edges on white → multiply darkens where edges are
+  const edgeLow = (0.02 + es * 0.08).toFixed(3);   // 0.02–0.10
+  const edgeHigh = (0.05 + es * 0.25).toFixed(3);   // 0.05–0.30
 
   const split1 = `czs1_${filterIdx}`;
   const split2 = `czs2_${filterIdx}`;
-  const blurRgb = `czb_rgb_${filterIdx}`;
+  const flatRgb = `czf_rgb_${filterIdx}`;
   const edgeRgb = `cze_rgb_${filterIdx}`;
   const blendYuv = `czbd_${filterIdx}`;
   const out = `cz_${filterIdx}`;
@@ -309,12 +397,13 @@ function buildClassicFilter(
   return {
     filters: [
       `[${inputPad}]split[${split1}][${split2}]`,
-      // Apply hqdn3d blur in YUV (where it operates natively), then convert to gbrp
-      `[${split1}]hqdn3d=${ls}:${chs}:${lt}:${ct},format=gbrp[${blurRgb}]`,
-      // Edge detection in YUV (native), then convert to gbrp for blending
-      `[${split2}]edgedetect=low=${edgeLow}:high=${edgeHigh}:mode=colormix,format=gbrp[${edgeRgb}]`,
-      // Multiply blend in RGB — white (255,255,255) preserves colors correctly
-      `[${blurRgb}][${edgeRgb}]blend=all_mode=multiply,format=yuv420p[${blendYuv}]`,
+      // Path A: smooth + posterize → flat cartoon colors
+      `[${split1}]smartblur=lr=${blurRadius}:ls=${blurStrength}:cr=${blurRadius}:cs=${blurStrength},lutrgb=r=${lutExpr}:g=${lutExpr}:b=${lutExpr},format=gbrp[${flatRgb}]`,
+      // Path B: edge detection → black outlines on white
+      `[${split2}]edgedetect=low=${edgeLow}:high=${edgeHigh}:mode=wires,negate,format=gbrp[${edgeRgb}]`,
+      // Multiply: where edges are black (0), result is black (dark outlines);
+      //           where edges are white (255), posterized colors are preserved
+      `[${flatRgb}][${edgeRgb}]blend=all_mode=multiply,format=yuv420p[${blendYuv}]`,
       `[${blendYuv}]eq=saturation=${sat}[${out}]`,
     ],
     outputPad: out,
