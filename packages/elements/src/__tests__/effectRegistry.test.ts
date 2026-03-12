@@ -207,7 +207,7 @@ describe('Cartoon.export.buildFilter', () => {
     expect(result).toBeNull();
   });
 
-  it('generates split → hqdn3d → edgedetect → blend → eq filter chain', () => {
+  it('generates split → smartblur+lutrgb → edgedetect+negate → blend → eq filter chain', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cartoon');
@@ -224,11 +224,39 @@ describe('Cartoon.export.buildFilter', () => {
 
     const filterStr = result!.filters.join('; ');
     expect(filterStr).toContain('split');
-    expect(filterStr).toContain('hqdn3d');
+    // Path A: smoothing + posterization
+    expect(filterStr).toContain('smartblur');
+    expect(filterStr).toContain('lutrgb');
+    // Path B: edge detection (wires mode) + negate for black outlines on white
     expect(filterStr).toContain('edgedetect');
+    expect(filterStr).toContain('mode=wires');
+    expect(filterStr).toContain('negate');
+    // Combine + final saturation
     expect(filterStr).toContain('blend');
     expect(filterStr).toContain('eq=saturation=');
     expect(result!.outputPad).toBe('cz_5');
+  });
+
+  it('uses lutrgb for color posterization to create flat cartoon regions', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      colorSimplification: 0.5,
+      edgeStrength: 0.6,
+      saturation: 1.5,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({ project });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // lutrgb should quantize all three channels using trunc
+    expect(filterStr).toMatch(/lutrgb=r='clip\(trunc/);
+    expect(filterStr).toMatch(/:g='clip\(trunc/);
+    expect(filterStr).toMatch(/:b='clip\(trunc/);
   });
 
   it('performs multiply blend in gbrp color space to avoid YUV chroma corruption', () => {
@@ -247,14 +275,14 @@ describe('Cartoon.export.buildFilter', () => {
     expect(result).not.toBeNull();
 
     const filterStr = result!.filters.join('; ');
-    // hqdn3d output must be converted to gbrp before blend
-    expect(filterStr).toContain('hqdn3d=');
-    expect(filterStr).toMatch(/hqdn3d=[^[]*format=gbrp/);
-    // edgedetect output must be converted to gbrp before blend
+    // Smoothed+posterized output must be converted to gbrp before blend
+    expect(filterStr).toContain('smartblur=');
+    expect(filterStr).toMatch(/lutrgb=[^[]*format=gbrp/);
+    // Edge detection (wires+negate) output must be converted to gbrp before blend
     expect(filterStr).toContain('edgedetect=');
-    expect(filterStr).toMatch(/edgedetect=[^[]*format=gbrp/);
+    expect(filterStr).toMatch(/negate,format=gbrp/);
     // blend output must be converted back to yuv420p before eq
-    expect(filterStr).toMatch(/blend=all_mode=multiply[^[]*format=yuv420p/);
+    expect(filterStr).toMatch(/blend=all_mode=multiply,format=yuv420p/);
   });
 });
 
@@ -352,10 +380,12 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     expect(result).not.toBeNull();
 
     const filterStr = result!.filters.join('; ');
-    // Classic mode should still use split/hqdn3d/edgedetect
+    // Classic mode should use split/smartblur+lutrgb/edgedetect+negate
     expect(filterStr).toContain('split');
-    expect(filterStr).toContain('hqdn3d');
+    expect(filterStr).toContain('smartblur');
+    expect(filterStr).toContain('lutrgb');
     expect(filterStr).toContain('edgedetect');
+    expect(filterStr).toContain('negate');
     expect(result!.outputPad).toBe('cz_0');
   });
 });
