@@ -654,6 +654,41 @@ function getHandlePositions(bounds: Bounds): Record<Handle, [number, number]> {
   };
 }
 
+/**
+ * Returns handle positions rotated around the element center.
+ * The SVG overlay applies a rotation transform to the handle group, so the
+ * visual handle positions differ from the raw (unrotated) positions when
+ * rotation != 0.  This function computes the actual screen-space positions
+ * that match what the user sees, enabling correct hit-testing.
+ */
+function getRotatedHandlePositions(
+  bounds: Bounds,
+  rotation: number,
+): Record<Handle, [number, number]> {
+  const handles = getHandlePositions(bounds);
+  if (rotation === 0) return handles;
+
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const rotatePoint = (px: number, py: number): [number, number] => {
+    const dx = px - cx;
+    const dy = py - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  };
+
+  return {
+    tl: rotatePoint(...handles.tl),
+    tr: rotatePoint(...handles.tr),
+    bl: rotatePoint(...handles.bl),
+    br: rotatePoint(...handles.br),
+    rotate: rotatePoint(...handles.rotate),
+  };
+}
+
 // ─── Canvas drawing helpers ───────────────────────────────────────────────────
 
 function drawTextClip(
@@ -1650,7 +1685,8 @@ export default function Preview({
 
           const bounds = getClipBounds(selClip, transform, W, H, ctx);
           if (bounds) {
-            const handles = getHandlePositions(bounds);
+            const rotation = transform.rotation ?? 0;
+            const handles = getRotatedHandlePositions(bounds, rotation);
 
             // Check rotation handle
             const [rhx, rhy] = handles.rotate;
@@ -1686,6 +1722,25 @@ export default function Preview({
                 e.preventDefault();
                 return;
               }
+            }
+
+            // If the click is on the body of the selected clip (not on a handle),
+            // start a move drag directly — bypass the hit-list cycling logic so
+            // the selection stays on the current element instead of cycling to
+            // the next layer below.
+            if (isInRotatedRect(mx, my, bounds, rotation)) {
+              dragRef.current = {
+                type: 'move',
+                clipId: selectedClipId,
+                startMouseX: mx, startMouseY: my,
+                startTX: transform.x, startTY: transform.y,
+                boundsW: bounds.w, boundsH: bounds.h,
+                offsetX: bounds.x - transform.x,
+                offsetY: bounds.y - transform.y,
+              };
+              liveTransformRef.current = { clipId: selectedClipId, transform: { ...transform } };
+              e.preventDefault();
+              return;
             }
           }
         }
@@ -1896,7 +1951,8 @@ export default function Preview({
             : (selClip.transform ?? { ...DEFAULT_TRANSFORM });
           const bounds = getClipBounds(selClip, transform, W, H, ctx);
           if (bounds) {
-            const handles = getHandlePositions(bounds);
+            const rotation = transform.rotation ?? 0;
+            const handles = getRotatedHandlePositions(bounds, rotation);
             const [rhx, rhy] = handles.rotate;
             if (dist(mx, my, rhx, rhy) <= HANDLE_RADIUS + 8) {
               canvas.style.cursor = ROTATE_CURSOR;
@@ -1909,7 +1965,7 @@ export default function Preview({
                 return;
               }
             }
-            if (isInRotatedRect(mx, my, bounds, transform.rotation ?? 0)) {
+            if (isInRotatedRect(mx, my, bounds, rotation)) {
               canvas.style.cursor = 'move';
               return;
             }

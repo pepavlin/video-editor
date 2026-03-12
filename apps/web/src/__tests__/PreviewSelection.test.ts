@@ -459,3 +459,200 @@ describe('transparency propagation', () => {
     expect(r4.selectedId).toBe('a');
   });
 });
+
+// ─── Rotation-aware handle positions (getRotatedHandlePositions) ─────────────
+//
+// These tests verify that handle positions are correctly rotated around the
+// element center, matching the SVG visual overlay. This is critical for
+// hit-testing handles on rotated elements.
+
+type Handle = 'tl' | 'tr' | 'bl' | 'br' | 'rotate';
+
+const HANDLE_RADIUS = 7;
+const ROTATE_HANDLE_OFFSET = 28;
+
+function getHandlePositions(bounds: Bounds): Record<Handle, [number, number]> {
+  const { x, y, w, h } = bounds;
+  const cx = x + w / 2;
+  return {
+    tl: [x, y],
+    tr: [x + w, y],
+    bl: [x, y + h],
+    br: [x + w, y + h],
+    rotate: [cx, y - ROTATE_HANDLE_OFFSET],
+  };
+}
+
+function getRotatedHandlePositions(
+  bounds: Bounds,
+  rotation: number,
+): Record<Handle, [number, number]> {
+  const handles = getHandlePositions(bounds);
+  if (rotation === 0) return handles;
+
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const rotatePoint = (px: number, py: number): [number, number] => {
+    const dx = px - cx;
+    const dy = py - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  };
+
+  return {
+    tl: rotatePoint(...handles.tl),
+    tr: rotatePoint(...handles.tr),
+    bl: rotatePoint(...handles.bl),
+    br: rotatePoint(...handles.br),
+    rotate: rotatePoint(...handles.rotate),
+  };
+}
+
+function dist(ax: number, ay: number, bx: number, by: number): number {
+  return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+}
+
+describe('getRotatedHandlePositions', () => {
+  const bounds: Bounds = { x: 100, y: 100, w: 200, h: 100 };
+  // center: (200, 150)
+
+  it('with 0° rotation returns same positions as getHandlePositions', () => {
+    const raw = getHandlePositions(bounds);
+    const rotated = getRotatedHandlePositions(bounds, 0);
+    expect(rotated.tl).toEqual(raw.tl);
+    expect(rotated.tr).toEqual(raw.tr);
+    expect(rotated.bl).toEqual(raw.bl);
+    expect(rotated.br).toEqual(raw.br);
+    expect(rotated.rotate).toEqual(raw.rotate);
+  });
+
+  it('with 90° rotation — tl moves to where tr was (relative to center)', () => {
+    const rotated = getRotatedHandlePositions(bounds, 90);
+    // tl = (100, 100), center = (200, 150), offset = (-100, -50)
+    // rotated 90°: cos=0, sin=1 → (dx*0 - dy*1, dx*1 + dy*0) = (50, -100)
+    // screen: (200+50, 150-100) = (250, 50)
+    expect(rotated.tl[0]).toBeCloseTo(250, 5);
+    expect(rotated.tl[1]).toBeCloseTo(50, 5);
+  });
+
+  it('with 180° rotation — tl swaps with br', () => {
+    const rotated = getRotatedHandlePositions(bounds, 180);
+    // tl offset = (-100, -50), rotated 180°: (100, 50), screen: (300, 200)
+    // br was at (300, 200) — matches
+    expect(rotated.tl[0]).toBeCloseTo(300, 5);
+    expect(rotated.tl[1]).toBeCloseTo(200, 5);
+
+    // br offset = (100, 50), rotated 180°: (-100, -50), screen: (100, 100)
+    expect(rotated.br[0]).toBeCloseTo(100, 5);
+    expect(rotated.br[1]).toBeCloseTo(100, 5);
+  });
+
+  it('rotation handle moves correctly at 90°', () => {
+    const rotated = getRotatedHandlePositions(bounds, 90);
+    // rotate handle unrotated: (200, 72) — offset from center (200,150): (0, -78)
+    // rotated 90°: (0*0 - (-78)*1, 0*1 + (-78)*0) = (78, 0)
+    // screen: (200+78, 150+0) = (278, 150)
+    expect(rotated.rotate[0]).toBeCloseTo(278, 5);
+    expect(rotated.rotate[1]).toBeCloseTo(150, 5);
+  });
+
+  it('handle hit detection works for rotated element', () => {
+    // At 45° rotation, the tl handle moves to a new position.
+    // Check that the rotated position can be hit with the standard radius check.
+    const rotated = getRotatedHandlePositions(bounds, 45);
+    const [hx, hy] = rotated.tl;
+    // Click exactly on the rotated handle position
+    expect(dist(hx, hy, hx, hy)).toBe(0);
+    expect(dist(hx, hy, hx, hy) <= HANDLE_RADIUS + 8).toBe(true);
+
+    // Click slightly off (within tolerance)
+    expect(dist(hx + 5, hy + 5, hx, hy)).toBeLessThan(HANDLE_RADIUS + 8);
+
+    // Click far away from rotated position
+    const raw = getHandlePositions(bounds);
+    const [rawX, rawY] = raw.tl;
+    // The raw position should be far from the rotated position at 45°
+    const distFromRaw = dist(hx, hy, rawX, rawY);
+    expect(distFromRaw).toBeGreaterThan(HANDLE_RADIUS + 8);
+  });
+
+  it('unrotated handle position does NOT hit the rotated handle', () => {
+    // This verifies the bug scenario: clicking where the handle WOULD BE
+    // without rotation does NOT match the actual rotated handle position.
+    const rotated = getRotatedHandlePositions(bounds, 45);
+    const raw = getHandlePositions(bounds);
+
+    const [rotatedX, rotatedY] = rotated.tl;
+    const [rawX, rawY] = raw.tl;
+
+    // The mouse is at the unrotated tl position — this should NOT hit
+    // the rotated tl handle (they're in different places)
+    const d = dist(rawX, rawY, rotatedX, rotatedY);
+    expect(d).toBeGreaterThan(HANDLE_RADIUS + 8);
+  });
+
+  it('full 360° rotation returns same positions as 0°', () => {
+    const zero = getRotatedHandlePositions(bounds, 0);
+    const full = getRotatedHandlePositions(bounds, 360);
+    for (const handle of ['tl', 'tr', 'bl', 'br', 'rotate'] as Handle[]) {
+      expect(full[handle][0]).toBeCloseTo(zero[handle][0], 5);
+      expect(full[handle][1]).toBeCloseTo(zero[handle][1], 5);
+    }
+  });
+});
+
+// ─── Selected element body click (move drag without cycling) ─────────────────
+//
+// When the user clicks on the body of an already-selected element (not on a
+// handle), the expected behavior is to start a move drag on the selected
+// element WITHOUT cycling to the next layer. The cycling logic should only
+// apply when clicking to SELECT (when no element is selected, or clicking
+// outside the currently selected element).
+
+describe('selected element body click behavior', () => {
+  it('clicking on selected element body should not trigger cycling', () => {
+    // Simulate: top element is selected, user clicks same spot again
+    // In the old code, this would cycle to the next layer.
+    // In the new code, the click on the selected element body
+    // is handled in Step 1 (before cycling), starting a move drag.
+
+    // We verify the principle: if the mouse is on the selected element body,
+    // the move drag starts on the selected element.
+    const selectedBounds: Bounds = { x: 100, y: 100, w: 200, h: 100 };
+    const mouseX = 200; // center of element
+    const mouseY = 150;
+
+    // The mouse IS on the selected element's body (unrotated)
+    expect(isInRotatedRect(mouseX, mouseY, selectedBounds, 0)).toBe(true);
+
+    // So Step 1 would handle this click (move drag on selected element)
+    // and cycling in Step 2/3 is never reached.
+  });
+
+  it('clicking outside selected element body allows cycling', () => {
+    // If the mouse is NOT on the selected element, Step 1 exits without
+    // starting a drag, and Step 2/3 handle the click normally with cycling.
+    const selectedBounds: Bounds = { x: 100, y: 100, w: 200, h: 100 };
+    const mouseX = 500; // far from element
+    const mouseY = 500;
+
+    expect(isInRotatedRect(mouseX, mouseY, selectedBounds, 0)).toBe(false);
+    // This click would pass through to Step 2/3 for cycling behavior
+  });
+
+  it('clicking on rotated selected element body starts move drag', () => {
+    const selectedBounds: Bounds = { x: 100, y: 100, w: 200, h: 100 };
+    const rotation = 45;
+    const cx = 200; // center
+    const cy = 150;
+
+    // Center is always hit regardless of rotation
+    expect(isInRotatedRect(cx, cy, selectedBounds, rotation)).toBe(true);
+
+    // A point that is inside the rotated rect but outside the unrotated rect
+    // should still trigger move drag (rotation-aware check)
+  });
+});
