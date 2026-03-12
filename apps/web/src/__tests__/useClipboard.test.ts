@@ -249,16 +249,16 @@ describe('applyPaste', () => {
 
     const { project: result, newClipId } = applyPaste(project, clipboardData);
 
-    // Original track untouched
-    expect(result.tracks[0].clips).toHaveLength(1);
-    expect(result.tracks[0].clips[0].id).toBe('c1');
-
-    // New track created
+    // New track created in foreground (index 0)
     expect(result.tracks).toHaveLength(2);
-    const newTrack = result.tracks[1];
+    const newTrack = result.tracks[0];
     expect(newTrack.type).toBe('video');
     expect(newTrack.clips).toHaveLength(1);
     expect(newTrack.clips[0].id).toBe(newClipId);
+
+    // Original track untouched
+    expect(result.tracks[1].clips).toHaveLength(1);
+    expect(result.tracks[1].clips[0].id).toBe('c1');
   });
 
   it('generates unique IDs for the pasted clip and track', () => {
@@ -273,7 +273,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result, newClipId } = applyPaste(project, clipboardData);
-    const newTrack = result.tracks[result.tracks.length - 1];
+    const newTrack = result.tracks[0];
 
     expect(newClipId).not.toBe('c1');
     expect(newTrack.id).not.toBe('v1');
@@ -295,7 +295,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const pastedClip = result.tracks[result.tracks.length - 1].clips[0];
+    const pastedClip = result.tracks[0].clips[0];
 
     expect(pastedClip.transform!.x).toBe(50 + PASTE_OFFSET);
     expect(pastedClip.transform!.y).toBe(100 + PASTE_OFFSET);
@@ -320,7 +320,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const pastedClip = result.tracks[result.tracks.length - 1].clips[0];
+    const pastedClip = result.tracks[0].clips[0];
 
     expect(pastedClip.timelineStart).toBe(2.5);
     expect(pastedClip.timelineEnd).toBe(7.5);
@@ -341,7 +341,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const newTrack = result.tracks[result.tracks.length - 1];
+    const newTrack = result.tracks[0];
     expect(newTrack.name).toBe('Video 3');
   });
 
@@ -357,7 +357,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const newTrack = result.tracks[result.tracks.length - 1];
+    const newTrack = result.tracks[0];
     expect(newTrack.name).toBe('Audio');
   });
 
@@ -379,11 +379,13 @@ describe('applyPaste', () => {
     const clipboardData = buildClipboardData(project, 'vc1')!;
     const { project: result, newClipId } = applyPaste(project, clipboardData);
 
-    // Should have: original effect + original video + new effect + new video
+    // Should have: new effect + new video + original effect + original video
     expect(result.tracks).toHaveLength(4);
 
-    // Find the new video track (last one)
-    const newVideoTrack = result.tracks[result.tracks.length - 1];
+    // Find the new video track (in foreground, after its effect tracks)
+    const newVideoTrack = result.tracks.find(
+      (t) => t.type === 'video' && t.id !== 'v1'
+    )!;
     expect(newVideoTrack.type).toBe('video');
     expect(newVideoTrack.clips[0].id).toBe(newClipId);
 
@@ -436,7 +438,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const pastedClip = result.tracks[result.tracks.length - 1].clips[0];
+    const pastedClip = result.tracks[0].clips[0];
     expect(pastedClip.transform).toBeUndefined();
   });
 
@@ -453,7 +455,7 @@ describe('applyPaste', () => {
     const clipboardData = buildClipboardData(project, 'tc1')!;
     const { project: result } = applyPaste(project, clipboardData);
 
-    const pastedClip = result.tracks[result.tracks.length - 1].clips[0];
+    const pastedClip = result.tracks[0].clips[0];
     expect(pastedClip.textContent).toBe('Hello World');
     expect(pastedClip.textStyle).toEqual({ fontFamily: 'Arial', fontSize: 48, color: '#ffffff' });
   });
@@ -492,7 +494,7 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const newTrack = result.tracks[result.tracks.length - 1];
+    const newTrack = result.tracks[0];
     expect(newTrack.isMaster).toBe(false);
     expect(newTrack.muted).toBe(false);
   });
@@ -509,8 +511,60 @@ describe('applyPaste', () => {
     };
 
     const { project: result } = applyPaste(project, clipboardData);
-    const pastedClip = result.tracks[result.tracks.length - 1].clips[0];
+    const pastedClip = result.tracks[0].clips[0];
     expect(pastedClip.assetId).toBe('important_asset_42');
+  });
+
+  it('places the pasted track in the foreground (lower array index than existing tracks)', () => {
+    const clip = makeClip({
+      id: 'c1', trackId: 'v1',
+      transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+    });
+    const project = makeProject([
+      makeTrack('video', { id: 'v1', name: 'Video', clips: [clip] }),
+      makeTrack('video', { id: 'v2', name: 'Video 2', clips: [] }),
+    ]);
+    const clipboardData: ClipboardData = {
+      clip: JSON.parse(JSON.stringify(clip)),
+      trackType: 'video',
+      effectTracks: [],
+    };
+
+    const { project: result } = applyPaste(project, clipboardData);
+
+    // Pasted track should be at index 0 (foreground)
+    expect(result.tracks[0].id).not.toBe('v1');
+    expect(result.tracks[0].id).not.toBe('v2');
+    // Original tracks follow
+    expect(result.tracks[1].id).toBe('v1');
+    expect(result.tracks[2].id).toBe('v2');
+  });
+
+  it('places pasted effect tracks before the pasted video track (foreground)', () => {
+    const clip = makeClip({
+      id: 'vc1', trackId: 'v1',
+      transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+    });
+    const effectClip = makeClip({
+      id: 'ec1', trackId: 'eff1', assetId: '', timelineStart: 0, timelineEnd: 5,
+      effectConfig: { effectType: 'cartoon', enabled: true },
+    });
+    const project = makeProject([
+      makeTrack('effect', { id: 'eff1', effectType: 'cartoon', parentTrackId: 'v1', name: 'Cartoon 1', clips: [effectClip] }),
+      makeTrack('video', { id: 'v1', clips: [clip] }),
+    ]);
+
+    const clipboardData = buildClipboardData(project, 'vc1')!;
+    const { project: result } = applyPaste(project, clipboardData);
+
+    // New effect track at index 0, new video track at index 1, then originals
+    expect(result.tracks[0].type).toBe('effect');
+    expect(result.tracks[0].id).not.toBe('eff1');
+    expect(result.tracks[1].type).toBe('video');
+    expect(result.tracks[1].id).not.toBe('v1');
+    // Originals follow
+    expect(result.tracks[2].id).toBe('eff1');
+    expect(result.tracks[3].id).toBe('v1');
   });
 });
 
@@ -552,8 +606,10 @@ describe('copy → paste integration', () => {
     expect(result.tracks.filter((t) => t.id === 'eff1')).toHaveLength(1);
     expect(result.tracks.filter((t) => t.id === 'eff2')).toHaveLength(1);
 
-    // New video track
-    const newVideoTrack = result.tracks[result.tracks.length - 1];
+    // New video track (in foreground, after its effect tracks)
+    const newVideoTrack = result.tracks.find(
+      (t) => t.type === 'video' && t.id !== 'v1'
+    )!;
     expect(newVideoTrack.type).toBe('video');
     expect(newVideoTrack.name).toBe('Video 2');
 
