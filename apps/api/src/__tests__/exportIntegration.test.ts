@@ -163,6 +163,82 @@ describe('export integration (real ffmpeg)', () => {
     expect(fs.statSync(outputPath).size).toBeGreaterThan(1000);
   });
 
+  it.skipIf(!ffmpegAvailable())('cutout export: multiply+addition blend in gbrp with grayscale mask', () => {
+    // Create 2-second test video
+    const testVideoPath = path.join(tmpDir, 'test_video_cutout.mp4');
+    execFileSync(FF, [
+      '-y',
+      '-f', 'lavfi', '-i', 'testsrc=size=304x540:rate=30:duration=2',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
+      '-an',
+      testVideoPath,
+    ]);
+
+    // Create 2-second grayscale mask video (white circle on black = simulated person mask)
+    // Using a solid white frame as mask (everything is "subject")
+    const maskVideoPath = path.join(tmpDir, 'test_mask_cutout.mp4');
+    execFileSync(FF, [
+      '-y',
+      '-f', 'lavfi', '-i', 'color=white:size=304x540:rate=30:duration=2',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
+      '-pix_fmt', 'yuv420p', '-an',
+      maskVideoPath,
+    ]);
+
+    const W = 1080;
+    const H = 1920;
+    const outputPath = path.join(tmpDir, 'output_cutout.mp4');
+
+    // Build cutout filter complex matching Cutout.ts export logic:
+    // 1. Trim and scale both video and mask
+    // 2. Process mask in YUV (threshold, expand, blur)
+    // 3. Convert to gbrp for multiply/addition blending
+    // 4. Composite: subject + background
+    const filterComplex = [
+      `color=c=black:s=${W}x${H}:r=30[base]`,
+      // Base clip chain
+      `[0:v]trim=start=0:end=2,setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},format=yuv420p[clip0]`,
+      // Mask: trim, scale, threshold
+      `[1:v]trim=start=0:end=2,setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},format=yuv420p[cut_maskt_0]`,
+      `[cut_maskt_0]lutyuv=y='if(gte(val,128),255,0)'[cut_maskp_0]`,
+      // Convert to gbrp, split, negate
+      `[cut_maskp_0]format=gbrp[cut_maskrgb_0]`,
+      `[cut_maskrgb_0]split[cut_maska_0][cut_maskb_0]`,
+      `[cut_maska_0]negate[cut_minv_0]`,
+      // Convert clip to gbrp
+      `[clip0]format=gbrp[cut_cliprgb_0]`,
+      // Background fill in gbrp
+      `color=c=0x00FF00:s=${W}x${H}:r=30:d=2.0000,format=gbrp[cut_bg_0]`,
+      // Multiply blends (removeBg mode)
+      `[cut_cliprgb_0][cut_maskb_0]blend=all_mode=multiply[cut_subj_0]`,
+      `[cut_bg_0][cut_minv_0]blend=all_mode=multiply[cut_bgm_0]`,
+      // Addition composite + convert back
+      `[cut_subj_0][cut_bgm_0]blend=all_mode=addition,format=yuv420p[cut_out_0]`,
+      // Overlay onto canvas
+      `[base][cut_out_0]overlay=0:0:enable='between(t,0,2)'[ov0]`,
+    ].join('; ');
+
+    const result = spawnSync(FF, [
+      '-y',
+      '-i', testVideoPath,
+      '-i', maskVideoPath,
+      '-filter_complex', filterComplex,
+      '-map', '[ov0]',
+      '-t', '2',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
+      '-pix_fmt', 'yuv420p', '-r', '30',
+      outputPath,
+    ]);
+
+    if (result.status !== 0) {
+      const stderr = result.stderr?.toString() ?? '';
+      throw new Error(`ffmpeg exited with code ${result.status}:\n${stderr.slice(-2000)}`);
+    }
+
+    expect(fs.existsSync(outputPath)).toBe(true);
+    expect(fs.statSync(outputPath).size).toBeGreaterThan(1000);
+  });
+
   it.skipIf(!ffmpegAvailable())('multi-audio export: amix with two audio inputs', () => {
     const vid1 = path.join(tmpDir, 'vid1.mp4');
     execFileSync(FF, [

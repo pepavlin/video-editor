@@ -2,11 +2,11 @@ import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
-import { spawn, execFileSync } from 'child_process';
+import { spawn } from 'child_process';
 import { config } from '../config';
 import * as ws from '../services/workspace';
-import * as ffmpeg from '../services/ffmpegService';
 import * as jq from '../services/jobQueue';
+import { exportPipeline } from '../elements/ExportPipeline';
 import type { Project, BeatsData, Clip } from '@video-editor/shared';
 
 function makeDefaultProject(name: string): Project {
@@ -466,44 +466,94 @@ export async function projectsRoutes(app: FastifyInstance) {
           }
         }
 
-        // Generate ASS lyrics
-        if (project.lyrics?.enabled && project.lyrics.words && project.lyrics.words.length > 0) {
-          const assPath = path.join(ws.getProjectDir(project.id), 'lyrics.ass');
-          ffmpeg.generateAss(project.lyrics, assPath);
-          ws.appendJobLog(job.id, '[export] generated ASS subtitles');
+        // Compute stabilized asset IDs (head-stabilized video paths)
+        const videoTracks = project.tracks.filter((t) => t.type === 'video' && !t.muted);
+        const stabilizedAssetIds = new Set<string>();
+        for (const track of videoTracks) {
+          const hsEffectTrack = project.tracks.find(
+            (t) => t.type === 'effect' && t.effectType === 'headStabilization' && t.parentTrackId === track.id
+          );
+          const hasEnabledHs = hsEffectTrack?.clips.some((ec) => ec.effectConfig?.enabled);
+          if (hasEnabledHs) {
+            for (const clip of track.clips) {
+              const asset = ws.getAsset(clip.assetId);
+              if (asset?.headStabilizedPath) {
+                stabilizedAssetIds.add(clip.assetId);
+              }
+            }
+          }
         }
 
-        const { cmd, args } = ffmpeg.buildExportCommand(
+        const W = req.body?.width ?? project.outputResolution.w;
+        const H = req.body?.height ?? project.outputResolution.h;
+        const CRF = req.body?.crf ?? 20;
+        const PRESET = req.body?.preset ?? 'medium';
+
+        // Build filter complex using the unified ExportPipeline (registry-driven).
+        // This handles ALL visual elements and effects (including Cutout, Cartoon,
+        // ColorGrade, BeatZoom, Text, Rectangle, Lyrics) via CLIP_REGISTRY and
+        // EFFECT_REGISTRY — same element definitions used by the preview pipeline.
+        const pipelineResult = exportPipeline.build(
           project,
           {
             outputPath,
-            width: req.body?.width ?? project.outputResolution.w,
-            height: req.body?.height ?? project.outputResolution.h,
-            crf: req.body?.crf,
-            preset: req.body?.preset,
+            width: W,
+            height: H,
+            crf: CRF,
+            preset: PRESET,
             startTime: req.body?.startTime,
             endTime: req.body?.endTime,
           },
-          beatsMap
+          beatsMap,
+          stabilizedAssetIds
         );
+
+        // Assemble the final ffmpeg command from pipeline result
+        const cmd = config.ffmpegBin;
+        const args: string[] = ['-y', ...pipelineResult.inputArgs];
+        args.push('-filter_complex', pipelineResult.filterComplex);
+        args.push('-map', `[${pipelineResult.videoOutPad}]`);
+        if (pipelineResult.audioOutPad) {
+          args.push('-map', pipelineResult.audioOutPad);
+        }
+
+        // Compute effective project duration for -t flag
+        let effectiveProjDuration = project.duration;
+        if (effectiveProjDuration <= 0) {
+          for (const track of project.tracks) {
+            for (const clip of track.clips) {
+              if (clip.timelineEnd > effectiveProjDuration) effectiveProjDuration = clip.timelineEnd;
+            }
+          }
+        }
+        if (effectiveProjDuration <= 0) effectiveProjDuration = 1;
+
+        const outStart = req.body?.startTime ?? 0;
+        const outEnd = req.body?.endTime ?? effectiveProjDuration;
+        const outDur = Math.max(0.1, outEnd - outStart);
+
+        if (outStart > 0) {
+          args.push('-ss', outStart.toFixed(4));
+        }
+        args.push(
+          '-t', outDur.toFixed(4),
+          '-c:v', 'libx264',
+          '-preset', PRESET,
+          '-crf', String(CRF),
+          '-pix_fmt', 'yuv420p',
+          '-r', '30',
+        );
+        if (pipelineResult.audioOutPad) {
+          args.push('-c:a', 'aac', '-b:a', '192k');
+        }
+        args.push(outputPath);
 
         // Log the full command for debugging
         ws.appendJobLog(job.id, `[export] cmd: ${cmd} ${args.join(' ')}`);
         ws.appendJobLog(job.id, `[export] running ffmpeg...`);
 
-        // Use work area range for progress calculation if provided
-        const exportStart = req.body?.startTime ?? 0;
-        let effectiveDuration = (req.body?.endTime != null)
-          ? req.body.endTime - exportStart
-          : project.duration - exportStart;
-        if (effectiveDuration <= 0) {
-          for (const track of project.tracks) {
-            for (const clip of track.clips) {
-              if (clip.timelineEnd > effectiveDuration + exportStart) effectiveDuration = clip.timelineEnd - exportStart;
-            }
-          }
-        }
-        if (effectiveDuration <= 0) effectiveDuration = 1;
+        // Use outDur for progress calculation
+        const effectiveDuration = outDur;
 
         await new Promise<void>((resolve, reject) => {
           const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });

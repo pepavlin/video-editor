@@ -32,8 +32,17 @@ vi.mock('../services/ffmpegService', () => ({
     fps: 30,
   })),
   runImportPipeline: vi.fn().mockResolvedValue(undefined),
-  buildExportCommand: vi.fn(() => ({ cmd: 'echo', args: ['done'] })),
-  generateAss: vi.fn(),
+}));
+
+vi.mock('../elements/ExportPipeline', () => ({
+  exportPipeline: {
+    build: vi.fn(() => ({
+      inputArgs: ['-i', '/tmp/test.mp4'],
+      filterComplex: 'color=c=black:s=1080x1920:r=30[base]',
+      videoOutPad: 'base',
+      audioOutPad: null,
+    })),
+  },
 }));
 
 import { config } from '../config';
