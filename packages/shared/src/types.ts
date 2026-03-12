@@ -278,6 +278,27 @@ export interface JobStatusResponse {
   job: Job;
 }
 
+// ─── Clipboard ──────────────────────────────────────────────────────────────
+
+/** Data stored in the in-memory clipboard when the user copies a clip. */
+export interface ClipboardData {
+  /** Deep-cloned snapshot of the copied clip (IDs will be regenerated on paste). */
+  clip: Clip;
+  /** Track type of the source track so we can create the correct track on paste. */
+  trackType: Track['type'];
+  /** Effect tracks linked to the source video track, with only the clips that overlap the copied clip. */
+  effectTracks: ClipboardEffectTrack[];
+}
+
+export interface ClipboardEffectTrack {
+  /** Snapshot of the effect track metadata (without clips). */
+  effectType: EffectType;
+  name: string;
+  muted?: boolean;
+  /** Effect clips that overlapped with the copied clip's time range. */
+  clips: Clip[];
+}
+
 // ─── Editor UI state (not persisted) ────────────────────────────────────────
 
 export interface PlaybackState {

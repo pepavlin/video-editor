@@ -5,6 +5,7 @@ import type { Asset, BeatsData, WaveformData } from '@video-editor/shared';
 import { useProject } from '@/hooks/useProject';
 import { usePlayback } from '@/hooks/usePlayback';
 import { useHistory } from '@/hooks/useHistory';
+import { useClipboard } from '@/hooks/useClipboard';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 import MediaBin from './MediaBin';
@@ -118,6 +119,7 @@ export default function Editor() {
 
   const playback = usePlayback(project, assets, beatsData, workArea);
   const history = useHistory(project, setProject);
+  const clipboard = useClipboard();
 
   const refreshAssets = useCallback(async () => {
     try {
@@ -273,11 +275,22 @@ export default function Editor() {
       } else if (e.code === 'KeyZ' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         if (e.shiftKey) history.redo(); else history.undo();
+      } else if (e.code === 'KeyC' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        // Copy selected clip
+        if (selectedClipId && project) {
+          clipboard.copy(project, selectedClipId);
+        }
+      } else if (e.code === 'KeyV' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        // Paste copied clip into a new track with diagonal offset
+        if (project && clipboard.canPaste) {
+          e.preventDefault();
+          clipboard.paste(project, updateProject, setSelectedClipId);
+        }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [playback, selectedClipId, splitClip, deleteClip, history]);
+  }, [playback, selectedClipId, splitClip, deleteClip, history, project, clipboard, updateProject]);
 
   useEffect(() => {
     if (project) history.pushSnapshot(project);
