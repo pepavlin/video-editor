@@ -20,7 +20,7 @@ import { CartoonEffect } from './Cartoon';
 import { ColorGradeEffect } from './ColorGrade';
 
 export { BeatZoomEffect, computeBeatZoomScale } from './BeatZoom';
-export { CartoonEffect, processCartoonFrame } from './Cartoon';
+export { CartoonEffect, processCartoonFrame, processAiStyleFrame } from './Cartoon';
 export { ColorGradeEffect, processColorGradeFrame, buildColorGradeCssFilter } from './ColorGrade';
 export { CutoutEffect, getOrCreateMaskVideoEl, maskVideoCache, applyCutoutPreview } from './Cutout';
 

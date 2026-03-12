@@ -95,7 +95,7 @@ export default function Editor() {
   const [completedExportJobId, setCompletedExportJobId] = useState<string | null>(null);
 
   type AssetJobEntry = { jobId: string; status: string; progress: number; logLines: string[] };
-  type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry }>;
+  type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry; aiStyle?: AssetJobEntry }>;
   const [assetJobs, setAssetJobs] = useState<AssetJobs>({});
   const assetJobsRef = useRef<AssetJobs>({});
   assetJobsRef.current = assetJobs;
@@ -185,18 +185,30 @@ export default function Editor() {
             changed = true;
           }
         }
+        if (asset.aiStyleJobId) {
+          const existing = prev[asset.id]?.aiStyle;
+          if (!existing || existing.jobId !== asset.aiStyleJobId) {
+            next[asset.id] = {
+              ...next[asset.id],
+              aiStyle: existing?.jobId === asset.aiStyleJobId
+                ? existing
+                : { jobId: asset.aiStyleJobId, status: 'QUEUED', progress: 0, logLines: [] },
+            };
+            changed = true;
+          }
+        }
       }
       return changed ? next : prev;
     });
   }, [assets]);
 
-  // Poll active cutout / headStab jobs and update assetJobs
+  // Poll active cutout / headStab / aiStyle jobs and update assetJobs
   useEffect(() => {
     const iv = setInterval(async () => {
       const snapshot = assetJobsRef.current;
-      const toPoll: Array<{ assetId: string; kind: 'cutout' | 'headStab'; entry: AssetJobEntry }> = [];
+      const toPoll: Array<{ assetId: string; kind: 'cutout' | 'headStab' | 'aiStyle'; entry: AssetJobEntry }> = [];
       for (const [assetId, jobs] of Object.entries(snapshot)) {
-        for (const [kind, entry] of Object.entries(jobs) as ['cutout' | 'headStab', AssetJobEntry][]) {
+        for (const [kind, entry] of Object.entries(jobs) as ['cutout' | 'headStab' | 'aiStyle', AssetJobEntry][]) {
           if (entry.status === 'DONE' || entry.status === 'ERROR' || entry.status === 'CANCELLED') continue;
           toPoll.push({ assetId, kind, entry });
         }
@@ -468,6 +480,26 @@ export default function Editor() {
       await api.cancelJob(jobId);
     } catch (e: any) {
       notify(`Cancel failed: ${e.message}`);
+    }
+  };
+
+  const handleStartAiStyleJob = async (
+    assetId: string,
+    styleStrength: number,
+    brushSize: number,
+    colorVibrance: number,
+  ) => {
+    try {
+      const { jobId } = await api.startAiStyle(assetId, { styleStrength, brushSize, colorVibrance });
+      setAssetJobs((prev) => ({
+        ...prev,
+        [assetId]: {
+          ...prev[assetId],
+          aiStyle: { jobId, status: 'QUEUED', progress: 0, logLines: [] },
+        },
+      }));
+    } catch (e: any) {
+      notify(`AI Style error: ${e.message}`);
     }
   };
 
@@ -805,6 +837,7 @@ export default function Editor() {
           onStartHeadStabilization={handleStartHeadStabilization}
           onCancelHeadStabilization={handleCancelHeadStabilization}
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
+          onStartAiStyleJob={handleStartAiStyleJob}
           assetJobs={assetJobs}
         />
       </div>

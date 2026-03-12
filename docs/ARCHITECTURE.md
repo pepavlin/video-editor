@@ -187,6 +187,7 @@ ExportPipeline.build()
   │     - assetInputIdxMap:     assetId → FFmpeg -i index
   │     - clipAudioWavMap:      assetId → WAV -i index
   │     - assetMaskInputIdxMap: assetId → mask -i index (Cutout effect)
+  │     - assetAiStyleInputIdxMap: assetId → AI-style -i index (Cartoon AI Style mode)
   │
   ├── 2. Build filter context (ExportFilterContext)
   │
@@ -380,6 +381,7 @@ All visual scaling is done by a CSS `transform: scale(viewZoom)` on the zoom-wra
 | Rectangle border radius | ✅ Canvas arcTo | ❌ FFmpeg drawbox has no border-radius (sharp corners) |
 | Font rendering | Browser system fonts | Server system fonts (must be installed) |
 | Cartoon edges | Sobel kernel (Canvas) | Canny via `edgedetect` filter (visually similar) |
+| Cartoon AI Style | Canvas 2D blur+posterize+warm tones (approximation) | Pre-processed stylized video via Python (if available), or FFmpeg smartblur fallback |
 
 > **ColorGrade note**: Shadows/highlights use `format=rgb24 → geq → format=yuv420p` in export.
 > The geq expression matches the preview formula exactly: `v_out = clamp(v + s*(1-v)^2 + h*v^2, 0, 1)`

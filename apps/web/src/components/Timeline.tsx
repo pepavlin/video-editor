@@ -691,7 +691,10 @@ export default function Timeline({
             headStabilization: 'HeadStab',
             cartoon: 'Cartoon',
           };
-          const effectLabel = effectLabelMap[cfg?.effectType ?? ''] ?? (cfg?.effectType ?? 'FX');
+          let effectLabel = effectLabelMap[cfg?.effectType ?? ''] ?? (cfg?.effectType ?? 'FX');
+          if (cfg?.effectType === 'cartoon' && cfg?.cartoonMode === 'aiStyle') {
+            effectLabel = 'AI Style';
+          }
           ctx.fillText(effectLabel, visX + 4, clipTop + clipH / 2 + 3);
           ctx.restore();
 
