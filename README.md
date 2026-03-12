@@ -110,7 +110,7 @@ workspace/
 - **Waveform** — computed from extracted audio WAV
 - **Multi-track timeline** — 2 video tracks + master audio
 - **Non-destructive editing** — project is a JSON EDL, originals untouched
-- **Clip operations** — drag to move, drag edges to trim, `S` to split, `Delete` to delete
+- **Clip operations** — drag to move, drag edges to trim, `S` to split, `Delete` to delete, `Cmd+C`/`Cmd+V` to copy-paste
 - **Snap** — snaps to clip edges and beat markers
 - **Undo/Redo** — `Cmd+Z` / `Shift+Cmd+Z`
 - **Audio playback** — master song via WebAudio API (audio is source of truth for sync)
@@ -128,6 +128,8 @@ workspace/
 | `Delete` | Delete selected clip |
 | `Cmd+Z` | Undo |
 | `Shift+Cmd+Z` | Redo |
+| `Cmd+C` | Copy selected clip (with effects) |
+| `Cmd+V` | Paste clip into new track (offset diagonally) |
 
 ---
 
