@@ -336,6 +336,7 @@ The timeline renders colored blocks for each word chunk inside the lyrics clip r
 | Lyrics words wrong timing in preview | `apps/web/src/components/Preview.tsx` → `drawClipLyricsOverlay` (check `audioTimeOffset`) |
 | Lyrics words wrong timing in export | `packages/elements/src/clips/LyricsClip.ts` → `generateAssContent` + `AssGenerationOptions` |
 | Lyrics words disappear between chunks | `packages/elements/src/clips/LyricsClip.ts` → chunk end calculation (use next chunk first word) |
+| Lyrics words missing after alignment | `scripts/align_lyrics.py` → `_map_to_provided_lyrics` guarantees ALL input words appear in output |
 | Lyrics timeline blocks missing | `apps/web/src/components/Timeline.tsx` → lyrics word-chunk visualization block |
 | Effect-parent visual grouping broken | `apps/web/src/lib/utils.ts` → `buildEffectGroups()`, `computeTrackYPositions()` + `Timeline.tsx` group rendering section |
 | Effect track connector lines wrong | `Timeline.tsx` → "Draw effect-parent group backgrounds & connectors" section |
