@@ -119,6 +119,7 @@ export {
   computeBeatZoomScale,
   CartoonEffect,
   processCartoonFrame,
+  processAiStyleFrame,
   ColorGradeEffect,
   processColorGradeFrame,
   buildColorGradeCssFilter,
