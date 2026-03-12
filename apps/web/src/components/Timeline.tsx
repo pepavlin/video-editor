@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from 'react';
 import type { Project, Track, Clip, Asset, WaveformData, BeatsData, EffectType } from '@video-editor/shared';
-import { getClipColor, clamp, snap, formatTime, isCompatibleTrackType, isAssetCompatibleWithTrack } from '@/lib/utils';
+import { getClipColor, clamp, snap, formatTime, isCompatibleTrackType, isAssetCompatibleWithTrack, buildEffectGroups, computeTrackYPositions, EFFECT_COLOR_MAP } from '@/lib/utils';
 import { useThemeContext } from '@/contexts/ThemeContext';
 
 const TRACK_HEIGHT = 56;
@@ -483,6 +483,64 @@ export default function Timeline({
     ctx.rect(0, RULER_HEIGHT, W, H - RULER_HEIGHT);
     ctx.clip();
 
+    // ─── Pre-compute track Y positions & effect-parent groups ────────────
+    const trackYPositions = computeTrackYPositions(tracks, RULER_HEIGHT, ST, getTrackH);
+    const effectGroups = buildEffectGroups(tracks);
+
+    // Set of parent track IDs that have effects (for quick lookup)
+    const parentTrackIdsArr: string[] = [];
+    effectGroups.forEach((_g, key) => { parentTrackIdsArr.push(key); });
+    const parentTrackIds = new Set(parentTrackIdsArr);
+
+    // ─── Draw effect-parent group backgrounds & connectors ───────────────
+    effectGroups.forEach((group) => {
+      const firstEffectIdx = Math.min.apply(null, group.effectIndices);
+      const groupTopY = trackYPositions[firstEffectIdx];
+      const parentBottomY = trackYPositions[group.parentIdx] + getTrackH(tracks[group.parentIdx]);
+      const groupHeight = parentBottomY - groupTopY;
+      const groupColorRgb = group.effectColors[0];
+
+      // Subtle group background band (full width)
+      ctx.fillStyle = dark
+        ? `rgba(${groupColorRgb},0.035)`
+        : `rgba(${groupColorRgb},0.025)`;
+      ctx.fillRect(0, groupTopY, W, groupHeight);
+
+      // Left accent bar on full group height
+      ctx.fillStyle = `rgba(${groupColorRgb},${dark ? 0.40 : 0.30})`;
+      ctx.fillRect(0, groupTopY, 3, groupHeight);
+
+      // Vertical connector line in header area (dashed)
+      const lineX = 8;
+      ctx.save();
+      ctx.strokeStyle = `rgba(${groupColorRgb},${dark ? 0.35 : 0.25})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 2]);
+      const connTopY = trackYPositions[firstEffectIdx] + getTrackH(tracks[firstEffectIdx]) / 2;
+      const connBottomY = trackYPositions[group.parentIdx] + getTrackH(tracks[group.parentIdx]) / 2;
+      ctx.beginPath();
+      ctx.moveTo(lineX, connTopY);
+      ctx.lineTo(lineX, connBottomY);
+      ctx.stroke();
+
+      // Horizontal ticks from connector line to each effect track
+      for (let gi = 0; gi < group.effectIndices.length; gi++) {
+        const ei = group.effectIndices[gi];
+        const midY = trackYPositions[ei] + getTrackH(tracks[ei]) / 2;
+        ctx.beginPath();
+        ctx.moveTo(lineX, midY);
+        ctx.lineTo(lineX + 7, midY);
+        ctx.stroke();
+      }
+      // Horizontal tick to parent video track
+      ctx.beginPath();
+      ctx.moveTo(lineX, connBottomY);
+      ctx.lineTo(lineX + 7, connBottomY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    });
+
     let trackY = RULER_HEIGHT - ST;
     for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
       const track = tracks[trackIdx];
@@ -547,6 +605,9 @@ export default function Timeline({
         ctx.fillRect(0, trackY - 2, W, 3);
       }
 
+      // Determine if this video track is a parent of effect tracks
+      const isParentTrack = !isEffectTrack && parentTrackIds.has(track.id);
+
       const labelColor = isEffectTrack
         ? 'rgba(251,146,60,0.90)'
         : isAudio
@@ -558,26 +619,47 @@ export default function Timeline({
         : 'rgba(14,165,233,0.75)';
       ctx.fillStyle = labelColor;
       ctx.font = isEffectTrack ? 'bold 8px sans-serif' : 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
       ctx.lineWidth = 1;
       ctx.globalAlpha = isReorderSource ? 0.4 : 1;
+
+      // Effect track labels: shifted right to accommodate connector lines
+      // Parent track labels: shifted slightly right for visual alignment with group
+      const labelCenterX = isEffectTrack
+        ? 18 + (HEADER_WIDTH - 18) / 2
+        : isParentTrack
+        ? 16 + (HEADER_WIDTH - 16) / 2
+        : HEADER_WIDTH / 2;
+      ctx.textAlign = 'center';
+
       // Show track type label: VIDEO or AUDIO (not the full name which may be long)
       const trackTypeLabel = isEffectTrack
         ? track.name.toUpperCase()
         : isAudio ? 'AUDIO' : 'VIDEO';
       ctx.fillText(
         trackTypeLabel,
-        HEADER_WIDTH / 2,
+        labelCenterX,
         trackY + trackH / 2 + (isEffectTrack ? 3 : 4)
       );
       ctx.globalAlpha = 1;
 
-      // Effect type icon (small "fx" label)
+      // Effect type icon (small "fx" label) – positioned with indentation
       if (isEffectTrack) {
         ctx.fillStyle = 'rgba(251,146,60,0.55)';
         ctx.font = 'bold 7px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('FX', HEADER_WIDTH / 2, trackY + trackH / 2 - 6);
+        ctx.fillText('FX', labelCenterX, trackY + trackH / 2 - 6);
+      }
+
+      // Parent track indicator: small "▼ FX" icon when this track has effects
+      if (isParentTrack) {
+        const pGroup = effectGroups.get(track.id);
+        if (pGroup) {
+          const pColorRgb = pGroup.effectColors[0];
+          ctx.fillStyle = `rgba(${pColorRgb},0.55)`;
+          ctx.font = 'bold 7px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`▲ ${pGroup.effectIndices.length} FX`, labelCenterX, trackY + 10);
+        }
       }
 
       // Track body background
@@ -598,6 +680,74 @@ export default function Timeline({
       // Track separator
       ctx.fillStyle = isEffectTrack ? 'rgba(251,146,60,0.15)' : trackSeparator;
       ctx.fillRect(HEADER_WIDTH, trackY + trackH - 1, timeWidth, 1);
+
+      // ─── Always-visible effect coverage indicator on parent tracks ──────
+      // Shows thin colored strips at the top of the parent video track
+      // to indicate where effects are applied (visible even without selection)
+      if (isParentTrack) {
+        const pGroup = effectGroups.get(track.id);
+        if (pGroup) {
+          const INDICATOR_H = 3; // thin strip height
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(HEADER_WIDTH, trackY, timeWidth, trackH);
+          ctx.clip();
+          // Draw coverage strip for each effect track in the group
+          for (let ei = 0; ei < pGroup.effectIndices.length; ei++) {
+            const effectTrack = tracks[pGroup.effectIndices[ei]];
+            const eColorRgb = pGroup.effectColors[ei];
+            for (const eClip of effectTrack.clips) {
+              const ecX = Math.max(eClip.timelineStart * Z - SL + HEADER_WIDTH, HEADER_WIDTH);
+              const ecEndX = Math.min(eClip.timelineEnd * Z - SL + HEADER_WIDTH, W);
+              const ecW = ecEndX - ecX;
+              if (ecW <= 0) continue;
+              ctx.fillStyle = `rgba(${eColorRgb},${dark ? 0.35 : 0.25})`;
+              ctx.fillRect(ecX, trackY + ei * INDICATOR_H, ecW, INDICATOR_H);
+            }
+          }
+          ctx.restore();
+        }
+      }
+
+      // ─── Effect clip downward connector ticks to parent track ──────────
+      // Draw subtle downward tick marks from the bottom of effect clips
+      // pointing toward the parent track below for visual linking
+      if (isEffectTrack && track.parentTrackId) {
+        const parentIdx = tracks.findIndex(pt => pt.id === track.parentTrackId);
+        if (parentIdx >= 0) {
+          const eColorRgb = EFFECT_COLOR_MAP[track.effectType ?? 'beatZoom'] ?? '251,146,60';
+          ctx.save();
+          ctx.strokeStyle = `rgba(${eColorRgb},${dark ? 0.25 : 0.18})`;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          for (const eClip of track.clips) {
+            const ecStartX = eClip.timelineStart * Z - SL + HEADER_WIDTH;
+            const ecEndX = eClip.timelineEnd * Z - SL + HEADER_WIDTH;
+            if (ecEndX < HEADER_WIDTH || ecStartX > W) continue;
+            // Draw thin vertical connector from bottom of effect clip
+            const connStartY = trackY + trackH;
+            const connEndY = trackYPositions[parentIdx]; // top of parent track
+            const startClipX = Math.max(ecStartX, HEADER_WIDTH);
+            const endClipX = Math.min(ecEndX, W);
+            // Left edge connector
+            if (startClipX >= HEADER_WIDTH && startClipX <= W) {
+              ctx.beginPath();
+              ctx.moveTo(startClipX, connStartY);
+              ctx.lineTo(startClipX, connEndY);
+              ctx.stroke();
+            }
+            // Right edge connector
+            if (endClipX >= HEADER_WIDTH && endClipX <= W && endClipX !== startClipX) {
+              ctx.beginPath();
+              ctx.moveTo(endClipX, connStartY);
+              ctx.lineTo(endClipX, connEndY);
+              ctx.stroke();
+            }
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      }
 
       // Grid lines
       for (let s = startSec; s <= endSec; s += tickInterval) {

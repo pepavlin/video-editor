@@ -337,6 +337,28 @@ The timeline renders colored blocks for each word chunk inside the lyrics clip r
 | Lyrics words wrong timing in export | `packages/elements/src/clips/LyricsClip.ts` → `generateAssContent` + `AssGenerationOptions` |
 | Lyrics words disappear between chunks | `packages/elements/src/clips/LyricsClip.ts` → chunk end calculation (use next chunk first word) |
 | Lyrics timeline blocks missing | `apps/web/src/components/Timeline.tsx` → lyrics word-chunk visualization block |
+| Effect-parent visual grouping broken | `apps/web/src/lib/utils.ts` → `buildEffectGroups()`, `computeTrackYPositions()` + `Timeline.tsx` group rendering section |
+| Effect track connector lines wrong | `Timeline.tsx` → "Draw effect-parent group backgrounds & connectors" section |
+| Effect coverage indicator on video track wrong | `Timeline.tsx` → "Always-visible effect coverage indicator on parent tracks" section |
+
+---
+
+## Timeline Effect-Parent Visual Grouping
+
+Effect tracks are visually connected to their parent video tracks through several rendering features in `Timeline.tsx`:
+
+1. **Group background band** — Subtle tinted background spanning the entire group (effect tracks + parent video track)
+2. **Left accent bar** — Colored 3px bar on the left edge of the group, using the primary effect color
+3. **Dashed connector line** — Vertical dashed line in the header area connecting effect tracks to their parent, with horizontal ticks to each track
+4. **Header indentation** — Effect track labels shifted right to accommodate connector lines; parent track labels slightly indented for alignment
+5. **Parent track indicator** — Small "▲ N FX" label on parent video track headers showing how many effect tracks are attached
+6. **Coverage indicator strips** — Thin colored strips at the top of parent video tracks showing exactly where effects are applied (always visible, not just on selection)
+7. **Downward connector ticks** — Dashed vertical lines from effect clip edges down to the parent track, creating visual connection between specific effect clips and the track they apply to
+
+The grouping logic is extracted into reusable utilities in `apps/web/src/lib/utils.ts`:
+- `buildEffectGroups(tracks)` — Computes a `Map<parentTrackId, EffectGroup>` with parent index, effect indices, and per-effect RGB colors
+- `computeTrackYPositions(tracks, rulerHeight, scrollTop, getHeight)` — Computes Y pixel positions for each track
+- `EFFECT_COLOR_MAP` — Maps effect type names to RGB color strings
 
 ---
 
