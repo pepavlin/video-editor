@@ -91,6 +91,9 @@ export interface EffectClipConfig {
   // cutout params
   background?: BackgroundConfig;
   cutoutMode?: 'removeBg' | 'removePerson';  // removeBg=keep person, removePerson=keep background
+  maskBlur?: number;        // 0-20: edge smoothing radius in px (default 0)
+  maskExpand?: number;      // -10 to 10: expand (+) or contract (-) mask edges (default 0)
+  maskThreshold?: number;   // 0-255: luminance threshold for mask binarization (default 128)
   // headStabilization params
   smoothingX?: number;  // 0-1: stabilization strength on X axis
   smoothingY?: number;  // 0-1: stabilization strength on Y axis
@@ -130,6 +133,9 @@ export interface CutoutEffect {
   type: 'cutout';
   enabled: boolean;
   background: BackgroundConfig;
+  maskBlur: number;        // 0-20: edge smoothing radius
+  maskExpand: number;      // -10 to 10: expand/contract mask edges
+  maskThreshold: number;   // 0-255: luminance threshold
 }
 
 export interface HeadStabilizationEffect {

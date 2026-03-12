@@ -416,7 +416,7 @@ describe('Cutout.export', () => {
     expect(cutout.export.isActive(clip, track, context)).toBe(false);
   });
 
-  it('buildFilter generates split+negate+multiply+addition blend chain (removeBg)', () => {
+  it('buildFilter generates mask processing + split+negate+multiply+addition blend chain (removeBg)', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cutout');
@@ -432,25 +432,27 @@ describe('Cutout.export', () => {
 
     const filterStr = result!.filters.join('; ');
     expect(filterStr).toContain('[2:v]'); // mask input
-    // Must have split to duplicate the mask — avoids double-consuming the same pad
+    // Mask processing: threshold (lutyuv)
+    expect(filterStr).toContain('lutyuv=y=');
+    // Must have split to duplicate the processed mask
     expect(filterStr).toContain('split');
     expect(filterStr).toContain('negate'); // inverted mask for background
     expect(filterStr).toContain('blend=all_mode=multiply'); // multiply for subject
     expect(filterStr).toContain('blend=all_mode=addition'); // addition to composite
     expect(result!.outputPad).toBe('cut_out_4');
 
-    // Each pad must appear as output exactly once and as input at most once
-    // (verify no double-consumption of labeled pads)
-    const padOutputRegex = /\[([^\]]+)\](?=\s*$|\s*;)/g;
-    const padInputRegex = /(?:^|;[^[]*)\[([^\]]+)\](?=[a-z])/g;
-    // Simpler: count occurrences of the trimmed mask pad in filter string
+    // The trimmed mask pad should appear twice: once as output of trim, once as input to processing
     const trimmedMaskPad = 'cut_maskt_4';
     const occurrences = (filterStr.match(new RegExp(`\\[${trimmedMaskPad}\\]`, 'g')) ?? []).length;
-    // trimmedMaskPad should appear exactly twice: once as output of trim, once as input to split
     expect(occurrences).toBe(2);
+
+    // The processed mask pad should appear twice: once as output of processing, once as input to split
+    const processedMaskPad = 'cut_maskp_4';
+    const processedOccurrences = (filterStr.match(new RegExp(`\\[${processedMaskPad}\\]`, 'g')) ?? []).length;
+    expect(processedOccurrences).toBe(2);
   });
 
-  it('buildFilter generates split+negate+multiply+addition blend chain (removePerson)', () => {
+  it('buildFilter generates mask processing + split+negate+multiply+addition blend chain (removePerson)', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cutout');
@@ -466,16 +468,117 @@ describe('Cutout.export', () => {
 
     const filterStr = result!.filters.join('; ');
     expect(filterStr).toContain('[3:v]');
+    expect(filterStr).toContain('lutyuv=y='); // threshold processing
     expect(filterStr).toContain('split');
     expect(filterStr).toContain('negate');
     expect(filterStr).toContain('blend=all_mode=multiply');
     expect(filterStr).toContain('blend=all_mode=addition');
     expect(result!.outputPad).toBe('cut_out_7');
 
-    // The trimmed mask pad must only be consumed once (by split)
+    // The trimmed mask pad must only be consumed once (by mask processing)
     const trimmedMaskPad = 'cut_maskt_7';
     const occurrences = (filterStr.match(new RegExp(`\\[${trimmedMaskPad}\\]`, 'g')) ?? []).length;
-    expect(occurrences).toBe(2); // once as output, once as input to split
+    expect(occurrences).toBe(2); // once as output, once as input to processing
+  });
+
+  it('buildFilter includes expand (maximum) filters when maskExpand > 0', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', {
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+      maskExpand: 3,
+      maskThreshold: 128,
+      maskBlur: 0,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 1, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // Should have 3 maximum=radius=1 operations (one per expand pixel)
+    const maxCount = (filterStr.match(/maximum=radius=1/g) ?? []).length;
+    expect(maxCount).toBe(3);
+    // Should NOT have minimum (that's for contract)
+    expect(filterStr).not.toContain('minimum=radius=1');
+  });
+
+  it('buildFilter includes contract (minimum) filters when maskExpand < 0', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', {
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+      maskExpand: -5,
+      maskThreshold: 128,
+      maskBlur: 0,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 2, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    const minCount = (filterStr.match(/minimum=radius=1/g) ?? []).length;
+    expect(minCount).toBe(5);
+    expect(filterStr).not.toContain('maximum=radius=1');
+  });
+
+  it('buildFilter includes gblur when maskBlur > 0', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', {
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+      maskExpand: 0,
+      maskThreshold: 128,
+      maskBlur: 5,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 3, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    expect(filterStr).toContain('gblur=sigma=5.0');
+  });
+
+  it('buildFilter uses custom maskThreshold value in lutyuv', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', {
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+      maskThreshold: 200,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    expect(filterStr).toContain("lutyuv=y='if(gte(val,200),255,0)'");
   });
 
   it('isActive returns true when mask is registered and effect is enabled', () => {
