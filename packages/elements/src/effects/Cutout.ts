@@ -20,9 +20,11 @@
  *   maskExpand    — -10..10 expand/contract mask edges in px (default 0)
  *   maskBlur      — 0-20 edge smoothing / feathering radius (default 0)
  *
- * Export implementation uses yuv math (multiply + addition blend) instead of
- * alpha channels to avoid format conversion issues when Cartoon/ColorGrade
- * are also active. This approach keeps the output in yuv420p throughout.
+ * Export implementation converts to planar RGB (gbrp) for the multiply + addition
+ * blend operations, then converts back to yuv420p. This is necessary because
+ * the grayscale mask has U=128, V=128 in YUV — multiplying in YUV space would
+ * halve the chroma channels, causing severe color desaturation. In gbrp, the
+ * mask's grayscale values are replicated across R=G=B, so multiply works correctly.
  *
  * The mask video is collected by ExportPipeline from asset.maskPath and made
  * available via context.assetMaskInputIdxMap. If no mask is available for a clip,
@@ -292,20 +294,25 @@ const cutoutExport: EffectExportApi = {
   },
 
   /**
-   * Builds an FFmpeg filter chain for cutout compositing using yuv math.
+   * Builds an FFmpeg filter chain for cutout compositing.
    *
-   * The approach avoids alpha channels entirely (keeping yuv420p throughout)
-   * by using multiply + addition blend:
+   * Uses multiply + addition blend in planar RGB (gbrp) color space:
    *
    *   For removeBg mode:
-   *     subject_pixels = clip * mask / 255          (clip where mask is white)
-   *     background_pixels = bg * inv_mask / 255     (bg where mask is black)
-   *     result = subject + background               (composite)
+   *     subject_pixels = clip_rgb * mask_rgb / 255   (clip where mask is white)
+   *     background_pixels = bg_rgb * inv_mask_rgb / 255  (bg where mask is black)
+   *     result = subject + background                (composite)
    *
    *   For removePerson mode: swap mask and inv_mask roles
    *
-   * This composites cleanly without format conversion, allowing Cartoon and
-   * ColorGrade to chain after this filter without issues.
+   * The blending MUST be done in RGB, not YUV. In YUV420p, the grayscale mask
+   * has Y=0/255 but U=128, V=128 (neutral chroma). Multiplying in YUV would
+   * halve the chroma channels (U_clip * 128/255 ≈ 0.5 * U_clip), causing
+   * severe color desaturation. In gbrp, the mask converts to R=G=B=Y_mask
+   * (all 0 or 255), so multiply preserves all channels correctly.
+   *
+   * After composition, the result is converted back to yuv420p so that
+   * downstream effects (Cartoon, ColorGrade) receive the expected format.
    */
   buildFilter(
     inputPad: string,
@@ -341,12 +348,15 @@ const cutoutExport: EffectExportApi = {
     // Pad names
     const maskTrimmed = `cut_maskt_${filterIdx}`;
     const maskProcessed = `cut_maskp_${filterIdx}`;
+    const maskRgb = `cut_maskrgb_${filterIdx}`;
     const maskA = `cut_maska_${filterIdx}`;  // split output A → negate → maskInv
     const maskB = `cut_maskb_${filterIdx}`;  // split output B → multiply blend
     const maskInv = `cut_minv_${filterIdx}`;
+    const clipRgb = `cut_cliprgb_${filterIdx}`;
     const bgPad = `cut_bg_${filterIdx}`;
     const bgMasked = `cut_bgm_${filterIdx}`;
     const subjMasked = `cut_subj_${filterIdx}`;
+    const compositeRgb = `cut_comp_${filterIdx}`;
     const outPad = `cut_out_${filterIdx}`;
 
     const trimFilter = [
@@ -358,6 +368,7 @@ const cutoutExport: EffectExportApi = {
     ].join(',');
 
     // Build mask processing filter chain: threshold → expand/contract → blur
+    // These operate on YUV (Y channel only) which is correct for mask processing
     const maskProcessingSteps: string[] = [];
     // Threshold: binarize the mask using lut on Y channel
     maskProcessingSteps.push(`lutyuv=y='if(gte(val,${maskThreshold}),255,0)'`);
@@ -381,34 +392,37 @@ const cutoutExport: EffectExportApi = {
     const filters: string[] = [
       // Trim and scale the mask to match the clip's output dimensions
       `[${maskInputIdx}:v]${trimFilter}[${maskTrimmed}]`,
-      // Apply mask processing (threshold, expand, blur)
+      // Apply mask processing in YUV (threshold, expand, blur operate on Y channel)
       `[${maskTrimmed}]${maskProcessingSteps.join(',')}[${maskProcessed}]`,
-      // Split the processed mask into two copies — FFmpeg requires split because a labeled pad
-      // can only be consumed by a single filter. We need the mask twice:
-      // once for negate (→ inverted mask for background) and once for blend (→ subject).
-      `[${maskProcessed}]split[${maskA}][${maskB}]`,
-      // Create inverted mask (for the background region)
+      // Convert processed mask to planar RGB for correct blending.
+      // In gbrp, the grayscale mask becomes R=G=B=Y_mask (0 or 255 on all channels).
+      `[${maskProcessed}]format=gbrp[${maskRgb}]`,
+      // Split the RGB mask into two copies for negate and blend
+      `[${maskRgb}]split[${maskA}][${maskB}]`,
+      // Create inverted mask (for the background region) — negate in gbrp is correct
       `[${maskA}]negate[${maskInv}]`,
-      // Create background fill at clip dimensions
-      `color=c=${bgColor}:s=${scaledW}x${scaledH}:r=30:d=${clipDuration.toFixed(4)}[${bgPad}]`,
+      // Convert clip to gbrp for blending
+      `[${inputPad}]format=gbrp[${clipRgb}]`,
+      // Create background fill at clip dimensions in gbrp
+      `color=c=${bgColor}:s=${scaledW}x${scaledH}:r=30:d=${clipDuration.toFixed(4)},format=gbrp[${bgPad}]`,
     ];
 
     if (mode === 'removeBg') {
       // Keep person (subject), replace background
-      // subject = clip × mask / 255  (pixels where mask is white)
-      // bg_area = bg × inv_mask / 255  (pixels where mask is black)
-      filters.push(`[${inputPad}][${maskB}]blend=all_mode=multiply[${subjMasked}]`);
+      // subject = clip_rgb × mask_rgb / 255  (pixels where mask is white = R=G=B=255)
+      // bg_area = bg_rgb × inv_mask_rgb / 255  (pixels where mask is black = R=G=B=0)
+      filters.push(`[${clipRgb}][${maskB}]blend=all_mode=multiply[${subjMasked}]`);
       filters.push(`[${bgPad}][${maskInv}]blend=all_mode=multiply[${bgMasked}]`);
     } else {
       // removePerson: keep background, replace person
-      // bg_area = clip × inv_mask / 255  (pixels where mask is black = bg region)
-      // subject_area = bg × mask / 255  (pixels where mask is white = person region)
-      filters.push(`[${inputPad}][${maskInv}]blend=all_mode=multiply[${subjMasked}]`);
+      // bg_area = clip_rgb × inv_mask_rgb / 255  (bg region)
+      // subject_area = bg_rgb × mask_rgb / 255  (person region replaced with bg)
+      filters.push(`[${clipRgb}][${maskInv}]blend=all_mode=multiply[${subjMasked}]`);
       filters.push(`[${bgPad}][${maskB}]blend=all_mode=multiply[${bgMasked}]`);
     }
 
-    // Composite: add the two masked regions together
-    filters.push(`[${subjMasked}][${bgMasked}]blend=all_mode=addition[${outPad}]`);
+    // Composite: add the two masked regions together, then convert back to yuv420p
+    filters.push(`[${subjMasked}][${bgMasked}]blend=all_mode=addition,format=yuv420p[${outPad}]`);
 
     return { filters, outputPad: outPad };
   },

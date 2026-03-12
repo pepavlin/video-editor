@@ -217,6 +217,32 @@ describe('Cartoon.export.buildFilter', () => {
     expect(filterStr).toContain('eq=saturation=');
     expect(result!.outputPad).toBe('cz_5');
   });
+
+  it('performs multiply blend in gbrp color space to avoid YUV chroma corruption', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      colorSimplification: 0.5,
+      edgeStrength: 0.6,
+      saturation: 1.5,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({ project });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // hqdn3d output must be converted to gbrp before blend
+    expect(filterStr).toContain('hqdn3d=');
+    expect(filterStr).toMatch(/hqdn3d=[^[]*format=gbrp/);
+    // edgedetect output must be converted to gbrp before blend
+    expect(filterStr).toContain('edgedetect=');
+    expect(filterStr).toMatch(/edgedetect=[^[]*format=gbrp/);
+    // blend output must be converted back to yuv420p before eq
+    expect(filterStr).toMatch(/blend=all_mode=multiply[^[]*format=yuv420p/);
+  });
 });
 
 // ─── ColorGrade.export.buildFilter tests ─────────────────────────────────────
@@ -446,7 +472,7 @@ describe('Cutout.export', () => {
     const occurrences = (filterStr.match(new RegExp(`\\[${trimmedMaskPad}\\]`, 'g')) ?? []).length;
     expect(occurrences).toBe(2);
 
-    // The processed mask pad should appear twice: once as output of processing, once as input to split
+    // The processed mask pad should appear twice: once as output of processing, once as input to format conversion
     const processedMaskPad = 'cut_maskp_4';
     const processedOccurrences = (filterStr.match(new RegExp(`\\[${processedMaskPad}\\]`, 'g')) ?? []).length;
     expect(processedOccurrences).toBe(2);
@@ -479,6 +505,51 @@ describe('Cutout.export', () => {
     const trimmedMaskPad = 'cut_maskt_7';
     const occurrences = (filterStr.match(new RegExp(`\\[${trimmedMaskPad}\\]`, 'g')) ?? []).length;
     expect(occurrences).toBe(2); // once as output, once as input to processing
+  });
+
+  it('performs blending in gbrp color space to avoid YUV chroma corruption', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', { cutoutMode: 'removeBg', background: { type: 'solid', color: '#00ff00' } })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+
+    // Mask must be converted to gbrp after YUV processing for correct blending
+    expect(filterStr).toContain('format=gbrp');
+    // Clip input must be converted to gbrp for blending
+    expect(filterStr).toContain('[clip0]format=gbrp');
+    // Background must be created in gbrp
+    expect(filterStr).toMatch(/color=c=0x00ff00[^[]*format=gbrp/);
+    // Composite must be converted back to yuv420p for downstream effects
+    expect(filterStr).toMatch(/blend=all_mode=addition,format=yuv420p/);
+  });
+
+  it('converts composite back to yuv420p for downstream effect compatibility', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', { cutoutMode: 'removeBg' })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    // The last filter in the chain must convert back to yuv420p
+    const lastFilter = result!.filters[result!.filters.length - 1];
+    expect(lastFilter).toContain('format=yuv420p');
   });
 
   it('buildFilter includes expand (maximum) filters when maskExpand > 0', () => {
