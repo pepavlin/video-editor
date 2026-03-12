@@ -14,8 +14,11 @@
  *   removePerson — keep background, remove person/subject
  *
  * Config params (from EffectClipConfig):
- *   cutoutMode — 'removeBg' | 'removePerson'
- *   background — { type: 'solid', color: '#rrggbb' }
+ *   cutoutMode    — 'removeBg' | 'removePerson'
+ *   background    — { type: 'solid', color: '#rrggbb' }
+ *   maskThreshold — 0-255 luminance threshold for mask binarization (default 128)
+ *   maskExpand    — -10..10 expand/contract mask edges in px (default 0)
+ *   maskBlur      — 0-20 edge smoothing / feathering radius (default 0)
  *
  * Export implementation uses yuv math (multiply + addition blend) instead of
  * alpha channels to avoid format conversion issues when Cartoon/ColorGrade
@@ -43,6 +46,7 @@ import type {
 
 let _cutoutVideoCanvas: HTMLCanvasElement | null = null;
 let _cutoutMaskCanvas: HTMLCanvasElement | null = null;
+let _cutoutTempCanvas: HTMLCanvasElement | null = null;
 
 function getCutoutCanvases(w: number, h: number) {
   const iw = Math.max(2, Math.round(w));
@@ -57,7 +61,12 @@ function getCutoutCanvases(w: number, h: number) {
     _cutoutMaskCanvas.width = iw;
     _cutoutMaskCanvas.height = ih;
   }
-  return { videoCanvas: _cutoutVideoCanvas, maskCanvas: _cutoutMaskCanvas };
+  if (!_cutoutTempCanvas || _cutoutTempCanvas.width !== iw || _cutoutTempCanvas.height !== ih) {
+    _cutoutTempCanvas = document.createElement('canvas');
+    _cutoutTempCanvas.width = iw;
+    _cutoutTempCanvas.height = ih;
+  }
+  return { videoCanvas: _cutoutVideoCanvas, maskCanvas: _cutoutMaskCanvas, tempCanvas: _cutoutTempCanvas };
 }
 
 // ─── Preview: mask video element cache ────────────────────────────────────────
@@ -81,15 +90,33 @@ export function getOrCreateMaskVideoEl(assetId: string, src: string): HTMLVideoE
 
 // ─── Preview: core cutout processing ──────────────────────────────────────────
 
+/** Mask adjustment parameters for live preview tuning. */
+export interface MaskAdjustParams {
+  /** Luminance threshold for mask binarization (0-255, default 128). */
+  threshold: number;
+  /** Expand (+) or contract (-) mask edges in px (-10 to 10, default 0). */
+  expand: number;
+  /** Gaussian blur radius for edge smoothing in px (0-20, default 0). */
+  blur: number;
+}
+
+export const DEFAULT_MASK_ADJUST: MaskAdjustParams = {
+  threshold: 128,
+  expand: 0,
+  blur: 0,
+};
+
 /**
  * Apply cutout compositing to the canvas.
  *
  * Steps:
  *   1. Draw solid background onto ctx
  *   2. Draw video to offscreen canvas A
- *   3. Draw mask to offscreen canvas B → convert luminance to alpha
- *   4. Apply mask canvas as alpha via destination-in
- *   5. Return the masked video canvas (pipeline draws it over the background)
+ *   3. Draw mask to offscreen canvas B
+ *   4. Process mask: threshold → expand/contract → blur (user-adjustable)
+ *   5. Convert processed mask luminance to alpha
+ *   6. Apply mask canvas as alpha via destination-in
+ *   7. Return the masked video canvas (pipeline draws it over the background)
  *
  * Returns the masked video canvas for chaining, or null on failure.
  */
@@ -99,7 +126,8 @@ export function applyCutoutPreview(
   maskEl: HTMLVideoElement,
   bounds: Bounds,
   mode: 'removeBg' | 'removePerson',
-  bgColor: string
+  bgColor: string,
+  maskAdjust: MaskAdjustParams = DEFAULT_MASK_ADJUST,
 ): HTMLCanvasElement | null {
   const { x, y, w, h } = bounds;
   const iw = Math.max(2, Math.round(w));
@@ -109,34 +137,93 @@ export function applyCutoutPreview(
   ctx.fillStyle = bgColor;
   ctx.fillRect(x, y, w, h);
 
-  const { videoCanvas, maskCanvas } = getCutoutCanvases(iw, ih);
+  const { videoCanvas, maskCanvas, tempCanvas } = getCutoutCanvases(iw, ih);
   const videoCtx = videoCanvas.getContext('2d');
   const maskCtx = maskCanvas.getContext('2d');
-  if (!videoCtx || !maskCtx) return null;
+  const tempCtx = tempCanvas.getContext('2d');
+  if (!videoCtx || !maskCtx || !tempCtx) return null;
 
   // 2. Draw video frame to offscreen canvas
   videoCtx.clearRect(0, 0, iw, ih);
   videoCtx.drawImage(videoEl, 0, 0, iw, ih);
 
-  // 3. Draw mask, convert luminance → alpha
-  //    removeBg:     alpha = lum       (white subject = opaque)
-  //    removePerson: alpha = 255 - lum (white subject = transparent)
   try {
+    // 3. Draw raw mask
+    maskCtx.filter = 'none';
+    maskCtx.globalCompositeOperation = 'source-over';
     maskCtx.clearRect(0, 0, iw, ih);
     maskCtx.drawImage(maskEl, 0, 0, iw, ih);
+
+    // 4a. Apply threshold — binarize the grayscale mask
+    const threshold = maskAdjust.threshold;
     const maskData = maskCtx.getImageData(0, 0, iw, ih);
-    const invert = mode === 'removePerson';
     for (let i = 0; i < maskData.data.length; i += 4) {
       const lum =
         maskData.data[i] * 0.299 +
         maskData.data[i + 1] * 0.587 +
         maskData.data[i + 2] * 0.114;
-      maskData.data[i + 3] = invert ? Math.round(255 - lum) : Math.round(lum);
-      maskData.data[i] = maskData.data[i + 1] = maskData.data[i + 2] = 255;
+      const val = lum >= threshold ? 255 : 0;
+      maskData.data[i] = maskData.data[i + 1] = maskData.data[i + 2] = val;
+      maskData.data[i + 3] = 255;
     }
     maskCtx.putImageData(maskData, 0, 0);
 
-    // 4. Apply mask as alpha (keep pixels where mask is opaque)
+    // 4b. Apply expand/contract via blur + re-threshold
+    //     Dilate: blur the binary mask, then re-threshold at a low value (grows white)
+    //     Erode:  blur the binary mask, then re-threshold at a high value (shrinks white)
+    const expand = maskAdjust.expand;
+    if (expand !== 0) {
+      const blurRadius = Math.abs(expand) * 1.5;
+      // Draw blurred mask to temp canvas
+      tempCtx.filter = `blur(${blurRadius}px)`;
+      tempCtx.clearRect(0, 0, iw, ih);
+      tempCtx.drawImage(maskCanvas, 0, 0);
+      tempCtx.filter = 'none';
+
+      // Re-threshold the blurred result
+      const expandThreshold = expand > 0
+        ? Math.max(1, 128 - expand * 12)   // lower threshold → grow mask
+        : Math.min(254, 128 + Math.abs(expand) * 12); // higher threshold → shrink mask
+      const blurredData = tempCtx.getImageData(0, 0, iw, ih);
+      for (let i = 0; i < blurredData.data.length; i += 4) {
+        const lum =
+          blurredData.data[i] * 0.299 +
+          blurredData.data[i + 1] * 0.587 +
+          blurredData.data[i + 2] * 0.114;
+        const val = lum >= expandThreshold ? 255 : 0;
+        blurredData.data[i] = blurredData.data[i + 1] = blurredData.data[i + 2] = val;
+        blurredData.data[i + 3] = 255;
+      }
+      // Write result back to maskCanvas
+      maskCtx.putImageData(blurredData, 0, 0);
+    }
+
+    // 4c. Apply edge blur (feathering)
+    const blur = maskAdjust.blur;
+    if (blur > 0) {
+      tempCtx.filter = `blur(${blur}px)`;
+      tempCtx.clearRect(0, 0, iw, ih);
+      tempCtx.drawImage(maskCanvas, 0, 0);
+      tempCtx.filter = 'none';
+      // Copy blurred result back to maskCanvas
+      maskCtx.clearRect(0, 0, iw, ih);
+      maskCtx.drawImage(tempCanvas, 0, 0);
+    }
+
+    // 5. Convert processed mask luminance → alpha
+    const invert = mode === 'removePerson';
+    const finalData = maskCtx.getImageData(0, 0, iw, ih);
+    for (let i = 0; i < finalData.data.length; i += 4) {
+      const lum =
+        finalData.data[i] * 0.299 +
+        finalData.data[i + 1] * 0.587 +
+        finalData.data[i + 2] * 0.114;
+      finalData.data[i + 3] = invert ? Math.round(255 - lum) : Math.round(lum);
+      finalData.data[i] = finalData.data[i + 1] = finalData.data[i + 2] = 255;
+    }
+    maskCtx.putImageData(finalData, 0, 0);
+
+    // 6. Apply mask as alpha (keep pixels where mask is opaque)
     videoCtx.globalCompositeOperation = 'destination-in';
     videoCtx.drawImage(maskCanvas, 0, 0);
     videoCtx.globalCompositeOperation = 'source-over';
@@ -184,8 +271,13 @@ const cutoutPreview: EffectPreviewApi = {
     const maskEl = getOrCreateMaskVideoEl(clip.assetId, `/files/${maskPath}`);
     const mode = cfg.cutoutMode ?? 'removeBg';
     const bgColor = cfg.background?.color ?? '#000000';
+    const maskAdjust: MaskAdjustParams = {
+      threshold: cfg.maskThreshold ?? DEFAULT_MASK_ADJUST.threshold,
+      expand: cfg.maskExpand ?? DEFAULT_MASK_ADJUST.expand,
+      blur: cfg.maskBlur ?? DEFAULT_MASK_ADJUST.blur,
+    };
 
-    return applyCutoutPreview(ctx, source, maskEl, bounds, mode, bgColor);
+    return applyCutoutPreview(ctx, source, maskEl, bounds, mode, bgColor, maskAdjust);
   },
 };
 
@@ -241,8 +333,14 @@ const cutoutExport: EffectExportApi = {
     const bgColor = (cfg.background?.color ?? '#000000').replace('#', '0x');
     const clipDuration = clip.timelineEnd - clip.timelineStart;
 
+    // Mask adjustment parameters
+    const maskThreshold = cfg.maskThreshold ?? DEFAULT_MASK_ADJUST.threshold;
+    const maskExpand = cfg.maskExpand ?? DEFAULT_MASK_ADJUST.expand;
+    const maskBlur = cfg.maskBlur ?? DEFAULT_MASK_ADJUST.blur;
+
     // Pad names
     const maskTrimmed = `cut_maskt_${filterIdx}`;
+    const maskProcessed = `cut_maskp_${filterIdx}`;
     const maskA = `cut_maska_${filterIdx}`;  // split output A → negate → maskInv
     const maskB = `cut_maskb_${filterIdx}`;  // split output B → multiply blend
     const maskInv = `cut_minv_${filterIdx}`;
@@ -259,13 +357,36 @@ const cutoutExport: EffectExportApi = {
       `format=yuv420p`,
     ].join(',');
 
+    // Build mask processing filter chain: threshold → expand/contract → blur
+    const maskProcessingSteps: string[] = [];
+    // Threshold: binarize the mask using lut on Y channel
+    maskProcessingSteps.push(`lutyuv=y='if(gte(val,${maskThreshold}),255,0)'`);
+    // Expand/contract: use maximum (dilate) or minimum (erode) morphological filters
+    if (maskExpand > 0) {
+      const radius = Math.min(Math.round(maskExpand), 10);
+      for (let i = 0; i < radius; i++) {
+        maskProcessingSteps.push('maximum=radius=1');
+      }
+    } else if (maskExpand < 0) {
+      const radius = Math.min(Math.round(Math.abs(maskExpand)), 10);
+      for (let i = 0; i < radius; i++) {
+        maskProcessingSteps.push('minimum=radius=1');
+      }
+    }
+    // Edge blur (feathering)
+    if (maskBlur > 0) {
+      maskProcessingSteps.push(`gblur=sigma=${maskBlur.toFixed(1)}`);
+    }
+
     const filters: string[] = [
       // Trim and scale the mask to match the clip's output dimensions
       `[${maskInputIdx}:v]${trimFilter}[${maskTrimmed}]`,
-      // Split the mask into two copies — FFmpeg requires split because a labeled pad
+      // Apply mask processing (threshold, expand, blur)
+      `[${maskTrimmed}]${maskProcessingSteps.join(',')}[${maskProcessed}]`,
+      // Split the processed mask into two copies — FFmpeg requires split because a labeled pad
       // can only be consumed by a single filter. We need the mask twice:
       // once for negate (→ inverted mask for background) and once for blend (→ subject).
-      `[${maskTrimmed}]split[${maskA}][${maskB}]`,
+      `[${maskProcessed}]split[${maskA}][${maskB}]`,
       // Create inverted mask (for the background region)
       `[${maskA}]negate[${maskInv}]`,
       // Create background fill at clip dimensions

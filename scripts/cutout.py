@@ -11,12 +11,15 @@ mode:
 
 Generates a grayscale mask video using rembg with u2net_human_seg model.
 
-Improvements over naive per-frame segmentation:
-  - Mask tightening: threshold + erosion + Gaussian blur removes the
-    semi-transparent halo that u2net leaves around the subject.
-  - Temporal smoothing: each mask is blended with its immediate neighbours
-    (weights 0.15 / 0.70 / 0.15) to reduce inter-frame jitter without
-    blurring real motion.
+The mask is output as a raw segmentation result with only temporal smoothing
+applied (no per-frame spatial processing like erosion or blur). Spatial mask
+refinement (threshold, expand/contract, edge blur) is applied live in the
+effect settings, allowing the user to fine-tune the cutout interactively.
+
+Processing steps:
+  - Per-frame: raw rembg alpha output (full confidence range 0-255)
+  - Temporal smoothing: blend with neighbours (0.15 / 0.70 / 0.15) to
+    reduce inter-frame jitter without blurring real motion.
   - Scene-cut awareness: blending never crosses a detected scene cut, so
     hard edits stay sharp.
 """
@@ -42,48 +45,6 @@ def _run_ffmpeg(args: list, label: str) -> None:
     except FileNotFoundError:
         print(f"ERROR: ffmpeg not found. Please install ffmpeg.", flush=True)
         sys.exit(1)
-
-
-def _erode_mask(binary, iterations: int = 2):
-    """
-    Simple binary erosion using numpy (no scipy dependency).
-    Shrinks True regions; border pixels are always set to False.
-    """
-    import numpy as np
-    result = binary.astype(bool)
-    for _ in range(iterations):
-        up    = np.roll(result, -1, axis=0)
-        down  = np.roll(result,  1, axis=0)
-        left  = np.roll(result, -1, axis=1)
-        right = np.roll(result,  1, axis=1)
-        result = result & up & down & left & right
-        # Border pixels always removed by erosion
-        result[ 0, :] = False
-        result[-1, :] = False
-        result[ :, 0] = False
-        result[ :,-1] = False
-    return result
-
-
-def _tighten_mask(mask_array):
-    """
-    Tighten the raw rembg alpha mask to remove the semi-transparent halo:
-      1. Hard threshold at 180 – keeps only high-confidence person pixels.
-      2. Erode 2 px inward to strip any residual fringe at the boundary.
-      3. Gaussian blur (r=1.5 px) to restore natural-looking soft edges.
-
-    Returns a uint8 numpy array (0-255).
-    """
-    from PIL import Image, ImageFilter
-    import numpy as np
-
-    binary = mask_array > 180          # only confident person pixels
-    eroded = _erode_mask(binary, iterations=2)
-    smooth = (
-        Image.fromarray(eroded.astype(np.uint8) * 255)
-        .filter(ImageFilter.GaussianBlur(radius=1.5))
-    )
-    return np.array(smooth)
 
 
 def _detect_scene_changes(frames_dir: str, frames: list,
@@ -258,9 +219,10 @@ def process_cutout(input_path: str, output_path: str,
             sys.exit(1)
         print("[cutout] Model loaded, starting frame processing...", flush=True)
 
-        # --- Pass 1: segment + tighten each frame independently ---
-        # Raw masks: tight mask per frame (tightened, optionally inverted).
-        # Stored in raw_masks_dir; temporal smoothing happens in pass 2.
+        # --- Pass 1: segment each frame (raw alpha, no spatial processing) ---
+        # Raw masks: full-range rembg alpha output (0-255 confidence), optionally
+        # inverted. Spatial refinement (threshold, expand, blur) is applied live
+        # in the effect settings. Temporal smoothing happens in pass 2.
         for i, frame_file in enumerate(frames):
             frame_path = os.path.join(frames_dir, frame_file)
             mask_path  = os.path.join(raw_masks_dir,
@@ -280,14 +242,11 @@ def process_cutout(input_path: str, output_path: str,
             else:
                 raw_alpha = np.array(output_img.split()[-1])
 
-            # Tighten mask: threshold → erode → Gaussian blur
-            tight = _tighten_mask(raw_alpha)
-
             # Invert for removePerson mode (background=white)
             if invert_mask:
-                tight = 255 - tight
+                raw_alpha = 255 - raw_alpha
 
-            Image.fromarray(tight).save(mask_path)
+            Image.fromarray(raw_alpha).save(mask_path)
 
             pct = int((i + 1) / total * 100)
             print(f"[cutout] {pct}% ({i+1}/{total})", flush=True)

@@ -374,9 +374,45 @@ All visual scaling is done by a CSS `transform: scale(viewZoom)` on the zoom-wra
 | Feature | Preview | Export |
 |---------|---------|--------|
 | ColorGrade shadows/highlights | ✅ Per-pixel Canvas (quadratic curve) | ✅ FFmpeg geq with identical formula (format=rgb24 conversion) |
+| Cutout mask refinement | ✅ Canvas threshold + blur filter + pixel ops | ✅ FFmpeg lutyuv + maximum/minimum + gblur |
 | Rectangle border radius | ✅ Canvas arcTo | ❌ FFmpeg drawbox has no border-radius (sharp corners) |
 | Font rendering | Browser system fonts | Server system fonts (must be installed) |
 | Cartoon edges | Sobel kernel (Canvas) | Canny via `edgedetect` filter (visually similar) |
 
 > **ColorGrade note**: Shadows/highlights use `format=rgb24 → geq → format=yuv420p` in export.
 > The geq expression matches the preview formula exactly: `v_out = clamp(v + s*(1-v)^2 + h*v^2, 0, 1)`
+
+---
+
+## Cutout Effect — Mask Processing Architecture
+
+The cutout effect uses a two-stage architecture: **preprocessing** (offline) and **live refinement** (real-time).
+
+### Stage 1: Preprocessing (`scripts/cutout.py`)
+
+Generates a raw grayscale mask video per asset:
+- Runs rembg with `u2net_human_seg` model on each frame
+- Outputs full-range (0-255) alpha confidence values — **no spatial processing** (no threshold, erosion, or blur)
+- Applies temporal smoothing only (neighbour blending: 0.15/0.70/0.15) to reduce inter-frame jitter
+- Scene-cut-aware: never blends across detected scene boundaries
+
+### Stage 2: Live Refinement (effect settings)
+
+Three adjustable parameters in the effect UI, applied per-frame in real-time:
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `maskThreshold` | 0-255 | 128 | Binarization threshold — higher = tighter mask, lower = more generous |
+| `maskExpand` | -10..10 | 0 | Expand (+) or contract (-) mask edges in pixels |
+| `maskBlur` | 0-20 | 0 | Edge feathering / smoothing radius |
+
+**Preview processing order** (Canvas 2D):
+1. Draw raw mask → apply threshold (pixel loop)
+2. If expand ≠ 0: blur mask at `|expand|*1.5px` radius → re-threshold (lower for expand, higher for contract)
+3. If blur > 0: apply Gaussian blur via `ctx.filter`
+4. Convert processed luminance → alpha channel
+
+**Export processing order** (FFmpeg filters):
+1. `lutyuv=y='if(gte(val,T),255,0)'` — threshold
+2. `maximum=radius=1` (repeated N times) for expand, or `minimum=radius=1` for contract
+3. `gblur=sigma=B` — edge feathering
