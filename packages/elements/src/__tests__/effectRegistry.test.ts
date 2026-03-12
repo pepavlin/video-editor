@@ -84,6 +84,7 @@ function makeExportContext(overrides: Partial<ExportFilterContext> = {}): Export
     assetInputIdxMap: new Map([['asset1', 1]]),
     clipAudioWavMap: new Map(),
     assetMaskInputIdxMap: new Map(),
+    assetAiStyleInputIdxMap: new Map(),
     W: 1080,
     H: 1920,
     beatsMap: new Map<string, BeatsData>(),
@@ -242,6 +243,108 @@ describe('Cartoon.export.buildFilter', () => {
     expect(filterStr).toMatch(/edgedetect=[^[]*format=gbrp/);
     // blend output must be converted back to yuv420p before eq
     expect(filterStr).toMatch(/blend=all_mode=multiply[^[]*format=yuv420p/);
+  });
+});
+
+// ─── Cartoon AI Style mode tests ──────────────────────────────────────────────
+
+describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
+  const cartoon = EFFECT_REGISTRY.find(e => e.type === 'cartoon')!;
+
+  it('generates fallback smartblur filter when no AI style video is available', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      cartoonMode: 'aiStyle',
+      styleStrength: 0.8,
+      brushSize: 0.5,
+      colorVibrance: 1.3,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({ project });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 3, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // Fallback uses smartblur + eq + blend
+    expect(filterStr).toContain('smartblur');
+    expect(filterStr).toContain('eq=saturation=');
+    expect(filterStr).toContain('blend=all_expr=');
+    expect(result!.outputPad).toBe('cz_3');
+  });
+
+  it('generates blend filter with pre-processed AI style video when available', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      cartoonMode: 'aiStyle',
+      styleStrength: 0.7,
+      brushSize: 0.5,
+      colorVibrance: 1.3,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetAiStyleInputIdxMap: new Map([['asset1', 5]]),
+    });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 2, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // Should reference the AI style input
+    expect(filterStr).toContain('[5:v]');
+    // Should contain blend expression with strength 0.700
+    expect(filterStr).toContain('blend=all_expr=');
+    expect(filterStr).toContain('0.700');
+    expect(result!.outputPad).toBe('cz_2');
+  });
+
+  it('returns passthrough when styleStrength is near zero', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      cartoonMode: 'aiStyle',
+      styleStrength: 0.0,
+      brushSize: 0.5,
+      colorVibrance: 1.3,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({ project });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 1, context);
+    expect(result).not.toBeNull();
+    // With zero strength, the filter should passthrough
+    expect(result!.filters).toHaveLength(0);
+    expect(result!.outputPad).toBe('clip0');
+  });
+
+  it('still uses classic mode when cartoonMode is not set', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      // No cartoonMode set — should default to classic
+      edgeStrength: 0.5,
+      colorSimplification: 0.3,
+      saturation: 1.4,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({ project });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // Classic mode should still use split/hqdn3d/edgedetect
+    expect(filterStr).toContain('split');
+    expect(filterStr).toContain('hqdn3d');
+    expect(filterStr).toContain('edgedetect');
+    expect(result!.outputPad).toBe('cz_0');
   });
 });
 

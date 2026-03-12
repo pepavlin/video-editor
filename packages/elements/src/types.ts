@@ -117,6 +117,8 @@ export interface ExportFilterContext {
   clipAudioWavMap: Map<string, number>;
   /** assetId → FFmpeg input index for mask video (used by cutout effect) */
   assetMaskInputIdxMap: Map<string, number>;
+  /** assetId → FFmpeg input index for AI-stylized video (used by cartoon aiStyle mode) */
+  assetAiStyleInputIdxMap?: Map<string, number>;
   W: number;
   H: number;
   beatsMap: Map<string, BeatsData>;

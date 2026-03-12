@@ -21,6 +21,9 @@ export interface Project {
 
 export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon' | 'colorGrade';
 
+/** Cartoon sub-mode: classic edge-detection cartoon or AI painterly stylization */
+export type CartoonMode = 'classic' | 'aiStyle';
+
 export interface Track {
   id: string;
   type: 'video' | 'audio' | 'text' | 'lyrics' | 'effect';
@@ -98,10 +101,16 @@ export interface EffectClipConfig {
   smoothingX?: number;  // 0-1: stabilization strength on X axis
   smoothingY?: number;  // 0-1: stabilization strength on Y axis
   smoothingZ?: number;  // 0-1: stabilization strength on Z/zoom axis
-  // cartoon params
+  // cartoon params (shared)
+  cartoonMode?: CartoonMode;    // 'classic' (default) or 'aiStyle'
+  // cartoon classic params
   edgeStrength?: number;        // 0-1: prominence of cartoon edges
   colorSimplification?: number; // 0-1: how much to simplify/flatten colors
   saturation?: number;          // 0-2: color saturation (1=normal)
+  // cartoon aiStyle params
+  styleStrength?: number;       // 0-1: blending weight between original and stylized (1=full style)
+  brushSize?: number;           // 0-1: controls brush stroke coarseness
+  colorVibrance?: number;       // 0-2: color vibrancy of the painterly output (1=normal)
   // colorGrade params
   contrast?: number;            // 0-2: image contrast (1=normal)
   brightness?: number;          // 0-2: image brightness (1=normal)
@@ -124,9 +133,15 @@ export interface Transform {
 export interface CartoonEffect {
   type: 'cartoon';
   enabled: boolean;
+  cartoonMode: CartoonMode;
+  // classic mode params
   edgeStrength: number;
   colorSimplification: number;
   saturation: number;
+  // aiStyle mode params
+  styleStrength: number;
+  brushSize: number;
+  colorVibrance: number;
 }
 
 export interface CutoutEffect {
@@ -170,9 +185,13 @@ export interface BackgroundConfig {
 export interface CartoonEffect {
   type: 'cartoon';
   enabled: boolean;
+  cartoonMode: CartoonMode;
   edgeStrength: number;        // 0-1
   colorSimplification: number; // 0-1
   saturation: number;          // 0-2
+  styleStrength: number;       // 0-1
+  brushSize: number;           // 0-1
+  colorVibrance: number;       // 0-2
 }
 
 export interface HeadStabilizationEffect {
@@ -196,8 +215,10 @@ export interface Asset {
   beatsPath?: string;
   maskPath?: string;
   headStabilizedPath?: string;  // stabilized proxy video (from head-stabilize job)
+  aiStylePath?: string;         // AI-stylized proxy video (from ai-style job)
   cutoutJobId?: string;         // active or last cutout job ID (for polling from UI)
   headStabJobId?: string;       // active or last head-stabilization job ID
+  aiStyleJobId?: string;        // active or last AI style job ID (for polling from UI)
   duration: number;       // seconds
   width?: number;
   height?: number;
@@ -242,7 +263,7 @@ export interface LyricsStyle {
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'ERROR' | 'CANCELLED';
-export type JobType = 'import' | 'beats' | 'lyrics' | 'export' | 'cutout' | 'headStabilization';
+export type JobType = 'import' | 'beats' | 'lyrics' | 'export' | 'cutout' | 'headStabilization' | 'aiStyle';
 
 export interface Job {
   id: string;

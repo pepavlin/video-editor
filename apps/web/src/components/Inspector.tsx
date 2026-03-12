@@ -15,7 +15,7 @@ import { formatTime } from '@/lib/utils';
 import { SnapSlider } from './effects/SnapSlider';
 
 type AssetJobEntry = { jobId: string; status: string; progress: number; logLines: string[] };
-type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry }>;
+type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry; aiStyle?: AssetJobEntry }>;
 
 interface Props {
   project: Project | null;
@@ -32,6 +32,7 @@ interface Props {
   onStartHeadStabilization: (assetId: string, params: { smoothingX: number; smoothingY: number; smoothingZ: number }) => Promise<void>;
   onCancelHeadStabilization: (assetId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
+  onStartAiStyleJob?: (assetId: string, strength: number, brush: number, vibrance: number) => Promise<void>;
   assetJobs?: AssetJobs;
 }
 
@@ -142,6 +143,7 @@ export default function Inspector({
   onStartHeadStabilization,
   onCancelHeadStabilization,
   onSyncAudio,
+  onStartAiStyleJob,
   assetJobs,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
@@ -212,6 +214,9 @@ export default function Inspector({
   const isHeadStabProcessing = headStabJob?.status === 'RUNNING' || headStabJob?.status === 'QUEUED';
   const headStabProgress = headStabJob?.progress ?? 0;
   const headStabLogLines = headStabJob?.logLines ?? [];
+
+  const aiStyleJob = assetJobs?.[selectedAsset?.id ?? '']?.aiStyle;
+  const aiStyleJobStatus = aiStyleJob?.status;
 
   const assetHasAudio = !!(selectedAsset?.audioPath);
 
@@ -634,30 +639,123 @@ export default function Inspector({
 
                 {cfg.effectType === 'cartoon' && (
                   <>
-                    <Row label="Edges">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <SnapSlider min={0} max={1} step={0.05} value={cfg.edgeStrength ?? 0.6} defaultValue={0.6}
-                          onChange={(v) => update({ edgeStrength: v })}
-                        />
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.edgeStrength ?? 0.6) * 100)}%</span>
+                    <Row label="Mode">
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {(['classic', 'aiStyle'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            style={{
+                              flex: 1,
+                              fontSize: 12,
+                              padding: '4px 8px',
+                              border: '1px solid',
+                              borderColor: (cfg.cartoonMode ?? 'classic') === mode ? 'rgba(132,204,22,0.70)' : 'var(--border)',
+                              borderRadius: 4,
+                              background: (cfg.cartoonMode ?? 'classic') === mode ? 'rgba(132,204,22,0.15)' : 'transparent',
+                              color: (cfg.cartoonMode ?? 'classic') === mode ? 'rgba(132,204,22,0.95)' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontWeight: (cfg.cartoonMode ?? 'classic') === mode ? 600 : 400,
+                            }}
+                            onClick={() => update({ cartoonMode: mode })}
+                          >
+                            {mode === 'classic' ? 'Classic' : 'AI Style'}
+                          </button>
+                        ))}
                       </div>
                     </Row>
-                    <Row label="Flatten">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <SnapSlider min={0} max={1} step={0.05} value={cfg.colorSimplification ?? 0.5} defaultValue={0.5}
-                          onChange={(v) => update({ colorSimplification: v })}
-                        />
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.colorSimplification ?? 0.5) * 100)}%</span>
-                      </div>
-                    </Row>
-                    <Row label="Saturation">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <SnapSlider min={0} max={2} step={0.05} value={cfg.saturation ?? 1.5} defaultValue={1.5}
-                          onChange={(v) => update({ saturation: v })}
-                        />
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
-                      </div>
-                    </Row>
+
+                    {/* Classic mode controls */}
+                    {(cfg.cartoonMode ?? 'classic') === 'classic' && (
+                      <>
+                        <Row label="Edges">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <SnapSlider min={0} max={1} step={0.05} value={cfg.edgeStrength ?? 0.6} defaultValue={0.6}
+                              onChange={(v) => update({ edgeStrength: v })}
+                            />
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.edgeStrength ?? 0.6) * 100)}%</span>
+                          </div>
+                        </Row>
+                        <Row label="Flatten">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <SnapSlider min={0} max={1} step={0.05} value={cfg.colorSimplification ?? 0.5} defaultValue={0.5}
+                              onChange={(v) => update({ colorSimplification: v })}
+                            />
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.colorSimplification ?? 0.5) * 100)}%</span>
+                          </div>
+                        </Row>
+                        <Row label="Saturation">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <SnapSlider min={0} max={2} step={0.05} value={cfg.saturation ?? 1.5} defaultValue={1.5}
+                              onChange={(v) => update({ saturation: v })}
+                            />
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.saturation ?? 1.5).toFixed(1)}×</span>
+                          </div>
+                        </Row>
+                      </>
+                    )}
+
+                    {/* AI Style mode controls */}
+                    {cfg.cartoonMode === 'aiStyle' && (
+                      <>
+                        <Row label="Strength">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <SnapSlider min={0} max={1} step={0.05} value={cfg.styleStrength ?? 0.8} defaultValue={0.8}
+                              onChange={(v) => update({ styleStrength: v })}
+                            />
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.styleStrength ?? 0.8) * 100)}%</span>
+                          </div>
+                        </Row>
+                        <Row label="Brush">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <SnapSlider min={0} max={1} step={0.05} value={cfg.brushSize ?? 0.5} defaultValue={0.5}
+                              onChange={(v) => update({ brushSize: v })}
+                            />
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 32, flexShrink: 0 }}>{Math.round((cfg.brushSize ?? 0.5) * 100)}%</span>
+                          </div>
+                        </Row>
+                        <Row label="Vibrance">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <SnapSlider min={0} max={2} step={0.05} value={cfg.colorVibrance ?? 1.3} defaultValue={1.3}
+                              onChange={(v) => update({ colorVibrance: v })}
+                            />
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.colorVibrance ?? 1.3).toFixed(1)}×</span>
+                          </div>
+                        </Row>
+                        <Row label="Process">
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {selectedAsset?.aiStylePath ? (
+                              <span style={{ fontSize: 12, color: 'rgba(132,204,22,0.85)' }}>Stylized video ready</span>
+                            ) : aiStyleJobStatus === 'RUNNING' ? (
+                              <span style={{ fontSize: 12, color: 'rgba(251,191,36,0.85)' }}>Processing...</span>
+                            ) : (
+                              <button
+                                style={{
+                                  fontSize: 12,
+                                  padding: '4px 10px',
+                                  border: '1px solid rgba(132,204,22,0.40)',
+                                  borderRadius: 4,
+                                  background: 'rgba(132,204,22,0.10)',
+                                  color: 'rgba(132,204,22,0.90)',
+                                  cursor: 'pointer',
+                                }}
+                                onClick={() => {
+                                  if (selectedAsset && onStartAiStyleJob) {
+                                    onStartAiStyleJob(
+                                      selectedAsset.id,
+                                      cfg.styleStrength ?? 0.8,
+                                      cfg.brushSize ?? 0.5,
+                                      cfg.colorVibrance ?? 1.3,
+                                    );
+                                  }
+                                }}
+                              >
+                                Generate Stylized Video
+                              </button>
+                            )}
+                          </div>
+                        </Row>
+                      </>
+                    )}
                   </>
                 )}
 

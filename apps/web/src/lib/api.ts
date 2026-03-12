@@ -65,6 +65,17 @@ export async function startHeadStabilization(
   });
 }
 
+export async function startAiStyle(
+  assetId: string,
+  opts: { styleStrength: number; brushSize: number; colorVibrance: number }
+): Promise<{ jobId: string }> {
+  return apiFetch(`/assets/${assetId}/ai-style`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  });
+}
+
 export async function listMediaFiles(): Promise<{ files: Array<{ name: string; size: number }> }> {
   return apiFetch('/media');
 }

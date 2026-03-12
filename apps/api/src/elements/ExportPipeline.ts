@@ -162,6 +162,26 @@ export class ExportPipeline {
       }
     }
 
+    // ── AI-stylized video inputs (for Cartoon AI Style mode) ──────────────────
+    // Collect AI-stylized videos for assets that have an active cartoon aiStyle effect.
+    const assetAiStyleInputIdxMap = new Map<string, number>();
+    for (const track of videoTracks) {
+      const cartoonEffectTrack = project.tracks.find(
+        (t) => t.type === 'effect' && t.effectType === 'cartoon' && t.parentTrackId === track.id
+      );
+      if (!cartoonEffectTrack?.clips.some((c) => c.effectConfig?.enabled && c.effectConfig?.cartoonMode === 'aiStyle')) continue;
+
+      for (const clip of track.clips) {
+        if (assetAiStyleInputIdxMap.has(clip.assetId)) continue;
+        const asset = ws.getAsset(clip.assetId);
+        if (!asset?.aiStylePath) continue;
+        const aiStyleAbsPath = path.join(ws.getWorkspaceDir(), asset.aiStylePath);
+        if (!fs.existsSync(aiStyleAbsPath)) continue;
+        assetAiStyleInputIdxMap.set(clip.assetId, inputs.length);
+        inputs.push(aiStyleAbsPath);
+      }
+    }
+
     for (const inp of inputs) {
       inputArgs.push('-i', inp);
     }
@@ -176,6 +196,7 @@ export class ExportPipeline {
       assetInputIdxMap,
       clipAudioWavMap,
       assetMaskInputIdxMap,
+      assetAiStyleInputIdxMap,
       W,
       H,
       beatsMap,

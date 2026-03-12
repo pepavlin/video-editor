@@ -76,7 +76,8 @@ video-editor/
 scripts/
 ├── beat_detect.py             # librosa beat detection
 ├── align_lyrics.py            # Whisper word alignment
-└── cutout.py                  # rembg person cutout
+├── cutout.py                  # rembg person cutout
+└── ai_style.py                # Painterly AI stylization (EbSynth-like)
 ```
 
 ### Workspace layout
@@ -91,7 +92,8 @@ workspace/
 │       ├── audio.wav          # Extracted PCM audio
 │       ├── waveform.json      # Amplitude data for UI
 │       ├── beats.json         # Beat timestamps (optional)
-│       └── mask.mp4           # Person mask (optional)
+│       ├── mask.mp4           # Person mask (optional)
+│       └── ai_style.mp4      # AI-stylized video (optional)
 └── projects/
     └── <projectId>/
         ├── project.json       # Project EDL
@@ -143,6 +145,7 @@ workspace/
 | GET | `/api/assets/:id/beats` | Get beat timestamps |
 | POST | `/api/assets/:id/analyze-beats` | Start beat detection job |
 | POST | `/api/assets/:id/cutout` | Start person cutout job |
+| POST | `/api/assets/:id/ai-style` | Start AI painterly stylization job |
 | POST | `/api/projects` | Create new project |
 | GET | `/api/projects` | List projects |
 | GET | `/api/projects/:id` | Load project |
@@ -176,6 +179,12 @@ Uses OpenAI Whisper with `word_timestamps=True`. Maps Whisper transcription to p
 python3 scripts/cutout.py <input.mp4> <mask.mp4>
 ```
 Uses `rembg` with `u2net_human_seg` model. Extracts frames, removes background, outputs grayscale mask video. Requires: `pip3 install rembg onnxruntime pillow`.
+
+### ai_style.py
+```bash
+python3 scripts/ai_style.py <input.mp4> <output.mp4> [strength] [brush_size] [vibrance]
+```
+Painterly stylization with EbSynth-like temporal consistency. Extracts keyframes, applies OpenCV stylization + bilateral filtering + edge darkening, then propagates style via DIS optical flow. Uses `opencv-python-headless` and `numpy` (already installed). See [docs/effects/ai-style.md](docs/effects/ai-style.md) for details.
 
 ---
 
