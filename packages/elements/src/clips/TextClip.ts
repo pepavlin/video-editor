@@ -93,11 +93,20 @@ function hexToFFmpegColor(hex: string): string {
 }
 
 function escapeDrawtextString(text: string): string {
-  // FFmpeg drawtext text escaping: escape \, ', :, and newlines
+  // FFmpeg drawtext text escaping rules (applied in order):
+  //   1. Backslashes must be escaped first (before they're used as escape char)
+  //   2. Single quotes are option value delimiters in FFmpeg filter syntax
+  //   3. Colons are option separators in FFmpeg filter syntax
+  //   4. Semicolons are filter chain separators in -filter_complex
+  //   5. Brackets are pad name delimiters in -filter_complex
+  //   6. Newlines become literal \n for drawtext multiline
   return text
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
     .replace(/:/g, '\\:')
+    .replace(/;/g, '\\;')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
     .replace(/\n/g, '\\n');
 }
 

@@ -206,6 +206,18 @@ describe('TextClip.export.buildFilter', () => {
     expect(filterStr).toContain("\\'");
     expect(filterStr).toContain('\\:');
   });
+
+  it('escapes semicolons and brackets in text (filter_complex separators)', () => {
+    const clip = makeClip({ textContent: 'Hello; [World]' });
+    const track = makeTrack('video');
+    const result = CLIP_REGISTRY.find((e) => e.canHandle(clip, track))!
+      .export.buildFilter('base', clip, track, 0, makeExportContext());
+    const filterStr = result!.filters.join('; ');
+    // Semicolons and brackets must be escaped to avoid breaking filter_complex syntax
+    expect(filterStr).toContain('\\;');
+    expect(filterStr).toContain('\\[');
+    expect(filterStr).toContain('\\]');
+  });
 });
 
 // ─── RectangleClip export tests ───────────────────────────────────────────────

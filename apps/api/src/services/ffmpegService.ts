@@ -288,7 +288,7 @@ export function buildExportCommand(
   // Duration is controlled by the output -t flag below; don't add it here because
   // the `duration` option on the color source filter is unreliable inside filter_complex
   // across ffmpeg versions.
-  filterParts.push(`color=c=black:s=${W}x${H}:r=30[base]`);
+  filterParts.push(`color=c=black:s=${W}x${H}:r=30,format=yuv420p[base]`);
   let prevPad = 'base';
 
   // Video clips — iterate in reverse so that tracks higher in the timeline
@@ -312,8 +312,9 @@ export function buildExportCommand(
       const ty = Math.round(transform.y);
 
       // Scale to fill canvas with aspect-aware scaling
-      const scaledW = Math.round(W * scale);
-      const scaledH = Math.round(H * scale);
+      // Round to nearest even number — libx264 and yuv420p require even dimensions
+      const scaledW = Math.round(W * scale / 2) * 2 || 2;
+      const scaledH = Math.round(H * scale / 2) * 2 || 2;
       const posX = Math.round((W - scaledW) / 2 + tx);
       const posY = Math.round((H - scaledH) / 2 + ty);
 
@@ -476,17 +477,19 @@ export function buildExportCommand(
     }
   }
 
-  // Mix all audio into one named pad [aout]
+  // Mix all audio into one named pad and normalize format for reliable AAC encoding
   let audioOutPad: string | null = null;
   if (audioInputPads.length > 1) {
-    // Use amix without normalize/dropout options for broad ffmpeg version compatibility
     filterParts.push(
-      `${audioInputPads.join('')}amix=inputs=${audioInputPads.length}[aout]`
+      `${audioInputPads.join('')}amix=inputs=${audioInputPads.length},aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]`
     );
     audioOutPad = '[aout]';
   } else if (audioInputPads.length === 1) {
-    // Single audio pad: use it directly, no need for acopy
-    audioOutPad = audioInputPads[0];
+    // Normalize the single audio stream format for reliable AAC encoding
+    filterParts.push(
+      `${audioInputPads[0]}aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[anorm]`
+    );
+    audioOutPad = '[anorm]';
   }
 
   // ─── Subtitle burn-in ─────────────────────────────────────────────────────────

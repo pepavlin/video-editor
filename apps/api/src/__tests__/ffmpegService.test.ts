@@ -242,13 +242,12 @@ describe('buildExportCommand', () => {
     expect(args).toContain('-filter_complex');
   });
 
-  it('includes base canvas in filter_complex', () => {
+  it('includes base canvas with explicit yuv420p format in filter_complex', () => {
     const project = makeProject();
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
     const fcIdx = args.indexOf('-filter_complex');
     const fc = args[fcIdx + 1];
-    expect(fc).toContain('color=c=black:s=1080x1920');
-    expect(fc).toContain('[base]');
+    expect(fc).toContain('color=c=black:s=1080x1920:r=30,format=yuv420p[base]');
   });
 
   it('uses custom resolution', () => {
@@ -663,5 +662,108 @@ describe('buildExportCommand', () => {
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
     // Should use proxy since headStabilizedPath does not exist on the asset
     expect(args).toContain(path.join(tmpDir, 'assets/hsa2/proxy.mp4'));
+  });
+
+  // ─── Export robustness: even dimensions ─────────────────────────────────────
+
+  it('produces even dimensions when transform scale causes odd values', () => {
+    const videoAsset = {
+      id: 'odd1',
+      name: 'clip.mp4',
+      type: 'video' as const,
+      originalPath: 'assets/odd1/original.mp4',
+      proxyPath: 'assets/odd1/proxy.mp4',
+      duration: 5,
+      createdAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
+    fs.mkdirSync(path.join(tmpDir, 'assets', 'odd1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'odd1', 'proxy.mp4'), '');
+
+    // scale=0.5005 with W=1080 → 1080*0.5005=540.54 → old Math.round=541 (ODD!)
+    const project = makeProject({
+      tracks: [
+        {
+          id: 'tr1',
+          type: 'video',
+          name: 'V1',
+          clips: [
+            {
+              id: 'c1',
+              assetId: 'odd1',
+              trackId: 'tr1',
+              timelineStart: 0,
+              timelineEnd: 5,
+              sourceStart: 0,
+              sourceEnd: 5,
+              useClipAudio: false,
+              clipAudioVolume: 1,
+              transform: { scale: 0.5005, x: 0, y: 0, rotation: 0, opacity: 1 },
+            },
+          ],
+        },
+      ],
+    });
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    const fcIdx = args.indexOf('-filter_complex');
+    const fc = args[fcIdx + 1];
+
+    // Extract scale dimensions
+    const scaleMatch = fc.match(/scale=(\d+):(\d+):force_original_aspect_ratio/);
+    expect(scaleMatch).not.toBeNull();
+    const w = parseInt(scaleMatch![1]);
+    const h = parseInt(scaleMatch![2]);
+    expect(w % 2).toBe(0);
+    expect(h % 2).toBe(0);
+  });
+
+  // ─── Export robustness: audio aformat ─────────────────────────────────────────
+
+  it('adds aformat normalization for single audio output', () => {
+    const audioAsset = {
+      id: 'af1',
+      name: 'music.mp3',
+      type: 'audio' as const,
+      originalPath: 'assets/af1/original.mp3',
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([audioAsset]));
+    fs.mkdirSync(path.join(tmpDir, 'assets', 'af1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'af1', 'original.mp3'), '');
+
+    const project = makeProject({
+      tracks: [
+        {
+          id: 'track_master',
+          type: 'audio',
+          isMaster: true,
+          name: 'Master Audio',
+          clips: [
+            {
+              id: 'mclip1',
+              assetId: 'af1',
+              trackId: 'track_master',
+              timelineStart: 0,
+              timelineEnd: 10,
+              sourceStart: 0,
+              sourceEnd: 10,
+            },
+          ],
+        },
+      ],
+    });
+
+    const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
+    const fcIdx = args.indexOf('-filter_complex');
+    const fc = args[fcIdx + 1];
+
+    // Should include aformat for reliable AAC encoding
+    expect(fc).toContain('aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo');
+    // Audio map should reference the normalized pad (the value AFTER the -map flag)
+    const mapIndices = args.reduce<number[]>((acc, a, i) => a === '-map' ? [...acc, i] : acc, []);
+    expect(mapIndices.length).toBe(2); // video + audio
+    expect(args[mapIndices[1] + 1]).toContain('anorm');
   });
 });
