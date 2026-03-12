@@ -40,8 +40,8 @@ COPY apps/api/package.json ./apps/api/
 # Create empty web package.json so npm workspace glob doesn't fail
 COPY apps/web/package.json ./apps/web/
 
-# Install Node dependencies (root-level installs all workspaces)
-RUN npm ci --ignore-scripts
+# Install Node dependencies and clean npm cache in same layer
+RUN npm ci --ignore-scripts && npm cache clean --force
 
 # Build shared package
 COPY packages/shared/tsconfig.json ./packages/shared/
@@ -60,28 +60,18 @@ COPY apps/api/src ./apps/api/src
 # Copy Python scripts
 COPY scripts ./scripts
 
-# Install Python dependencies (lightweight core ones, skip Whisper/torch by default)
+# Install all Python dependencies in a single layer to minimize VFS overhead
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: librosa soundfile numpy \
-    || pip3 install --no-cache-dir --only-binary=:all: librosa soundfile numpy
-
-# Install cutout dependencies (rembg for AI background removal)
-RUN pip3 install --no-cache-dir --break-system-packages rembg onnxruntime pillow \
-    || pip3 install --no-cache-dir rembg onnxruntime pillow
-
-# Pre-download the rembg segmentation model so the first cutout job doesn't
-# need network access and avoids a silent hang while downloading ~170 MB.
-# Falls back gracefully if the build host has no internet access.
-RUN python3 -c "from rembg import new_session; new_session('u2net_human_seg'); print('rembg model cached')" \
-    || echo "WARNING: rembg model pre-download failed – it will be downloaded on first use"
-
-# Install head stabilization dependencies (opencv for face detection)
-RUN pip3 install --no-cache-dir --break-system-packages --only-binary=:all: opencv-python-headless \
-    || pip3 install --no-cache-dir --only-binary=:all: opencv-python-headless
-
-# Whisper for lyrics auto-transcription (faster-whisper uses CTranslate2, much smaller than openai-whisper+torch)
-RUN pip3 install --no-cache-dir --break-system-packages faster-whisper \
-    || pip3 install --no-cache-dir faster-whisper
+RUN (pip3 install --no-cache-dir --break-system-packages --only-binary=:all: librosa soundfile numpy \
+    || pip3 install --no-cache-dir --only-binary=:all: librosa soundfile numpy) \
+    && (pip3 install --no-cache-dir --break-system-packages rembg onnxruntime pillow \
+    || pip3 install --no-cache-dir rembg onnxruntime pillow) \
+    && (python3 -c "from rembg import new_session; new_session('u2net_human_seg'); print('rembg model cached')" \
+    || echo "WARNING: rembg model pre-download failed – it will be downloaded on first use") \
+    && (pip3 install --no-cache-dir --break-system-packages --only-binary=:all: opencv-python-headless \
+    || pip3 install --no-cache-dir --only-binary=:all: opencv-python-headless) \
+    && (pip3 install --no-cache-dir --break-system-packages faster-whisper \
+    || pip3 install --no-cache-dir faster-whisper)
 
 # Build API
 RUN npm run build -w apps/api
