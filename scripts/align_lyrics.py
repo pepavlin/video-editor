@@ -13,11 +13,15 @@ import sys
 import json
 import os
 import re
+import unicodedata
 
 
 def normalize_word(w: str) -> str:
-    """Strip punctuation and lowercase for matching."""
-    return re.sub(r"[^a-z0-9']", "", w.lower())
+    """Strip punctuation and lowercase for matching. Unicode-aware via NFKD decomposition."""
+    # Decompose unicode chars to base letter + combining marks, then strip combining marks
+    # e.g. "příběh" → "pribeh", "čeština" → "cestina"
+    nfkd = unicodedata.normalize('NFKD', w.lower())
+    return re.sub(r"[^a-z0-9']", "", nfkd)
 
 
 def align_lyrics(audio_path: str, lyrics_path: str, output_path: str) -> None:
@@ -84,27 +88,30 @@ def _map_to_provided_lyrics(lyrics_words: list, whisper_words: list) -> list:
     """
     Map provided lyrics words to whisper timestamps using greedy alignment.
     Uses normalized word matching with tolerance for transcription errors.
+
+    IMPORTANT: Every word from lyrics_words MUST appear in the output.
+    Words that cannot be matched to Whisper output get estimated timestamps.
     """
     result = []
     w_idx = 0  # whisper word pointer
 
     for lw in lyrics_words:
         norm_lw = normalize_word(lw)
-        if not norm_lw:
-            continue
 
-        # Search ahead in whisper words for a match
+        # Try to find a match in whisper words (only if we have a non-empty
+        # normalized form to match against AND there are whisper words ahead)
         best_match_idx = -1
-        search_window = min(w_idx + 8, len(whisper_words))
+        if norm_lw and w_idx < len(whisper_words):
+            search_window = min(w_idx + 12, len(whisper_words))
 
-        for i in range(w_idx, search_window):
-            if whisper_words[i]["norm"] == norm_lw:
-                best_match_idx = i
-                break
-            # Partial match
-            if norm_lw in whisper_words[i]["norm"] or whisper_words[i]["norm"] in norm_lw:
-                if best_match_idx < 0:
+            for i in range(w_idx, search_window):
+                if whisper_words[i]["norm"] == norm_lw:
                     best_match_idx = i
+                    break
+                # Partial match
+                if norm_lw in whisper_words[i]["norm"] or whisper_words[i]["norm"] in norm_lw:
+                    if best_match_idx < 0:
+                        best_match_idx = i
 
         if best_match_idx >= 0:
             ww = whisper_words[best_match_idx]
@@ -131,6 +138,13 @@ def _map_to_provided_lyrics(lyrics_words: list, whisper_words: list) -> list:
                 "word": lw,
                 "start": last["end"],
                 "end": last["end"] + avg_dur,
+            })
+        else:
+            # Edge case: no whisper words available and no previous results
+            result.append({
+                "word": lw,
+                "start": 0.0,
+                "end": 0.3,
             })
 
     return result
