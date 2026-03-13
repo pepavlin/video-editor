@@ -447,4 +447,124 @@ describe('ExportPipeline', () => {
     expect(result.filterComplex).toContain('aformat=sample_fmts=fltp');
     expect(result.audioOutPad).toBe('[aout]');
   });
+
+  // ─── Export conversion fix tests ──────────────────────────────────────────
+
+  it('AI Style effect uses explicit clip dimensions (not iw:ih) for blend compatibility', () => {
+    const clip = makeClip({
+      transform: { scale: 0.8, x: 0, y: 0, rotation: 0, opacity: 1 },
+    });
+    const videoTrack = makeVideoTrack([clip]);
+
+    // Create AI-stylized asset
+    const asset1Dir = ws.getAssetDir('asset1');
+    fs.writeFileSync(path.join(asset1Dir, 'ai_style.mp4'), 'fake-ai-style');
+    ws.upsertAsset({
+      id: 'asset1',
+      name: 'test.mp4',
+      type: 'video',
+      originalPath: 'assets/asset1/proxy.mp4',
+      proxyPath: 'assets/asset1/proxy.mp4',
+      maskPath: 'assets/asset1/mask.mp4',
+      aiStylePath: 'assets/asset1/ai_style.mp4',
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    });
+
+    const cartoonConfig: EffectClipConfig = {
+      effectType: 'cartoon',
+      enabled: true,
+      cartoonMode: 'aiStyle',
+      styleStrength: 0.8,
+    };
+    const cartoonTrack = makeEffectTrack(videoTrack.id, 'cartoon', cartoonConfig, 'track-fx-cartoon');
+    const project = makeProject([videoTrack, cartoonTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // AI Style should use explicit dimensions matching the clip scale, NOT iw:ih
+    // With scale=0.8: scaledW = round(1080*0.8/2)*2 = 864, scaledH = round(1920*0.8/2)*2 = 1536
+    expect(result.filterComplex).not.toContain('scale=iw:ih');
+    expect(result.filterComplex).toContain('scale=864:1536:force_original_aspect_ratio=increase');
+    // Must have blend (AI style uses blend to mix original with stylized)
+    expect(result.filterComplex).toContain('blend=all_expr=');
+  });
+
+  it('cutout background color source has setpts for PTS alignment', () => {
+    const clip = makeClip({
+      timelineStart: 2,
+      timelineEnd: 5,
+      sourceStart: 0,
+      sourceEnd: 3,
+    });
+    const videoTrack = makeVideoTrack([clip]);
+    const cutoutConfig: EffectClipConfig = {
+      effectType: 'cutout',
+      enabled: true,
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#00FF00' },
+    };
+    const effectTrack = makeEffectTrack(videoTrack.id, 'cutout', cutoutConfig);
+    const project = makeProject([videoTrack, effectTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // Background color source must have setpts to align with clip's timeline position
+    expect(result.filterComplex).toContain('setpts=PTS-STARTPTS+2.0000/TB,format=gbrp');
+  });
+
+  it('skips assets with missing proxy files gracefully', () => {
+    // Remove the proxy file to simulate a missing asset
+    const asset1Dir = ws.getAssetDir('asset1');
+    const proxyPath = path.join(asset1Dir, 'proxy.mp4');
+    if (fs.existsSync(proxyPath)) fs.unlinkSync(proxyPath);
+
+    const clip = makeClip();
+    const videoTrack = makeVideoTrack([clip]);
+    const project = makeProject([videoTrack]);
+    const pipeline = new ExportPipeline();
+
+    // Should not throw, and should produce a valid (empty) result
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // No video inputs should be added since the file is missing
+    expect(result.inputArgs.filter(a => a.includes('proxy.mp4'))).toHaveLength(0);
+    // Should still have a base canvas
+    expect(result.filterComplex).toContain('color=c=black');
+    expect(result.videoOutPad).toBe('base');
+  });
+
+  it('skips master audio when file does not exist', () => {
+    const clip = makeClip();
+    const videoTrack = makeVideoTrack([clip]);
+
+    // Create audio asset that points to a non-existent file
+    const audioAssetId = 'missing-audio';
+    ws.upsertAsset({
+      id: audioAssetId,
+      name: 'missing.mp3',
+      type: 'audio',
+      originalPath: `assets/${audioAssetId}/nonexistent.mp3`,
+      duration: 10,
+      createdAt: new Date().toISOString(),
+    });
+
+    const audioClip = makeClip({
+      id: 'audio-clip1',
+      assetId: audioAssetId,
+      trackId: 'track-audio',
+    });
+    const audioTrack = makeMasterAudioTrack([audioClip]);
+    const project = makeProject([videoTrack, audioTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // No audio pad should be present since the file is missing
+    expect(result.audioOutPad).toBeNull();
+    // No audio input args should be added
+    expect(result.inputArgs.filter(a => a.includes('nonexistent.mp3'))).toHaveLength(0);
+  });
 });

@@ -99,7 +99,8 @@ function escapeDrawtextString(text: string): string {
   //   3. Colons are option separators in FFmpeg filter syntax
   //   4. Semicolons are filter chain separators in -filter_complex
   //   5. Brackets are pad name delimiters in -filter_complex
-  //   6. Newlines become literal \n for drawtext multiline
+  //   6. Percent signs trigger text expansion (%{pts}, %{n}, etc.) — must be escaped
+  //   7. Newlines become literal \n for drawtext multiline
   return text
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
@@ -107,6 +108,7 @@ function escapeDrawtextString(text: string): string {
     .replace(/;/g, '\\;')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]')
+    .replace(/%/g, '%%')
     .replace(/\n/g, '\\n');
 }
 

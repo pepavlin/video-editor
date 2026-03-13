@@ -439,14 +439,23 @@ function buildAiStyleFilter(
     const styledTrimmed = `aist_${filterIdx}`;
     const styledScaled = `aiss_${filterIdx}`;
 
+    // Compute clip output dimensions to match the base clip's scaled size.
+    // The blend filter requires EXACTLY matching dimensions on both inputs.
+    // The base clip has been scaled to (W*scale, H*scale) rounded to even.
+    const { W, H } = context;
+    const transform = clip.transform ?? { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
+    const scale = Math.max(0.01, transform.scale);
+    const scaledW = Math.round(W * scale / 2) * 2 || 2;
+    const scaledH = Math.round(H * scale / 2) * 2 || 2;
+
     // Trim and scale the stylized video to match the clip
     const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`;
 
     return {
       filters: [
         `[${aiStyleIdx}:v]${trimFilter}[${styledTrimmed}]`,
-        // Scale stylized to match input dimensions and format
-        `[${styledTrimmed}]scale=iw:ih,format=yuv420p[${styledScaled}]`,
+        // Scale stylized to match clip output dimensions (must match inputPad exactly for blend)
+        `[${styledTrimmed}]scale=${scaledW}:${scaledH}:force_original_aspect_ratio=increase,crop=${scaledW}:${scaledH},format=yuv420p[${styledScaled}]`,
         // Blend: strength=1 → full stylized, strength=0 → full original
         `[${inputPad}][${styledScaled}]blend=all_expr='A*(1-${strength.toFixed(3)})+B*${strength.toFixed(3)}'[${out}]`,
       ],
