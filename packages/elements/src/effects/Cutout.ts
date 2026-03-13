@@ -404,8 +404,10 @@ const cutoutExport: EffectExportApi = {
       `[${maskA}]negate[${maskInv}]`,
       // Convert clip to gbrp for blending
       `[${inputPad}]format=gbrp[${clipRgb}]`,
-      // Create background fill at clip dimensions in gbrp
-      `color=c=${bgColor}:s=${scaledW}x${scaledH}:r=30:d=${clipDuration.toFixed(4)},format=gbrp[${bgPad}]`,
+      // Create background fill at clip dimensions in gbrp.
+      // setpts aligns PTS with the clip's timeline position so the blend filter
+      // receives time-synchronized frames (prevents frame count mismatch).
+      `color=c=${bgColor}:s=${scaledW}x${scaledH}:r=30:d=${clipDuration.toFixed(4)},setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB,format=gbrp[${bgPad}]`,
     ];
 
     if (mode === 'removeBg') {

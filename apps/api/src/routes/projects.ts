@@ -585,11 +585,14 @@ export async function projectsRoutes(app: FastifyInstance) {
               const exitInfo = code !== null ? `code ${code}` : `signal ${signal ?? 'unknown'}`;
               // Prefer lines that look like actual errors; skip ffmpeg startup noise
               const startupNoise = /press \[q\]|ffmpeg version|built with|configuration:|lib[a-z]+\s+\d/i;
-              const errorKeywords = /error|invalid|unknown|not found|failed|abort|conversion|no such|impossible|does not|cannot/i;
+              const errorKeywords = /error|invalid|unknown|not found|failed|abort|conversion|no such|impossible|does not|cannot|mismatch|discarded/i;
               const meaningfulErrors = errorLines
                 .filter((l) => !startupNoise.test(l) && errorKeywords.test(l));
-              const errorDetail = meaningfulErrors.pop()
-                ?? errorLines.filter((l) => !startupNoise.test(l)).pop()
+              // Include last 3 meaningful errors for better diagnostics
+              const recentErrors = meaningfulErrors.slice(-3);
+              const errorDetail = recentErrors.length > 0
+                ? recentErrors.join(' | ')
+                : errorLines.filter((l) => !startupNoise.test(l)).pop()
                 ?? errorLines[errorLines.length - 1]
                 ?? '';
               reject(new Error(`ffmpeg exited with ${exitInfo}${errorDetail ? `: ${errorDetail.slice(0, 500)}` : ''}`));

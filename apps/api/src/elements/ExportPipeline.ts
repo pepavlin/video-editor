@@ -102,6 +102,12 @@ export class ExportPipeline {
                 ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
                 : path.join(ws.getWorkspaceDir(), asset.originalPath);
             }
+            // Validate that the input file actually exists on disk.
+            // Missing proxy/original files are a common cause of FFmpeg conversion errors.
+            if (!fs.existsSync(absProxy)) {
+              console.warn(`[ExportPipeline] Skipping asset ${clip.assetId}: file not found: ${absProxy}`);
+              continue;
+            }
             assetPathMap.set(clip.assetId, absProxy);
           }
         }
@@ -115,8 +121,12 @@ export class ExportPipeline {
       const masterAsset = ws.getAsset(masterAudioClip.assetId);
       if (masterAsset) {
         const masterPath = path.join(ws.getWorkspaceDir(), masterAsset.originalPath);
-        masterAudioInputIdx = inputs.length;
-        inputs.push(masterPath);
+        if (!fs.existsSync(masterPath)) {
+          console.warn(`[ExportPipeline] Master audio file not found: ${masterPath}`);
+        } else {
+          masterAudioInputIdx = inputs.length;
+          inputs.push(masterPath);
+        }
       }
     }
 

@@ -218,6 +218,18 @@ describe('TextClip.export.buildFilter', () => {
     expect(filterStr).toContain('\\[');
     expect(filterStr).toContain('\\]');
   });
+
+  it('escapes percent signs in text (prevents FFmpeg text expansion)', () => {
+    const clip = makeClip({ textContent: '100% done' });
+    const track = makeTrack('video');
+    const result = CLIP_REGISTRY.find((e) => e.canHandle(clip, track))!
+      .export.buildFilter('base', clip, track, 0, makeExportContext());
+    const filterStr = result!.filters.join('; ');
+    // Percent signs must be doubled to prevent FFmpeg text expansion (%{pts}, etc.)
+    expect(filterStr).toContain('100%%');
+    // Must NOT contain a bare % that would trigger text expansion
+    expect(filterStr).not.toMatch(/100%[^%]/);
+  });
 });
 
 // ─── RectangleClip export tests ───────────────────────────────────────────────
