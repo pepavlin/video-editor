@@ -87,28 +87,36 @@ export class ExportPipeline {
     const inputs: string[] = [];
     const inputArgs: string[] = [];
 
-    // ── Collect unique asset proxy paths ──────────────────────────────────────
+    // ── Collect unique asset paths for export (prefer original over proxy) ───
+    // Export must use the original full-resolution file for maximum quality.
+    // Proxy files (540p, CRF 28) are only meant for fast preview in the browser.
+    // Fall back to proxy only if the original file is missing on disk.
     const assetPathMap = new Map<string, string>();
     for (const track of videoTracks) {
       for (const clip of track.clips) {
         if (!assetPathMap.has(clip.assetId)) {
           const asset = ws.getAsset(clip.assetId);
           if (asset) {
-            let absProxy: string;
+            let absInput: string;
             if (stabilizedAssetIds.has(clip.assetId) && asset.headStabilizedPath) {
-              absProxy = path.join(ws.getWorkspaceDir(), asset.headStabilizedPath);
+              absInput = path.join(ws.getWorkspaceDir(), asset.headStabilizedPath);
             } else {
-              absProxy = asset.proxyPath
+              // Prefer original (full resolution) over proxy (540p) for export quality
+              const originalAbs = path.join(ws.getWorkspaceDir(), asset.originalPath);
+              const proxyAbs = asset.proxyPath
                 ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
-                : path.join(ws.getWorkspaceDir(), asset.originalPath);
+                : null;
+              absInput = fs.existsSync(originalAbs)
+                ? originalAbs
+                : (proxyAbs ?? originalAbs);
             }
             // Validate that the input file actually exists on disk.
-            // Missing proxy/original files are a common cause of FFmpeg conversion errors.
-            if (!fs.existsSync(absProxy)) {
-              console.warn(`[ExportPipeline] Skipping asset ${clip.assetId}: file not found: ${absProxy}`);
+            // Missing files are a common cause of FFmpeg conversion errors.
+            if (!fs.existsSync(absInput)) {
+              console.warn(`[ExportPipeline] Skipping asset ${clip.assetId}: file not found: ${absInput}`);
               continue;
             }
-            assetPathMap.set(clip.assetId, absProxy);
+            assetPathMap.set(clip.assetId, absInput);
           }
         }
       }

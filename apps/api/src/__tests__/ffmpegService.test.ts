@@ -318,8 +318,9 @@ describe('buildExportCommand', () => {
       path.join(tmpDir, 'assets.json'),
       JSON.stringify([videoAsset, audioAsset])
     );
-    // Create fake proxy file path
+    // Create fake asset files (original for export quality, proxy as fallback)
     fs.mkdirSync(path.join(tmpDir, 'assets', 'a1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'a1', 'original.mp4'), '');
     fs.writeFileSync(path.join(tmpDir, 'assets', 'a1', 'proxy.mp4'), '');
     fs.mkdirSync(path.join(tmpDir, 'assets', 'audio1'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'assets', 'audio1', 'original.mp3'), '');
@@ -421,6 +422,7 @@ describe('buildExportCommand', () => {
     };
     fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
     fs.mkdirSync(path.join(tmpDir, 'assets', 'va1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'va1', 'original.mp4'), '');
     fs.writeFileSync(path.join(tmpDir, 'assets', 'va1', 'proxy.mp4'), '');
 
     return makeProject({
@@ -536,6 +538,7 @@ describe('buildExportCommand', () => {
     };
     fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
     fs.mkdirSync(path.join(tmpDir, 'assets', 'hsa1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa1', 'original.mp4'), '');
     fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa1', 'proxy.mp4'), '');
     fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa1', 'head_stabilized.mp4'), '');
 
@@ -608,6 +611,7 @@ describe('buildExportCommand', () => {
     };
     fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
     fs.mkdirSync(path.join(tmpDir, 'assets', 'hsa2'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa2', 'original.mp4'), '');
     fs.writeFileSync(path.join(tmpDir, 'assets', 'hsa2', 'proxy.mp4'), '');
 
     const project = makeProject({
@@ -660,8 +664,8 @@ describe('buildExportCommand', () => {
     });
 
     const { args } = buildExportCommand(project, { outputPath: '/tmp/out.mp4' }, new Map());
-    // Should use proxy since headStabilizedPath does not exist on the asset
-    expect(args).toContain(path.join(tmpDir, 'assets/hsa2/proxy.mp4'));
+    // Should use original (full resolution) since headStabilizedPath does not exist on the asset
+    expect(args).toContain(path.join(tmpDir, 'assets/hsa2/original.mp4'));
   });
 
   // ─── Export robustness: even dimensions ─────────────────────────────────────
@@ -678,6 +682,7 @@ describe('buildExportCommand', () => {
     };
     fs.writeFileSync(path.join(tmpDir, 'assets.json'), JSON.stringify([videoAsset]));
     fs.mkdirSync(path.join(tmpDir, 'assets', 'odd1'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'odd1', 'original.mp4'), '');
     fs.writeFileSync(path.join(tmpDir, 'assets', 'odd1', 'proxy.mp4'), '');
 
     // scale=0.5005 with W=1080 → 1080*0.5005=540.54 → old Math.round=541 (ODD!)

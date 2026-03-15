@@ -486,7 +486,7 @@ export async function projectsRoutes(app: FastifyInstance) {
 
         const W = req.body?.width ?? project.outputResolution.w;
         const H = req.body?.height ?? project.outputResolution.h;
-        const CRF = req.body?.crf ?? 20;
+        const CRF = req.body?.crf ?? 18;
         const PRESET = req.body?.preset ?? 'medium';
 
         // Build filter complex using the unified ExportPipeline (registry-driven).
