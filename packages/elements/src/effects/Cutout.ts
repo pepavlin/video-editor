@@ -6,7 +6,7 @@
  *
  * ┌────────────────────────────────────────────────────────────────────────────┐
  * │  PREVIEW: Canvas 2D — luminance-to-alpha mask + destination-in composite  │
- * │  EXPORT:  FFmpeg — multiply blend + addition blend (no alpha channel)     │
+ * │  EXPORT:  FFmpeg — alphamerge (transparent) or multiply+addition (solid)  │
  * └────────────────────────────────────────────────────────────────────────────┘
  *
  * Modes:
@@ -130,14 +130,17 @@ export function applyCutoutPreview(
   mode: 'removeBg' | 'removePerson',
   bgColor: string,
   maskAdjust: MaskAdjustParams = DEFAULT_MASK_ADJUST,
+  bgType: 'none' | 'solid' | 'video' = 'none',
 ): HTMLCanvasElement | null {
   const { x, y, w, h } = bounds;
   const iw = Math.max(2, Math.round(w));
   const ih = Math.max(2, Math.round(h));
 
-  // 1. Draw solid background
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(x, y, w, h);
+  // 1. Draw solid background (skip for 'none' — transparent mode)
+  if (bgType === 'solid') {
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(x, y, w, h);
+  }
 
   const { videoCanvas, maskCanvas, tempCanvas } = getCutoutCanvases(iw, ih);
   const videoCtx = videoCanvas.getContext('2d');
@@ -272,6 +275,7 @@ const cutoutPreview: EffectPreviewApi = {
 
     const maskEl = getOrCreateMaskVideoEl(clip.assetId, `/files/${maskPath}`);
     const mode = cfg.cutoutMode ?? 'removeBg';
+    const bgType = cfg.background?.type ?? 'none';
     const bgColor = cfg.background?.color ?? '#000000';
     const maskAdjust: MaskAdjustParams = {
       threshold: cfg.maskThreshold ?? DEFAULT_MASK_ADJUST.threshold,
@@ -279,7 +283,7 @@ const cutoutPreview: EffectPreviewApi = {
       blur: cfg.maskBlur ?? DEFAULT_MASK_ADJUST.blur,
     };
 
-    return applyCutoutPreview(ctx, source, maskEl, bounds, mode, bgColor, maskAdjust);
+    return applyCutoutPreview(ctx, source, maskEl, bounds, mode, bgColor, maskAdjust, bgType);
   },
 };
 
@@ -296,23 +300,26 @@ const cutoutExport: EffectExportApi = {
   /**
    * Builds an FFmpeg filter chain for cutout compositing.
    *
-   * Uses multiply + addition blend in planar RGB (gbrp) color space:
+   * Two modes based on background type:
    *
-   *   For removeBg mode:
+   * ## Transparent background (type='none', default):
+   *   Uses alphamerge to set the mask as the alpha channel of the clip.
+   *   Output is yuva420p — the overlay filter in VideoClip handles alpha
+   *   blending, letting content on lower tracks show through transparent areas.
+   *
+   * ## Solid background (type='solid'):
+   *   Uses multiply + addition blend in planar RGB (gbrp) color space:
    *     subject_pixels = clip_rgb * mask_rgb / 255   (clip where mask is white)
    *     background_pixels = bg_rgb * inv_mask_rgb / 255  (bg where mask is black)
    *     result = subject + background                (composite)
-   *
    *   For removePerson mode: swap mask and inv_mask roles
    *
-   * The blending MUST be done in RGB, not YUV. In YUV420p, the grayscale mask
-   * has Y=0/255 but U=128, V=128 (neutral chroma). Multiplying in YUV would
-   * halve the chroma channels (U_clip * 128/255 ≈ 0.5 * U_clip), causing
-   * severe color desaturation. In gbrp, the mask converts to R=G=B=Y_mask
-   * (all 0 or 255), so multiply preserves all channels correctly.
+   *   The blending MUST be done in RGB, not YUV. In YUV420p, the grayscale mask
+   *   has Y=0/255 but U=128, V=128 (neutral chroma). Multiplying in YUV would
+   *   halve the chroma channels, causing severe color desaturation.
    *
-   * After composition, the result is converted back to yuv420p so that
-   * downstream effects (Cartoon, ColorGrade) receive the expected format.
+   *   After composition, the result is converted back to yuv420p so that
+   *   downstream effects (Cartoon, ColorGrade) receive the expected format.
    */
   buildFilter(
     inputPad: string,
@@ -338,6 +345,7 @@ const cutoutExport: EffectExportApi = {
     const scaledH = Math.round(H * scale / 2) * 2 || 2;
 
     const mode = cfg.cutoutMode ?? 'removeBg';
+    const bgType = cfg.background?.type ?? 'none';
     const bgColor = (cfg.background?.color ?? '#000000').replace('#', '0x');
     const clipDuration = clip.timelineEnd - clip.timelineStart;
 
@@ -395,6 +403,32 @@ const cutoutExport: EffectExportApi = {
       `[${maskInputIdx}:v]${trimFilter}[${maskTrimmed}]`,
       // Apply mask processing in YUV (threshold, expand, blur operate on Y channel)
       `[${maskTrimmed}]${maskProcessingSteps.join(',')}[${maskProcessed}]`,
+    ];
+
+    // ── Transparent background ('none') — use alphamerge for proper alpha compositing
+    if (bgType === 'none') {
+      const maskGray = `cut_maskgray_${filterIdx}`;
+      const clipRgba = `cut_cliprgba_${filterIdx}`;
+      const merged = `cut_merged_${filterIdx}`;
+
+      if (mode === 'removeBg') {
+        // Keep subject (white in mask = opaque), remove background (black = transparent)
+        filters.push(`[${maskProcessed}]format=gray[${maskGray}]`);
+      } else {
+        // removePerson: keep background (black in mask = opaque), negate mask
+        filters.push(`[${maskProcessed}]format=gray,negate[${maskGray}]`);
+      }
+
+      // Convert clip to RGBA, merge mask as alpha channel, output yuva420p
+      // The overlay filter in VideoClip handles alpha blending with the base canvas
+      filters.push(`[${inputPad}]format=rgba[${clipRgba}]`);
+      filters.push(`[${clipRgba}][${maskGray}]alphamerge,format=yuva420p[${outPad}]`);
+
+      return { filters, outputPad: outPad };
+    }
+
+    // ── Solid background — multiply + addition blend in planar RGB (gbrp)
+    filters.push(
       // Convert processed mask to planar RGB for correct blending.
       // In gbrp, the grayscale mask becomes R=G=B=Y_mask (0 or 255 on all channels).
       `[${maskProcessed}]format=gbrp[${maskRgb}]`,
@@ -408,7 +442,7 @@ const cutoutExport: EffectExportApi = {
       // setpts aligns PTS with the clip's timeline position so the blend filter
       // receives time-synchronized frames (prevents frame count mismatch).
       `color=c=${bgColor}:s=${scaledW}x${scaledH}:r=30:d=${clipDuration.toFixed(4)},setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB,format=gbrp[${bgPad}]`,
-    ];
+    );
 
     if (mode === 'removeBg') {
       // Keep person (subject), replace background

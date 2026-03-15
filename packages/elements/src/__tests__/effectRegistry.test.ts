@@ -678,7 +678,26 @@ describe('Cutout.export', () => {
     expect(filterStr).toMatch(/blend=all_mode=addition,format=yuv420p/);
   });
 
-  it('converts composite back to yuv420p for downstream effect compatibility', () => {
+  it('converts composite back to yuv420p for downstream effect compatibility (solid bg)', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', { cutoutMode: 'removeBg', background: { type: 'solid', color: '#000000' } })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    // The last filter in the chain must convert back to yuv420p
+    const lastFilter = result!.filters[result!.filters.length - 1];
+    expect(lastFilter).toContain('format=yuv420p');
+  });
+
+  it('uses alphamerge for transparent background (default, no background set)', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cutout');
@@ -692,9 +711,60 @@ describe('Cutout.export', () => {
     const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
     expect(result).not.toBeNull();
 
-    // The last filter in the chain must convert back to yuv420p
-    const lastFilter = result!.filters[result!.filters.length - 1];
-    expect(lastFilter).toContain('format=yuv420p');
+    const filterStr = result!.filters.join('; ');
+    // Should use alphamerge instead of multiply+addition blend
+    expect(filterStr).toContain('alphamerge');
+    expect(filterStr).toContain('format=yuva420p');
+    // Should NOT have solid color background
+    expect(filterStr).not.toContain('color=c=');
+    // Should NOT have split/negate/multiply/addition (those are for solid bg)
+    expect(filterStr).not.toContain('split');
+    expect(filterStr).not.toContain('blend=all_mode=multiply');
+    expect(filterStr).not.toContain('blend=all_mode=addition');
+    expect(result!.outputPad).toBe('cut_out_0');
+  });
+
+  it('uses alphamerge with explicit background type none', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', { cutoutMode: 'removeBg', background: { type: 'none' } })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 5, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    expect(filterStr).toContain('alphamerge');
+    expect(filterStr).toContain('format=yuva420p');
+    expect(filterStr).toContain('format=gray'); // mask converted to gray for alphamerge
+    expect(filterStr).not.toContain('negate'); // removeBg: mask used as-is
+    expect(result!.outputPad).toBe('cut_out_5');
+  });
+
+  it('negates mask in alphamerge path for removePerson with transparent bg', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', { cutoutMode: 'removePerson', background: { type: 'none' } })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 3]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 2, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    expect(filterStr).toContain('alphamerge');
+    expect(filterStr).toContain('format=gray,negate'); // removePerson: mask is negated
+    expect(filterStr).toContain('format=yuva420p');
+    expect(result!.outputPad).toBe('cut_out_2');
   });
 
   it('buildFilter includes expand (maximum) filters when maskExpand > 0', () => {

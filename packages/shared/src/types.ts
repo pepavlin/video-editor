@@ -175,7 +175,7 @@ export interface ColorGradeEffect {
 // ─── Background config (used by cutout effect in EffectClipConfig) ──────────
 
 export interface BackgroundConfig {
-  type: 'solid' | 'video';
+  type: 'none' | 'solid' | 'video';
   color?: string;    // hex, for solid
   assetId?: string;  // for video background
 }
