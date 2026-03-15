@@ -480,17 +480,18 @@ export default function Inspector({
                     </Row>
                     <Row label="BG Type">
                       <select
-                        value={cfg.background?.type ?? 'solid'}
+                        value={cfg.background?.type ?? 'none'}
                         style={{ fontSize: 13 }}
                         onChange={(e) =>
                           update({
                             background: {
-                              ...(cfg.background ?? { type: 'solid' }),
-                              type: e.target.value as 'solid' | 'video',
+                              ...(cfg.background ?? { type: 'none' }),
+                              type: e.target.value as 'none' | 'solid' | 'video',
                             },
                           })
                         }
                       >
+                        <option value="none">Transparent</option>
                         <option value="solid">Solid Color</option>
                         <option value="video">Video</option>
                       </select>
