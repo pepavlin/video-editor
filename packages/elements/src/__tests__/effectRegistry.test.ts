@@ -867,6 +867,65 @@ describe('Cutout.export', () => {
     expect(filterStr).toContain("lutyuv=y='if(gte(val,200),255,0)'");
   });
 
+  it('re-syncs mask PTS after processing to prevent timing drift in export', () => {
+    const clip = makeClip({ timelineStart: 2, timelineEnd: 5, sourceStart: 0, sourceEnd: 3 });
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', {
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+      maskExpand: 3,
+      maskBlur: 5,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+
+    // The mask processing chain (second filter line) must end with setpts
+    // to re-sync timestamps after morphological/blur filters that can cause PTS drift.
+    // Find the filter line that contains the mask processing (lutyuv + maximum + gblur)
+    const maskProcessingFilter = result!.filters.find(f => f.includes('lutyuv=y='));
+    expect(maskProcessingFilter).toBeDefined();
+    // It must contain setpts AFTER the processing filters to re-sync timing
+    expect(maskProcessingFilter).toContain('gblur=sigma=5.0');
+    expect(maskProcessingFilter).toContain('maximum=radius=1');
+    // setpts must appear at the end of the mask processing chain
+    expect(maskProcessingFilter).toMatch(/setpts=PTS-STARTPTS\+2\.0000\/TB\[cut_maskp_0\]$/);
+  });
+
+  it('re-syncs mask PTS in alphamerge (transparent bg) path', () => {
+    const clip = makeClip({ timelineStart: 1.5, timelineEnd: 4, sourceStart: 0, sourceEnd: 2.5 });
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cutout');
+    effectTrack.clips = [makeEffectClip('cutout', {
+      cutoutMode: 'removeBg',
+      background: { type: 'none' },
+      maskExpand: 2,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({
+      project,
+      assetMaskInputIdxMap: new Map([['asset1', 2]]),
+    });
+
+    const result = cutout.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // Even in the alphamerge path, mask processing must re-sync PTS
+    expect(filterStr).toContain('alphamerge');
+    const maskProcessingFilter = result!.filters.find(f => f.includes('lutyuv=y='));
+    expect(maskProcessingFilter).toBeDefined();
+    expect(maskProcessingFilter).toMatch(/setpts=PTS-STARTPTS\+1\.5000\/TB\[cut_maskp_0\]$/);
+  });
+
   it('isActive returns true when mask is registered and effect is enabled', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });

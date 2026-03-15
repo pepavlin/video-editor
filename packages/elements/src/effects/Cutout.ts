@@ -398,10 +398,17 @@ const cutoutExport: EffectExportApi = {
       maskProcessingSteps.push(`gblur=sigma=${maskBlur.toFixed(1)}`);
     }
 
+    // Re-sync PTS after mask processing to prevent timing drift.
+    // Morphological filters (maximum/minimum) and gblur can accumulate tiny PTS
+    // offsets which cause the mask to lag behind the clip in the final export.
+    // Reapplying setpts ensures the mask's frame timestamps exactly match the clip.
+    maskProcessingSteps.push(`setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`);
+
     const filters: string[] = [
       // Trim and scale the mask to match the clip's output dimensions
       `[${maskInputIdx}:v]${trimFilter}[${maskTrimmed}]`,
       // Apply mask processing in YUV (threshold, expand, blur operate on Y channel)
+      // then re-sync PTS to prevent timing drift from accumulated filter processing
       `[${maskTrimmed}]${maskProcessingSteps.join(',')}[${maskProcessed}]`,
     ];
 
