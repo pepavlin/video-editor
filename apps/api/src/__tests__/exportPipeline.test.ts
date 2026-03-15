@@ -97,17 +97,18 @@ beforeEach(() => {
   (config as any).workspaceDir = tmpDir;
   ws.ensureWorkspace();
 
-  // Create a test video asset with proxy and mask
+  // Create a test video asset with original, proxy, and mask
   const assetId = 'asset1';
   const assetDir = ws.getAssetDir(assetId);
   fs.mkdirSync(assetDir, { recursive: true });
-  fs.writeFileSync(path.join(assetDir, 'proxy.mp4'), 'fake-video');
+  fs.writeFileSync(path.join(assetDir, 'original.mp4'), 'fake-original-video');
+  fs.writeFileSync(path.join(assetDir, 'proxy.mp4'), 'fake-proxy-video');
   fs.writeFileSync(path.join(assetDir, 'mask.mp4'), 'fake-mask');
   ws.upsertAsset({
     id: assetId,
     name: 'test.mp4',
     type: 'video',
-    originalPath: `assets/${assetId}/proxy.mp4`,
+    originalPath: `assets/${assetId}/original.mp4`,
     proxyPath: `assets/${assetId}/proxy.mp4`,
     maskPath: `assets/${assetId}/mask.mp4`,
     duration: 10,
@@ -423,7 +424,7 @@ describe('ExportPipeline', () => {
       id: 'asset1',
       name: 'test.mp4',
       type: 'video',
-      originalPath: 'assets/asset1/proxy.mp4',
+      originalPath: 'assets/asset1/original.mp4',
       proxyPath: 'assets/asset1/proxy.mp4',
       audioPath: 'assets/asset1/audio.wav',
       maskPath: 'assets/asset1/mask.mp4',
@@ -463,7 +464,7 @@ describe('ExportPipeline', () => {
       id: 'asset1',
       name: 'test.mp4',
       type: 'video',
-      originalPath: 'assets/asset1/proxy.mp4',
+      originalPath: 'assets/asset1/original.mp4',
       proxyPath: 'assets/asset1/proxy.mp4',
       maskPath: 'assets/asset1/mask.mp4',
       aiStylePath: 'assets/asset1/ai_style.mp4',
@@ -515,11 +516,46 @@ describe('ExportPipeline', () => {
     expect(result.filterComplex).toContain('setpts=PTS-STARTPTS+2.0000/TB,format=gbrp');
   });
 
-  it('skips assets with missing proxy files gracefully', () => {
-    // Remove the proxy file to simulate a missing asset
+  it('prefers original file over proxy for export quality', () => {
+    const clip = makeClip();
+    const videoTrack = makeVideoTrack([clip]);
+    const project = makeProject([videoTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // Export should use original.mp4 (full resolution), NOT proxy.mp4 (540p)
+    const originalPath = path.join(tmpDir, 'assets', 'asset1', 'original.mp4');
+    const proxyPath = path.join(tmpDir, 'assets', 'asset1', 'proxy.mp4');
+    expect(result.inputArgs).toContain(originalPath);
+    expect(result.inputArgs).not.toContain(proxyPath);
+  });
+
+  it('falls back to proxy when original file is missing', () => {
+    // Remove the original file to simulate it being unavailable
     const asset1Dir = ws.getAssetDir('asset1');
-    const proxyPath = path.join(asset1Dir, 'proxy.mp4');
-    if (fs.existsSync(proxyPath)) fs.unlinkSync(proxyPath);
+    const originalFile = path.join(asset1Dir, 'original.mp4');
+    if (fs.existsSync(originalFile)) fs.unlinkSync(originalFile);
+
+    const clip = makeClip();
+    const videoTrack = makeVideoTrack([clip]);
+    const project = makeProject([videoTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // Should fall back to proxy.mp4 when original is missing
+    const proxyPath = path.join(tmpDir, 'assets', 'asset1', 'proxy.mp4');
+    expect(result.inputArgs).toContain(proxyPath);
+  });
+
+  it('skips assets with all files missing gracefully', () => {
+    // Remove both original and proxy files
+    const asset1Dir = ws.getAssetDir('asset1');
+    const originalFile = path.join(asset1Dir, 'original.mp4');
+    const proxyFile = path.join(asset1Dir, 'proxy.mp4');
+    if (fs.existsSync(originalFile)) fs.unlinkSync(originalFile);
+    if (fs.existsSync(proxyFile)) fs.unlinkSync(proxyFile);
 
     const clip = makeClip();
     const videoTrack = makeVideoTrack([clip]);
@@ -529,8 +565,8 @@ describe('ExportPipeline', () => {
     // Should not throw, and should produce a valid (empty) result
     const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
 
-    // No video inputs should be added since the file is missing
-    expect(result.inputArgs.filter(a => a.includes('proxy.mp4'))).toHaveLength(0);
+    // No video inputs should be added since no files exist
+    expect(result.inputArgs.filter(a => a.includes('asset1'))).toHaveLength(0);
     // Should still have a base canvas
     expect(result.filterComplex).toContain('color=c=black');
     expect(result.videoOutPad).toBe('base');

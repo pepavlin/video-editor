@@ -182,7 +182,7 @@ export function buildExportCommand(
 ): { cmd: string; args: string[] } {
   const W = opts.width ?? 1080;
   const H = opts.height ?? 1920;
-  const CRF = opts.crf ?? 20;
+  const CRF = opts.crf ?? 18;
   const PRESET = opts.preset ?? 'medium';
 
   const videoTracks = project.tracks.filter((t) => t.type === 'video' && !t.muted);
@@ -210,22 +210,28 @@ export function buildExportCommand(
     }
   }
 
-  // Collect unique asset proxy paths for video clips
+  // Collect unique asset paths for video clips (prefer original over proxy for quality)
+  // Export must use the original full-resolution file. Proxy (540p, CRF 28) is for preview only.
   const assetPathMap = new Map<string, string>();
   for (const track of videoTracks) {
     for (const clip of track.clips) {
       if (!assetPathMap.has(clip.assetId)) {
         const asset = ws.getAsset(clip.assetId);
         if (asset) {
-          let absProxy: string;
+          let absInput: string;
           if (stabilizedAssetIds.has(clip.assetId) && asset.headStabilizedPath) {
-            absProxy = path.join(ws.getWorkspaceDir(), asset.headStabilizedPath);
+            absInput = path.join(ws.getWorkspaceDir(), asset.headStabilizedPath);
           } else {
-            absProxy = asset.proxyPath
+            // Prefer original (full resolution) over proxy (540p) for export quality
+            const originalAbs = path.join(ws.getWorkspaceDir(), asset.originalPath);
+            const proxyAbs = asset.proxyPath
               ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
-              : path.join(ws.getWorkspaceDir(), asset.originalPath);
+              : null;
+            absInput = fs.existsSync(originalAbs)
+              ? originalAbs
+              : (proxyAbs ?? originalAbs);
           }
-          assetPathMap.set(clip.assetId, absProxy);
+          assetPathMap.set(clip.assetId, absInput);
         }
       }
     }
