@@ -370,6 +370,7 @@ const cutoutExport: EffectExportApi = {
 
     const trimFilter = [
       `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)}`,
+      `fps=30`,
       `setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`,
       `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=increase`,
       `crop=${scaledW}:${scaledH}`,
@@ -398,11 +399,9 @@ const cutoutExport: EffectExportApi = {
       maskProcessingSteps.push(`gblur=sigma=${maskBlur.toFixed(1)}`);
     }
 
-    // Re-sync PTS after mask processing to prevent timing drift.
-    // Morphological filters (maximum/minimum) and gblur can accumulate tiny PTS
-    // offsets which cause the mask to lag behind the clip in the final export.
-    // Reapplying setpts ensures the mask's frame timestamps exactly match the clip.
-    maskProcessingSteps.push(`setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`);
+    // Note: fps=30 in the trimFilter already normalizes the mask's frame rate
+    // to match the base canvas and clip. No additional setpts is needed here —
+    // morphological filters (maximum/minimum) and gblur preserve PTS exactly.
 
     const filters: string[] = [
       // Trim and scale the mask to match the clip's output dimensions

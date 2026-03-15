@@ -448,8 +448,8 @@ function buildAiStyleFilter(
     const scaledW = Math.round(W * scale / 2) * 2 || 2;
     const scaledH = Math.round(H * scale / 2) * 2 || 2;
 
-    // Trim and scale the stylized video to match the clip
-    const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`;
+    // Trim, normalize FPS to 30 (match base canvas + clip), and align PTS
+    const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},fps=30,setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`;
 
     return {
       filters: [
