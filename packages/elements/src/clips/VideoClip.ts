@@ -240,10 +240,17 @@ const videoClipExport: ClipExportApi = {
 
     const scaleFilter = `scale=${scaledW}:${scaledH}:force_original_aspect_ratio=increase,crop=${scaledW}:${scaledH}`;
 
+    // Normalize all clips to 30fps to match the base canvas frame rate.
+    // This prevents timing drift in multi-input filters (blend, alphamerge)
+    // used by effects like Cutout and Cartoon, which match frames by frame
+    // number rather than PTS. Without fps normalization, clips at different
+    // frame rates (24fps original vs 30fps mask) produce frame-by-frame
+    // misalignment that accumulates over the clip duration.
+    //
     // Timeline-aligned PTS: makes `t` variable in subsequent filter expressions
     // equal to absolute timeline time, enabling correct overlay enable expressions
     // and beat-zoom crop filter evaluation.
-    const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`;
+    const trimFilter = `trim=start=${clip.sourceStart.toFixed(4)}:end=${clip.sourceEnd.toFixed(4)},fps=30,setpts=PTS-STARTPTS+${clip.timelineStart.toFixed(4)}/TB`;
 
     // ── Base modifier loop: collect inline filter fragments ──────────────────
     // Effects that modify the base clip chain (e.g., BeatZoom crop) are collected

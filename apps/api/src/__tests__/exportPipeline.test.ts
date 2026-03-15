@@ -572,6 +572,73 @@ describe('ExportPipeline', () => {
     expect(result.videoOutPad).toBe('base');
   });
 
+  // ─── FPS normalization (timing desync fix) ────────────────────────────────
+
+  it('normalizes video clips to 30fps in export to prevent timing desync', () => {
+    const clip = makeClip();
+    const videoTrack = makeVideoTrack([clip]);
+    const project = makeProject([videoTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // Video clip filter chain must include fps=30 between trim and setpts
+    expect(result.filterComplex).toContain('trim=start=0.0000:end=3.0000,fps=30,setpts=PTS-STARTPTS');
+  });
+
+  it('normalizes cutout mask video to 30fps to match clip frame rate', () => {
+    const clip = makeClip();
+    const videoTrack = makeVideoTrack([clip]);
+    const cutoutConfig: EffectClipConfig = {
+      effectType: 'cutout',
+      enabled: true,
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+    };
+    const effectTrack = makeEffectTrack(videoTrack.id, 'cutout', cutoutConfig);
+    const project = makeProject([videoTrack, effectTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // Mask processing should also include fps=30 for frame-rate alignment
+    // Count fps=30 occurrences: one for the video clip, one for the mask
+    const fpsMatches = result.filterComplex.match(/fps=30/g) || [];
+    expect(fpsMatches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('cutout mask processing does not have redundant setpts after morphological filters', () => {
+    const clip = makeClip({
+      timelineStart: 2,
+      timelineEnd: 5,
+      sourceStart: 0,
+      sourceEnd: 3,
+    });
+    const videoTrack = makeVideoTrack([clip]);
+    const cutoutConfig: EffectClipConfig = {
+      effectType: 'cutout',
+      enabled: true,
+      cutoutMode: 'removeBg',
+      background: { type: 'solid', color: '#000000' },
+      maskExpand: 2,
+    };
+    const effectTrack = makeEffectTrack(videoTrack.id, 'cutout', cutoutConfig);
+    const project = makeProject([videoTrack, effectTrack]);
+    const pipeline = new ExportPipeline();
+
+    const result = pipeline.build(project, { outputPath: '/tmp/out.mp4' }, new Map(), new Set());
+
+    // The mask processing chain should have morphological filters (maximum)
+    expect(result.filterComplex).toContain('maximum=radius=1');
+    // But no redundant setpts after the morphological filters
+    // (the fps=30 in trimFilter already handles frame rate normalization)
+    const maskProcParts = result.filterComplex.split(';');
+    const maskProcFilter = maskProcParts.find(p => p.includes('maximum=radius=1'));
+    expect(maskProcFilter).toBeDefined();
+    // The mask processing filter should NOT end with another setpts
+    expect(maskProcFilter).not.toContain('setpts=PTS-STARTPTS');
+  });
+
   it('skips master audio when file does not exist', () => {
     const clip = makeClip();
     const videoTrack = makeVideoTrack([clip]);

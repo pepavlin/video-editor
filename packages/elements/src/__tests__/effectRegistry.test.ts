@@ -867,7 +867,7 @@ describe('Cutout.export', () => {
     expect(filterStr).toContain("lutyuv=y='if(gte(val,200),255,0)'");
   });
 
-  it('re-syncs mask PTS after processing to prevent timing drift in export', () => {
+  it('normalizes mask to 30fps to prevent timing drift in export', () => {
     const clip = makeClip({ timelineStart: 2, timelineEnd: 5, sourceStart: 0, sourceEnd: 3 });
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cutout');
@@ -888,19 +888,23 @@ describe('Cutout.export', () => {
 
     const filterStr = result!.filters.join('; ');
 
-    // The mask processing chain (second filter line) must end with setpts
-    // to re-sync timestamps after morphological/blur filters that can cause PTS drift.
-    // Find the filter line that contains the mask processing (lutyuv + maximum + gblur)
+    // The mask trim chain must include fps=30 to normalize frame rate before
+    // entering multi-input filters (blend/alphamerge), preventing timing drift.
+    const maskTrimFilter = result!.filters.find(f => f.includes('[2:v]'));
+    expect(maskTrimFilter).toBeDefined();
+    expect(maskTrimFilter).toContain('fps=30');
+    expect(maskTrimFilter).toContain('setpts=PTS-STARTPTS+2.0000/TB');
+
+    // The mask processing chain (lutyuv + morphological filters) should NOT
+    // have a redundant setpts — fps=30 in the trim filter handles normalization.
     const maskProcessingFilter = result!.filters.find(f => f.includes('lutyuv=y='));
     expect(maskProcessingFilter).toBeDefined();
-    // It must contain setpts AFTER the processing filters to re-sync timing
     expect(maskProcessingFilter).toContain('gblur=sigma=5.0');
     expect(maskProcessingFilter).toContain('maximum=radius=1');
-    // setpts must appear at the end of the mask processing chain
-    expect(maskProcessingFilter).toMatch(/setpts=PTS-STARTPTS\+2\.0000\/TB\[cut_maskp_0\]$/);
+    expect(maskProcessingFilter).not.toContain('setpts=PTS-STARTPTS');
   });
 
-  it('re-syncs mask PTS in alphamerge (transparent bg) path', () => {
+  it('normalizes mask to 30fps in alphamerge (transparent bg) path', () => {
     const clip = makeClip({ timelineStart: 1.5, timelineEnd: 4, sourceStart: 0, sourceEnd: 2.5 });
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cutout');
@@ -919,11 +923,16 @@ describe('Cutout.export', () => {
     expect(result).not.toBeNull();
 
     const filterStr = result!.filters.join('; ');
-    // Even in the alphamerge path, mask processing must re-sync PTS
+    // Even in the alphamerge path, mask must be normalized to 30fps
     expect(filterStr).toContain('alphamerge');
+    // fps=30 must be in the mask trim filter
+    const maskTrimFilter = result!.filters.find(f => f.includes('[2:v]'));
+    expect(maskTrimFilter).toBeDefined();
+    expect(maskTrimFilter).toContain('fps=30');
+    // No redundant setpts in mask processing
     const maskProcessingFilter = result!.filters.find(f => f.includes('lutyuv=y='));
     expect(maskProcessingFilter).toBeDefined();
-    expect(maskProcessingFilter).toMatch(/setpts=PTS-STARTPTS\+1\.5000\/TB\[cut_maskp_0\]$/);
+    expect(maskProcessingFilter).not.toContain('setpts=PTS-STARTPTS');
   });
 
   it('isActive returns true when mask is registered and effect is enabled', () => {
