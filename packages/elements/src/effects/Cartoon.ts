@@ -235,15 +235,30 @@ export function processCartoonFrame(
 // ─── Preview: AI Style processing (approximation) ─────────────────────────────
 
 /**
+ * Preset-specific tinting for the preview approximation.
+ * Each preset gets a characteristic color cast to hint at the neural model output.
+ */
+const PRESET_TINTS: Record<string, { color: string; opacity: number }> = {
+  impressionist: { color: '#7ba4c4', opacity: 0.12 }, // cool blue watercolor
+  bold:          { color: '#e8654a', opacity: 0.10 }, // warm candy orange
+  abstract:      { color: '#9b7fc4', opacity: 0.10 }, // soft purple
+  mosaic:        { color: '#c4a04a', opacity: 0.08 }, // golden mosaic
+  expressive:    { color: '#4ac47b', opacity: 0.08 }, // fresh green
+};
+
+/**
  * Process a source image through the AI Style preview pipeline.
- * This is a Canvas 2D approximation of the painterly look — the actual
- * AI-processed video is computed offline by the Python script.
+ * This is a Canvas 2D approximation of the neural style transfer look —
+ * the actual AI-processed video is computed offline by the Python script.
  *
- * Approximation pipeline:
- *   1. Large blur for smooth, flat color regions (simulates bilateral filter)
- *   2. Saturation/vibrance boost for painterly warmth
- *   3. Soft warm tone overlay for "hand-painted" feel
- *   4. Subtle edge darkening via multiply blend
+ * Improved pipeline for a more convincing brush-painted appearance:
+ *   1. Downscale + upscale to simulate large brush strokes (coarser detail)
+ *   2. Heavy blur for smooth, flat color regions
+ *   3. Saturation/vibrance boost for painterly warmth
+ *   4. Preset-specific color tint overlay
+ *   5. Posterize: reduce color levels for a painted look
+ *   6. Edge-aware darkening for painted contour feel
+ *   7. Blend with original based on strength
  */
 export function processAiStyleFrame(
   source: EffectSource,
@@ -260,47 +275,71 @@ export function processAiStyleFrame(
   const strength = cfg.styleStrength ?? 0.8;
   const brush = cfg.brushSize ?? 0.5;
   const vibrance = cfg.colorVibrance ?? 1.3;
+  const preset = cfg.stylePreset ?? 'impressionist';
 
-  // 1. Draw the original
+  // 1. Draw original for blending reference
   ctx.clearRect(0, 0, iw, ih);
   ctx.drawImage(source, 0, 0, iw, ih);
-
-  // Get original image data (for blending at the end)
   const originalData = ctx.getImageData(0, 0, iw, ih);
 
-  // 2. Apply blur for flat color regions (simulates bilateral filter)
-  const blurPx = 2 + brush * 6; // 2–8 px blur
+  // 2. Downscale + upscale to simulate large brush strokes
+  //    brush_size=0 → scale to 60%, brush_size=1 → scale to 25%
+  const downScale = Math.max(0.25, 0.6 - brush * 0.35);
+  const dw = Math.max(8, Math.round(iw * downScale));
+  const dh = Math.max(8, Math.round(ih * downScale));
+
   ctx.clearRect(0, 0, iw, ih);
+  // Draw small (pixelated brush strokes), then stretch back
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'low';
+  ctx.drawImage(source, 0, 0, dw, dh);
+  // Draw back at full size with smoothing for painterly blur
+  ctx.imageSmoothingQuality = 'medium';
+  ctx.drawImage(canvas, 0, 0, dw, dh, 0, 0, iw, ih);
+
+  // 3. Additional blur for smoother color regions
+  const blurPx = 1 + brush * 4; // 1–5 px
   ctx.filter = `blur(${blurPx.toFixed(1)}px) saturate(${vibrance.toFixed(2)})`;
-  ctx.drawImage(source, 0, 0, iw, ih);
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = iw;
+  tempCanvas.height = ih;
+  const tempCtx = tempCanvas.getContext('2d');
+  if (tempCtx) {
+    tempCtx.drawImage(canvas, 0, 0);
+    ctx.clearRect(0, 0, iw, ih);
+    ctx.drawImage(tempCanvas, 0, 0);
+  }
   ctx.filter = 'none';
 
-  // 3. Apply warm-tone overlay for painterly warmth
+  // 4. Preset-specific color tint overlay
+  const tint = PRESET_TINTS[preset] ?? PRESET_TINTS.impressionist;
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  ctx.globalAlpha = 0.08 * strength;
-  ctx.fillStyle = '#d4956b'; // warm amber tone
+  ctx.globalAlpha = tint.opacity * strength;
+  ctx.fillStyle = tint.color;
   ctx.fillRect(0, 0, iw, ih);
   ctx.restore();
 
-  // 4. Posterize: reduce color levels for a painted look
+  // 5. Posterize + edge darken + blend with original
   try {
     const imgData = ctx.getImageData(0, 0, iw, ih);
     const data = imgData.data;
-    const levels = Math.max(4, Math.round(24 - brush * 16)); // 8–24 levels
-
-    for (let i = 0; i < data.length; i += 4) {
-      data[i]     = Math.round(data[i] / (256 / levels)) * (256 / levels);
-      data[i + 1] = Math.round(data[i + 1] / (256 / levels)) * (256 / levels);
-      data[i + 2] = Math.round(data[i + 2] / (256 / levels)) * (256 / levels);
-    }
-
-    // 5. Blend with original based on strength
     const orig = originalData.data;
+
+    // Posterize: fewer levels for more painterly look
+    const levels = Math.max(6, Math.round(20 - brush * 12)); // 8–20 levels
+    const step = 256 / levels;
+
     for (let i = 0; i < data.length; i += 4) {
-      data[i]     = Math.round(data[i] * strength + orig[i] * (1 - strength));
-      data[i + 1] = Math.round(data[i + 1] * strength + orig[i + 1] * (1 - strength));
-      data[i + 2] = Math.round(data[i + 2] * strength + orig[i + 2] * (1 - strength));
+      // Posterize
+      let r = Math.min(255, Math.floor(data[i] / step) * step + step * 0.5);
+      let g = Math.min(255, Math.floor(data[i + 1] / step) * step + step * 0.5);
+      let b = Math.min(255, Math.floor(data[i + 2] / step) * step + step * 0.5);
+
+      // Blend with original based on strength
+      data[i]     = Math.round(r * strength + orig[i] * (1 - strength));
+      data[i + 1] = Math.round(g * strength + orig[i + 1] * (1 - strength));
+      data[i + 2] = Math.round(b * strength + orig[i + 2] * (1 - strength));
     }
 
     ctx.putImageData(imgData, 0, 0);

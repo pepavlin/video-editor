@@ -67,7 +67,7 @@ export async function startHeadStabilization(
 
 export async function startAiStyle(
   assetId: string,
-  opts: { styleStrength: number; brushSize: number; colorVibrance: number }
+  opts: { styleStrength: number; brushSize: number; colorVibrance: number; stylePreset: string }
 ): Promise<{ jobId: string }> {
   return apiFetch(`/assets/${assetId}/ai-style`, {
     method: 'POST',

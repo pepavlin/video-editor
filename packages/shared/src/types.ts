@@ -24,6 +24,17 @@ export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon'
 /** Cartoon sub-mode: classic edge-detection cartoon or AI painterly stylization */
 export type CartoonMode = 'classic' | 'aiStyle';
 
+/**
+ * AI Style presets — each maps to a pre-trained ONNX neural style transfer model.
+ *
+ * - impressionist: Rain Princess — watercolor/impressionist brush strokes
+ * - bold:          Candy — bold, colorful brush strokes
+ * - abstract:      Udnie (Francis Picabia) — abstract brush strokes
+ * - mosaic:        Mosaic — cubist/mosaic pattern
+ * - expressive:    La Muse (Picasso) — expressive thick brush strokes
+ */
+export type AiStylePreset = 'impressionist' | 'bold' | 'abstract' | 'mosaic' | 'expressive';
+
 export interface Track {
   id: string;
   type: 'video' | 'audio' | 'text' | 'lyrics' | 'effect';
@@ -108,6 +119,7 @@ export interface EffectClipConfig {
   colorSimplification?: number; // 0-1: how much to simplify/flatten colors
   saturation?: number;          // 0-2: color saturation (1=normal)
   // cartoon aiStyle params
+  stylePreset?: AiStylePreset;  // AI style model preset (default: 'impressionist')
   styleStrength?: number;       // 0-1: blending weight between original and stylized (1=full style)
   brushSize?: number;           // 0-1: controls brush stroke coarseness
   colorVibrance?: number;       // 0-2: color vibrancy of the painterly output (1=normal)
@@ -139,6 +151,7 @@ export interface CartoonEffect {
   colorSimplification: number;
   saturation: number;
   // aiStyle mode params
+  stylePreset: AiStylePreset;
   styleStrength: number;
   brushSize: number;
   colorVibrance: number;
@@ -189,6 +202,7 @@ export interface CartoonEffect {
   edgeStrength: number;        // 0-1
   colorSimplification: number; // 0-1
   saturation: number;          // 0-2
+  stylePreset: AiStylePreset;  // AI style model preset
   styleStrength: number;       // 0-1
   brushSize: number;           // 0-1
   colorVibrance: number;       // 0-2

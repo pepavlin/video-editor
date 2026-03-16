@@ -297,6 +297,7 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     const effectTrack = makeEffectTrack('video1', 'cartoon');
     effectTrack.clips = [makeEffectClip('cartoon', {
       cartoonMode: 'aiStyle',
+      stylePreset: 'impressionist',
       styleStrength: 0.8,
       brushSize: 0.5,
       colorVibrance: 1.3,
@@ -321,6 +322,7 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     const effectTrack = makeEffectTrack('video1', 'cartoon');
     effectTrack.clips = [makeEffectClip('cartoon', {
       cartoonMode: 'aiStyle',
+      stylePreset: 'bold',
       styleStrength: 0.7,
       brushSize: 0.5,
       colorVibrance: 1.3,
@@ -361,6 +363,29 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     // With zero strength, the filter should passthrough
     expect(result!.filters).toHaveLength(0);
     expect(result!.outputPad).toBe('clip0');
+  });
+
+  it('defaults to impressionist when stylePreset is not set', () => {
+    const clip = makeClip();
+    const track = makeTrack('video', { id: 'video1', clips: [clip] });
+    const effectTrack = makeEffectTrack('video1', 'cartoon');
+    effectTrack.clips = [makeEffectClip('cartoon', {
+      cartoonMode: 'aiStyle',
+      // No stylePreset set — should default gracefully
+      styleStrength: 0.8,
+      brushSize: 0.5,
+      colorVibrance: 1.3,
+    })];
+    const project = makeProject({ tracks: [track, effectTrack] });
+    const context = makeExportContext({ project });
+
+    const result = cartoon.export.buildFilter?.('clip0', clip, track, 0, context);
+    expect(result).not.toBeNull();
+
+    const filterStr = result!.filters.join('; ');
+    // Fallback should still work without stylePreset
+    expect(filterStr).toContain('smartblur');
+    expect(filterStr).toContain('blend=all_expr=');
   });
 
   it('still uses classic mode when cartoonMode is not set', () => {
