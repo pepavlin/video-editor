@@ -395,10 +395,10 @@ export async function assetsRoutes(app: FastifyInstance) {
   });
 
   // POST /assets/:id/ai-style - start AI painterly stylization job
-  // Body: { styleStrength?: number; brushSize?: number; colorVibrance?: number }
+  // Body: { styleStrength?: number; brushSize?: number; colorVibrance?: number; stylePreset?: string }
   app.post<{
     Params: { id: string };
-    Body: { styleStrength?: number; brushSize?: number; colorVibrance?: number };
+    Body: { styleStrength?: number; brushSize?: number; colorVibrance?: number; stylePreset?: string };
   }>('/assets/:id/ai-style', async (req, reply) => {
     const asset = ws.getAsset(req.params.id);
     if (!asset || asset.type !== 'video') {
@@ -417,6 +417,8 @@ export async function assetsRoutes(app: FastifyInstance) {
     const strength = String(Math.max(0, Math.min(1, body.styleStrength ?? 0.8)));
     const brush = String(Math.max(0, Math.min(1, body.brushSize ?? 0.5)));
     const vibrance = String(Math.max(0, Math.min(2, body.colorVibrance ?? 1.3)));
+    const validPresets = ['impressionist', 'bold', 'abstract', 'mosaic', 'expressive'];
+    const preset = validPresets.includes(body.stylePreset ?? '') ? body.stylePreset! : 'impressionist';
 
     const job = jq.createJob('aiStyle', asset.id);
     const aiStyleOutputPath = path.join(ws.getAssetDir(asset.id), 'ai_style.mp4');
@@ -428,7 +430,7 @@ export async function assetsRoutes(app: FastifyInstance) {
     jq.runCommand(
       job.id,
       config.pythonBin,
-      ['-u', scriptPath, proxyPath, aiStyleOutputPath, strength, brush, vibrance],
+      ['-u', scriptPath, proxyPath, aiStyleOutputPath, strength, brush, vibrance, preset],
       {
         onProgress: (line: string) => {
           const m = line.match(/\[ai_style\]\s+(\d+)%/);

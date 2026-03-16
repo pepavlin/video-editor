@@ -32,7 +32,7 @@ interface Props {
   onStartHeadStabilization: (assetId: string, params: { smoothingX: number; smoothingY: number; smoothingZ: number }) => Promise<void>;
   onCancelHeadStabilization: (assetId: string) => Promise<void>;
   onSyncAudio?: (clipId: string) => Promise<void>;
-  onStartAiStyleJob?: (assetId: string, strength: number, brush: number, vibrance: number) => Promise<void>;
+  onStartAiStyleJob?: (assetId: string, strength: number, brush: number, vibrance: number, stylePreset?: string) => Promise<void>;
   assetJobs?: AssetJobs;
 }
 
@@ -698,6 +698,28 @@ export default function Inspector({
                     {/* AI Style mode controls */}
                     {cfg.cartoonMode === 'aiStyle' && (
                       <>
+                        <Row label="Style">
+                          <select
+                            value={cfg.stylePreset ?? 'impressionist'}
+                            onChange={(e) => update({ stylePreset: e.target.value as any })}
+                            style={{
+                              width: '100%',
+                              fontSize: 12,
+                              padding: '4px 6px',
+                              border: '1px solid var(--border)',
+                              borderRadius: 4,
+                              background: 'var(--bg-secondary)',
+                              color: 'var(--text)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="impressionist">Impressionist</option>
+                            <option value="bold">Bold</option>
+                            <option value="abstract">Abstract</option>
+                            <option value="mosaic">Mosaic</option>
+                            <option value="expressive">Expressive</option>
+                          </select>
+                        </Row>
                         <Row label="Strength">
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <SnapSlider min={0} max={1} step={0.05} value={cfg.styleStrength ?? 0.8} defaultValue={0.8}
@@ -746,6 +768,7 @@ export default function Inspector({
                                       cfg.styleStrength ?? 0.8,
                                       cfg.brushSize ?? 0.5,
                                       cfg.colorVibrance ?? 1.3,
+                                      cfg.stylePreset ?? 'impressionist',
                                     );
                                   }
                                 }}

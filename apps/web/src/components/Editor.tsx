@@ -488,9 +488,10 @@ export default function Editor() {
     styleStrength: number,
     brushSize: number,
     colorVibrance: number,
+    stylePreset: string = 'impressionist',
   ) => {
     try {
-      const { jobId } = await api.startAiStyle(assetId, { styleStrength, brushSize, colorVibrance });
+      const { jobId } = await api.startAiStyle(assetId, { styleStrength, brushSize, colorVibrance, stylePreset });
       setAssetJobs((prev) => ({
         ...prev,
         [assetId]: {

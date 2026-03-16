@@ -140,11 +140,30 @@ describe('Inspector – cartoon mode toggle', () => {
     const { asset, project, effectClipId } = makeCartoonScenario({ cartoonMode: 'aiStyle' });
     render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
 
-    // AI Style mode should show AI Style params (Strength, Brush, Vibrance, Process)
+    // AI Style mode should show AI Style params (Style, Strength, Brush, Vibrance, Process)
+    expect(screen.getByText('Style')).toBeDefined();
     expect(screen.getByText('Strength')).toBeDefined();
     expect(screen.getByText('Brush')).toBeDefined();
     expect(screen.getByText('Vibrance')).toBeDefined();
     expect(screen.getByText('Process')).toBeDefined();
+  });
+
+  it('shows style preset dropdown with all presets in AI Style mode', () => {
+    const { asset, project, effectClipId } = makeCartoonScenario({ cartoonMode: 'aiStyle' });
+    render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+
+    // Should have a select element with all 5 presets
+    const select = screen.getByDisplayValue('Impressionist');
+    expect(select).toBeDefined();
+    expect(select.tagName).toBe('SELECT');
+
+    const options = select.querySelectorAll('option');
+    expect(options).toHaveLength(5);
+    expect(options[0].value).toBe('impressionist');
+    expect(options[1].value).toBe('bold');
+    expect(options[2].value).toBe('abstract');
+    expect(options[3].value).toBe('mosaic');
+    expect(options[4].value).toBe('expressive');
   });
 
   it('calls onUpdateEffectClipConfig with aiStyle when AI Style button is clicked', () => {
