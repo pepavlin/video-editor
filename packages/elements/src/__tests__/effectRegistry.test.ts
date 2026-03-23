@@ -297,7 +297,7 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     const effectTrack = makeEffectTrack('video1', 'cartoon');
     effectTrack.clips = [makeEffectClip('cartoon', {
       cartoonMode: 'aiStyle',
-      stylePreset: 'impressionist',
+      stylePreset: 'hayao',
       styleStrength: 0.8,
       brushSize: 0.5,
       colorVibrance: 1.3,
@@ -322,7 +322,7 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     const effectTrack = makeEffectTrack('video1', 'cartoon');
     effectTrack.clips = [makeEffectClip('cartoon', {
       cartoonMode: 'aiStyle',
-      stylePreset: 'bold',
+      stylePreset: 'shinkai',
       styleStrength: 0.7,
       brushSize: 0.5,
       colorVibrance: 1.3,
@@ -365,7 +365,7 @@ describe('Cartoon.export.buildFilter (aiStyle mode)', () => {
     expect(result!.outputPad).toBe('clip0');
   });
 
-  it('defaults to impressionist when stylePreset is not set', () => {
+  it('defaults to hayao when stylePreset is not set', () => {
     const clip = makeClip();
     const track = makeTrack('video', { id: 'video1', clips: [clip] });
     const effectTrack = makeEffectTrack('video1', 'cartoon');

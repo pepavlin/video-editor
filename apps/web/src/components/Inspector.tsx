@@ -700,7 +700,7 @@ export default function Inspector({
                       <>
                         <Row label="Style">
                           <select
-                            value={cfg.stylePreset ?? 'impressionist'}
+                            value={cfg.stylePreset ?? 'hayao'}
                             onChange={(e) => update({ stylePreset: e.target.value as any })}
                             style={{
                               width: '100%',
@@ -713,11 +713,10 @@ export default function Inspector({
                               cursor: 'pointer',
                             }}
                           >
-                            <option value="impressionist">Impressionist</option>
-                            <option value="bold">Bold</option>
-                            <option value="abstract">Abstract</option>
-                            <option value="mosaic">Mosaic</option>
-                            <option value="expressive">Expressive</option>
+                            <option value="hayao">Ghibli (Hayao)</option>
+                            <option value="shinkai">Shinkai</option>
+                            <option value="paprika">Paprika</option>
+                            <option value="celeb">Portrait</option>
                           </select>
                         </Row>
                         <Row label="Strength">
@@ -768,7 +767,7 @@ export default function Inspector({
                                       cfg.styleStrength ?? 0.8,
                                       cfg.brushSize ?? 0.5,
                                       cfg.colorVibrance ?? 1.3,
-                                      cfg.stylePreset ?? 'impressionist',
+                                      cfg.stylePreset ?? 'hayao',
                                     );
                                   }
                                 }}

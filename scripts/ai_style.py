@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-AI Style — Neural style transfer video stylization with temporal consistency.
+AI Style — AnimeGANv2 cartoon stylization with temporal consistency.
 
-Uses ONNX Runtime with pre-trained Fast Neural Style Transfer models (Johnson et al.)
-from the PyTorch/ONNX model zoo. Each model was trained on a specific painting and
-produces genuine brush-stroke textures — not just filter approximations.
+Uses ONNX Runtime with AnimeGANv2 models that convert real photos/video into
+genuine cartoon/anime art. Unlike neural style transfer which applies painterly
+textures, AnimeGANv2 is a GAN specifically trained to produce cartoon-like output
+with flat color regions, clean edges, and stylized shading — true cartoonization.
 
 Usage:
     python3 ai_style.py <input_video> <output_video> [style_strength] [brush_size] [color_vibrance] [style_preset]
@@ -13,19 +14,19 @@ Parameters:
     input_video     Path to the proxy video (MP4)
     output_video    Path for the stylized output (MP4)
     style_strength  0.0–1.0  Blend weight between original and stylized (default 0.8)
-    brush_size      0.0–1.0  Controls brush stroke coarseness via downscale (default 0.5)
-    color_vibrance  0.0–2.0  Color vibrancy of painterly output (default 1.3)
-    style_preset    Model preset name (default 'impressionist')
-                    Options: impressionist, bold, abstract, mosaic, expressive
+    brush_size      0.0–1.0  Controls detail level via input resolution (default 0.5)
+    color_vibrance  0.0–2.0  Color vibrancy of cartoon output (default 1.3)
+    style_preset    Model preset name (default 'hayao')
+                    Options: hayao, shinkai, paprika, celeb
 
 Pipeline:
-    1. Download ONNX style transfer model (if not cached)
+    1. Download AnimeGANv2 ONNX model (if not cached)
     2. Extract frames from input video
     3. Detect scene cuts for propagation boundaries
-    4. Stylize keyframes with neural style transfer model via ONNX Runtime
+    4. Cartoonize keyframes with AnimeGANv2 model via ONNX Runtime
     5. Propagate style between keyframes using optical flow with temporal blending
     6. Apply color vibrance post-processing
-    7. Assemble stylized frames into output video
+    7. Assemble cartoonized frames into output video
 
 Dependencies (all already in Docker):
     - onnxruntime (>=1.16.0)
@@ -39,41 +40,43 @@ import os
 import subprocess
 import tempfile
 import math
-import urllib.request
 
 import numpy as np
 import cv2
 
 # ─── Model configuration ────────────────────────────────────────────────────
 
-# Map of preset names to ONNX model URLs (PyTorch/ONNX Model Zoo)
-# These are Fast Neural Style Transfer models from Johnson et al. 2016,
-# trained on specific paintings to produce genuine artistic brush strokes.
+# Map of preset names to AnimeGANv2 ONNX model files.
+# AnimeGANv2 is a GAN specifically trained to convert real photos/video into
+# cartoon/anime art — producing flat color regions, clean edges, and stylized
+# shading. Unlike neural style transfer, these models perform true cartoonization.
+#
+# Models must be placed in the models directory (workspace/models/style_transfer/
+# or ~/.cache/video-editor/models/style_transfer/). They can be obtained from
+# AnimeGANv2 repositories and converted to ONNX format.
+#
+# Input preprocessing:  BGR → RGB, resize (divisible by 8), normalize to [-1, 1]
+# Output postprocessing: denormalize from [-1, 1] → [0, 255], RGB → BGR
 STYLE_MODELS = {
-    'impressionist': {
-        'url': 'https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/rain-princess-9.onnx',
-        'filename': 'rain_princess_9.onnx',
-        'description': 'Watercolor/impressionist brush strokes',
+    'hayao': {
+        'filename': 'animeganv2_hayao.onnx',
+        'description': 'Studio Ghibli / Hayao Miyazaki style — soft colors, natural scenery',
+        'input_size': 512,  # recommended input size (will be adjusted to preserve aspect ratio)
     },
-    'bold': {
-        'url': 'https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/candy-9.onnx',
-        'filename': 'candy_9.onnx',
-        'description': 'Bold, colorful brush strokes',
+    'shinkai': {
+        'filename': 'animeganv2_shinkai.onnx',
+        'description': 'Makoto Shinkai style — vivid sky colors, crisp details',
+        'input_size': 512,
     },
-    'abstract': {
-        'url': 'https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/udnie-9.onnx',
-        'filename': 'udnie_9.onnx',
-        'description': 'Abstract brush strokes (Francis Picabia)',
+    'paprika': {
+        'filename': 'animeganv2_paprika.onnx',
+        'description': 'Satoshi Kon / Paprika style — dreamy, expressive colors',
+        'input_size': 512,
     },
-    'mosaic': {
-        'url': 'https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/mosaic-9.onnx',
-        'filename': 'mosaic_9.onnx',
-        'description': 'Cubist/mosaic pattern',
-    },
-    'expressive': {
-        'url': 'https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/pointilism-9.onnx',
-        'filename': 'pointilism_9.onnx',
-        'description': 'Expressive pointillist brush strokes',
+    'celeb': {
+        'filename': 'animeganv2_celeb.onnx',
+        'description': 'Portrait-focused cartoon style — optimized for faces',
+        'input_size': 512,
     },
 }
 
@@ -93,38 +96,34 @@ def _get_models_dir() -> str:
     return models_dir
 
 
-def download_model(preset: str) -> str:
-    """Download the ONNX model for the given preset if not already cached."""
+def resolve_model(preset: str) -> str:
+    """
+    Resolve the ONNX model path for the given preset.
+
+    Models must be pre-placed in the models directory. They can be obtained
+    from AnimeGANv2 repositories and converted to ONNX format. See
+    docs/effects/ai-style.md for instructions on obtaining models.
+    """
     if preset not in STYLE_MODELS:
-        print(f"WARNING: Unknown preset '{preset}', falling back to 'impressionist'",
+        print(f"WARNING: Unknown preset '{preset}', falling back to 'hayao'",
               flush=True)
-        preset = 'impressionist'
+        preset = 'hayao'
 
     model_info = STYLE_MODELS[preset]
     models_dir = _get_models_dir()
     model_path = os.path.join(models_dir, model_info['filename'])
 
     if os.path.exists(model_path):
-        print(f"[ai_style] Model '{preset}' already cached: {model_path}", flush=True)
+        print(f"[ai_style] Model '{preset}' found: {model_path}", flush=True)
         return model_path
 
-    url = model_info['url']
-    print(f"[ai_style] Downloading model '{preset}' ({model_info['description']})...",
+    print(f"ERROR: Model file not found: {model_path}", flush=True)
+    print(f"[ai_style] Please place the AnimeGANv2 ONNX model at: {model_path}",
           flush=True)
-    print(f"[ai_style] URL: {url}", flush=True)
-
-    try:
-        urllib.request.urlretrieve(url, model_path)
-        file_size = os.path.getsize(model_path)
-        print(f"[ai_style] Model downloaded: {file_size / 1024 / 1024:.1f} MB", flush=True)
-    except Exception as e:
-        print(f"ERROR: Failed to download model: {e}", flush=True)
-        # Clean up partial download
-        if os.path.exists(model_path):
-            os.remove(model_path)
-        sys.exit(1)
-
-    return model_path
+    print(f"[ai_style] Model: {model_info['description']}", flush=True)
+    print(f"[ai_style] See docs/effects/ai-style.md for model download instructions.",
+          flush=True)
+    sys.exit(1)
 
 
 # ─── FFmpeg helpers ──────────────────────────────────────────────────────────
@@ -165,10 +164,10 @@ def _get_fps(input_path: str) -> float:
         return 30.0
 
 
-# ─── Neural style transfer ──────────────────────────────────────────────────
+# ─── AnimeGANv2 cartoonization ─────────────────────────────────────────────
 
 def create_style_session(model_path: str):
-    """Create an ONNX Runtime inference session for style transfer."""
+    """Create an ONNX Runtime inference session for AnimeGANv2."""
     import onnxruntime as ort
 
     # Prefer CPU provider for deterministic and consistent results
@@ -177,34 +176,48 @@ def create_style_session(model_path: str):
     return session
 
 
+def _align_to_8(n: int) -> int:
+    """Round up to nearest multiple of 8 (required by AnimeGANv2 architecture)."""
+    return ((n + 7) // 8) * 8
+
+
 def stylize_frame_neural(frame: np.ndarray, session,
                          brush_size: float) -> np.ndarray:
     """
-    Apply neural style transfer to a single frame using ONNX model.
+    Apply AnimeGANv2 cartoonization to a single frame using ONNX model.
 
-    The brush_size parameter controls the input downscale ratio:
-    - brush_size=0 → process at full resolution (fine brush strokes)
-    - brush_size=1 → process at 40% resolution (large, coarse brush strokes)
+    AnimeGANv2 models are GANs trained to convert real photos into cartoon/anime.
+    They produce flat color regions, clean edges, and stylized shading — true
+    cartoon look, not just artistic texture overlay.
 
-    Processing at lower resolution and upscaling back creates naturally
-    larger brush strokes, similar to painting with a wider brush.
+    The brush_size parameter controls the input resolution:
+    - brush_size=0 → process at higher resolution (finer cartoon details)
+    - brush_size=1 → process at lower resolution (broader, more stylized)
+
+    AnimeGANv2 input:  [1, 3, H, W] float32, normalized to [-1, 1]
+    AnimeGANv2 output: [1, 3, H, W] float32, in [-1, 1] range
     """
     h, w = frame.shape[:2]
 
-    # brush_size controls downscale: 0→100%, 1→40% (larger brush = lower res input)
-    scale_factor = max(0.4, 1.0 - brush_size * 0.6)
-    proc_w = max(64, int(w * scale_factor))
-    proc_h = max(64, int(h * scale_factor))
+    # brush_size controls processing resolution
+    # 0 → 100% of recommended size, 1 → 50% (broader cartoon strokes)
+    scale_factor = max(0.5, 1.0 - brush_size * 0.5)
+    target_size = int(STYLE_MODELS.get('hayao', {}).get('input_size', 512) * scale_factor)
 
-    # Resize for processing (controls brush stroke size)
-    if scale_factor < 0.99:
-        proc_frame = cv2.resize(frame, (proc_w, proc_h), interpolation=cv2.INTER_AREA)
-    else:
-        proc_frame = frame
+    # Scale preserving aspect ratio, dimensions must be divisible by 8
+    ratio = target_size / max(h, w)
+    if ratio >= 1.0:
+        ratio = 1.0
+    proc_w = _align_to_8(max(64, int(w * ratio)))
+    proc_h = _align_to_8(max(64, int(h * ratio)))
 
-    # Convert BGR→RGB and reshape for ONNX: [1, 3, H, W] float32
+    # Resize for processing
+    proc_frame = cv2.resize(frame, (proc_w, proc_h), interpolation=cv2.INTER_AREA)
+
+    # Convert BGR→RGB, normalize to [-1, 1] (AnimeGANv2 input range)
     rgb = cv2.cvtColor(proc_frame, cv2.COLOR_BGR2RGB).astype(np.float32)
-    input_tensor = np.transpose(rgb, (2, 0, 1))  # HWC → CHW
+    input_tensor = rgb / 127.5 - 1.0  # [0, 255] → [-1, 1]
+    input_tensor = np.transpose(input_tensor, (2, 0, 1))  # HWC → CHW
     input_tensor = np.expand_dims(input_tensor, axis=0)  # add batch dim
 
     # Run inference
@@ -215,10 +228,12 @@ def stylize_frame_neural(frame: np.ndarray, session,
     # Convert output: [1, 3, H, W] → [H, W, 3] BGR uint8
     output = result[0]  # remove batch dim
     output = np.transpose(output, (1, 2, 0))  # CHW → HWC
+    # Denormalize from [-1, 1] → [0, 255]
+    output = (output + 1.0) * 127.5
     output = np.clip(output, 0, 255).astype(np.uint8)
     output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
 
-    # Upscale back to original resolution if downscaled
+    # Upscale back to original resolution
     if output.shape[:2] != (h, w):
         output = cv2.resize(output, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
@@ -299,11 +314,11 @@ def process_ai_style(input_path: str, output_path: str,
                      style_strength: float = 0.8,
                      brush_size: float = 0.5,
                      color_vibrance: float = 1.3,
-                     style_preset: str = 'impressionist') -> None:
+                     style_preset: str = 'hayao') -> None:
     """
     Main AI style processing pipeline.
 
-    Uses neural style transfer (ONNX) for genuine brush-stroke textures,
+    Uses AnimeGANv2 (ONNX) for genuine cartoon/anime stylization,
     with optical flow propagation for smooth temporal consistency.
     """
     print(f"[ai_style] Input: {input_path}", flush=True)
@@ -316,8 +331,8 @@ def process_ai_style(input_path: str, output_path: str,
         print(f"ERROR: Input file not found: {input_path}", flush=True)
         sys.exit(1)
 
-    # Download model if needed
-    model_path = download_model(style_preset)
+    # Resolve model path (must be pre-placed)
+    model_path = resolve_model(style_preset)
 
     # Create ONNX session
     print("[ai_style] Loading ONNX model...", flush=True)
@@ -375,8 +390,8 @@ def process_ai_style(input_path: str, output_path: str,
             keyframe_indices.add(i)
         keyframe_indices.add(total - 1)
 
-        # --- Pass 1: Stylize all keyframes with neural style transfer ---
-        print("[ai_style] Stylizing keyframes with neural style transfer...",
+        # --- Pass 1: Cartoonize all keyframes with AnimeGANv2 ---
+        print("[ai_style] Cartoonizing keyframes with AnimeGANv2...",
               flush=True)
         keyframe_styled = {}
         kf_sorted = sorted(keyframe_indices)
@@ -386,7 +401,7 @@ def process_ai_style(input_path: str, output_path: str,
             if frame is None:
                 continue
 
-            # Neural style transfer
+            # AnimeGANv2 cartoonization
             styled = stylize_frame_neural(frame, session, brush_size)
 
             # Post-process: color vibrance
@@ -518,7 +533,7 @@ if __name__ == "__main__":
     strength = float(sys.argv[3]) if len(sys.argv) > 3 else 0.8
     brush = float(sys.argv[4]) if len(sys.argv) > 4 else 0.5
     vibrance = float(sys.argv[5]) if len(sys.argv) > 5 else 1.3
-    preset = sys.argv[6] if len(sys.argv) > 6 else 'impressionist'
+    preset = sys.argv[6] if len(sys.argv) > 6 else 'hayao'
 
     # Clamp parameters
     strength = max(0.0, min(1.0, strength))
@@ -527,8 +542,8 @@ if __name__ == "__main__":
 
     # Validate preset
     if preset not in STYLE_MODELS:
-        print(f"WARNING: Unknown preset '{preset}', using 'impressionist'",
+        print(f"WARNING: Unknown preset '{preset}', using 'hayao'",
               file=sys.stderr)
-        preset = 'impressionist'
+        preset = 'hayao'
 
     process_ai_style(input_path, output_path, strength, brush, vibrance, preset)

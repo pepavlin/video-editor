@@ -9,9 +9,9 @@
  * │    EXPORT:  FFmpeg — smartblur + lutrgb + edgedetect(wires) + negate      │
  * │                       + blend multiply + eq saturation                     │
  * ├────────────────────────────────────────────────────────────────────────────┤
- * │  MODE: aiStyle — painterly stylization (EbSynth-like)                      │
- * │    PREVIEW: Canvas 2D — blur + posterize + warm tones (approximation)      │
- * │    EXPORT:  FFmpeg — blend original with pre-processed AI-stylized video   │
+ * │  MODE: aiStyle — AnimeGANv2 cartoon stylization                             │
+ * │    PREVIEW: Canvas 2D — flat colors + posterize + edges (approximation)    │
+ * │    EXPORT:  FFmpeg — blend original with pre-processed cartoon video       │
  * └────────────────────────────────────────────────────────────────────────────┘
  *
  * Classic mode params (from EffectClipConfig):
@@ -236,29 +236,27 @@ export function processCartoonFrame(
 
 /**
  * Preset-specific tinting for the preview approximation.
- * Each preset gets a characteristic color cast to hint at the neural model output.
+ * Each preset gets a characteristic color cast to hint at the AnimeGANv2 model output.
  */
 const PRESET_TINTS: Record<string, { color: string; opacity: number }> = {
-  impressionist: { color: '#7ba4c4', opacity: 0.12 }, // cool blue watercolor
-  bold:          { color: '#e8654a', opacity: 0.10 }, // warm candy orange
-  abstract:      { color: '#9b7fc4', opacity: 0.10 }, // soft purple
-  mosaic:        { color: '#c4a04a', opacity: 0.08 }, // golden mosaic
-  expressive:    { color: '#4ac47b', opacity: 0.08 }, // fresh green
+  hayao:   { color: '#8bc48a', opacity: 0.10 }, // soft green (Ghibli natural tones)
+  shinkai: { color: '#6ba8d6', opacity: 0.12 }, // vivid blue (Shinkai sky colors)
+  paprika: { color: '#d68a9e', opacity: 0.10 }, // warm pink (Paprika dreamy tones)
+  celeb:   { color: '#d6b86b', opacity: 0.08 }, // warm gold (portrait warmth)
 };
 
 /**
  * Process a source image through the AI Style preview pipeline.
- * This is a Canvas 2D approximation of the neural style transfer look —
+ * This is a Canvas 2D approximation of the AnimeGANv2 cartoon look —
  * the actual AI-processed video is computed offline by the Python script.
  *
- * Improved pipeline for a more convincing brush-painted appearance:
- *   1. Downscale + upscale to simulate large brush strokes (coarser detail)
- *   2. Heavy blur for smooth, flat color regions
- *   3. Saturation/vibrance boost for painterly warmth
+ * Cartoon-style pipeline (simulates AnimeGANv2 output):
+ *   1. Bilateral-style smoothing (blur + edge-preserve) for flat color regions
+ *   2. Strong posterization for cel-shaded cartoon colors
+ *   3. Saturation/vibrance boost for vivid cartoon palette
  *   4. Preset-specific color tint overlay
- *   5. Posterize: reduce color levels for a painted look
- *   6. Edge-aware darkening for painted contour feel
- *   7. Blend with original based on strength
+ *   5. Edge detection + overlay for clean cartoon outlines
+ *   6. Blend with original based on strength
  */
 export function processAiStyleFrame(
   source: EffectSource,
@@ -275,31 +273,29 @@ export function processAiStyleFrame(
   const strength = cfg.styleStrength ?? 0.8;
   const brush = cfg.brushSize ?? 0.5;
   const vibrance = cfg.colorVibrance ?? 1.3;
-  const preset = cfg.stylePreset ?? 'impressionist';
+  const preset = cfg.stylePreset ?? 'hayao';
 
   // 1. Draw original for blending reference
   ctx.clearRect(0, 0, iw, ih);
   ctx.drawImage(source, 0, 0, iw, ih);
   const originalData = ctx.getImageData(0, 0, iw, ih);
 
-  // 2. Downscale + upscale to simulate large brush strokes
-  //    brush_size=0 → scale to 60%, brush_size=1 → scale to 25%
-  const downScale = Math.max(0.25, 0.6 - brush * 0.35);
+  // 2. Bilateral-like smoothing: downscale + upscale + blur for flat cartoon regions
+  //    This simulates AnimeGANv2's flat color areas
+  const downScale = Math.max(0.35, 0.7 - brush * 0.35);
   const dw = Math.max(8, Math.round(iw * downScale));
   const dh = Math.max(8, Math.round(ih * downScale));
 
   ctx.clearRect(0, 0, iw, ih);
-  // Draw small (pixelated brush strokes), then stretch back
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'low';
-  ctx.drawImage(source, 0, 0, dw, dh);
-  // Draw back at full size with smoothing for painterly blur
   ctx.imageSmoothingQuality = 'medium';
+  ctx.drawImage(source, 0, 0, dw, dh);
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(canvas, 0, 0, dw, dh, 0, 0, iw, ih);
 
-  // 3. Additional blur for smoother color regions
-  const blurPx = 1 + brush * 4; // 1–5 px
-  ctx.filter = `blur(${blurPx.toFixed(1)}px) saturate(${vibrance.toFixed(2)})`;
+  // 3. Light blur + vibrance boost for flat, vivid cartoon colors
+  const blurPx = 0.5 + brush * 2; // subtle blur — cartoons have sharp regions
+  ctx.filter = `blur(${blurPx.toFixed(1)}px) saturate(${(vibrance * 1.2).toFixed(2)})`;
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = iw;
   tempCanvas.height = ih;
@@ -312,7 +308,7 @@ export function processAiStyleFrame(
   ctx.filter = 'none';
 
   // 4. Preset-specific color tint overlay
-  const tint = PRESET_TINTS[preset] ?? PRESET_TINTS.impressionist;
+  const tint = PRESET_TINTS[preset] ?? PRESET_TINTS.hayao;
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
   ctx.globalAlpha = tint.opacity * strength;
@@ -320,21 +316,43 @@ export function processAiStyleFrame(
   ctx.fillRect(0, 0, iw, ih);
   ctx.restore();
 
-  // 5. Posterize + edge darken + blend with original
+  // 5. Strong posterization (cel-shaded look) + edge-aware darkening + blend
   try {
     const imgData = ctx.getImageData(0, 0, iw, ih);
     const data = imgData.data;
     const orig = originalData.data;
 
-    // Posterize: fewer levels for more painterly look
-    const levels = Math.max(6, Math.round(20 - brush * 12)); // 8–20 levels
+    // Fewer color levels = more cartoon-like (AnimeGANv2 produces flat regions)
+    const levels = Math.max(5, Math.round(12 - brush * 6)); // 6–12 levels
     const step = 256 / levels;
 
+    // Simple edge detection from original for cartoon outlines
+    const edgeWeight = 0.15 + brush * 0.15; // subtle outlines
+
     for (let i = 0; i < data.length; i += 4) {
-      // Posterize
+      // Posterize for cel-shaded look
       let r = Math.min(255, Math.floor(data[i] / step) * step + step * 0.5);
       let g = Math.min(255, Math.floor(data[i + 1] / step) * step + step * 0.5);
       let b = Math.min(255, Math.floor(data[i + 2] / step) * step + step * 0.5);
+
+      // Detect edge from original image (luminance gradient approximation)
+      const px = (i / 4) % iw;
+      const py = Math.floor(i / 4 / iw);
+      if (px > 0 && px < iw - 1 && py > 0 && py < ih - 1) {
+        const idx = i;
+        const idxR = idx + 4;
+        const idxD = idx + iw * 4;
+        const lumC = 0.299 * orig[idx] + 0.587 * orig[idx + 1] + 0.114 * orig[idx + 2];
+        const lumR = 0.299 * orig[idxR] + 0.587 * orig[idxR + 1] + 0.114 * orig[idxR + 2];
+        const lumD = 0.299 * orig[idxD] + 0.587 * orig[idxD + 1] + 0.114 * orig[idxD + 2];
+        const edgeMag = Math.abs(lumC - lumR) + Math.abs(lumC - lumD);
+        if (edgeMag > 20) {
+          const darkFactor = Math.max(0, 1.0 - edgeWeight * Math.min(1, edgeMag / 60));
+          r *= darkFactor;
+          g *= darkFactor;
+          b *= darkFactor;
+        }
+      }
 
       // Blend with original based on strength
       data[i]     = Math.round(r * strength + orig[i] * (1 - strength));

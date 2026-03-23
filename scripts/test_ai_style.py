@@ -6,6 +6,7 @@ import numpy as np
 
 from ai_style import (
     STYLE_MODELS,
+    _align_to_8,
     compute_flow_confidence,
     warp_frame,
     enhance_colors,
@@ -15,28 +16,42 @@ from ai_style import (
 
 
 class TestStyleModels(unittest.TestCase):
-    """Tests for the style model configuration."""
+    """Tests for the AnimeGANv2 model configuration."""
 
     def test_all_presets_defined(self):
         """All expected presets should be in STYLE_MODELS."""
-        expected = ['impressionist', 'bold', 'abstract', 'mosaic', 'expressive']
+        expected = ['hayao', 'shinkai', 'paprika', 'celeb']
         for preset in expected:
             self.assertIn(preset, STYLE_MODELS)
 
     def test_each_model_has_required_fields(self):
-        """Each model entry should have url, filename, and description."""
+        """Each model entry should have filename, description, and input_size."""
         for name, info in STYLE_MODELS.items():
-            self.assertIn('url', info, f"Model '{name}' missing 'url'")
             self.assertIn('filename', info, f"Model '{name}' missing 'filename'")
             self.assertIn('description', info, f"Model '{name}' missing 'description'")
+            self.assertIn('input_size', info, f"Model '{name}' missing 'input_size'")
             self.assertTrue(info['filename'].endswith('.onnx'),
                             f"Model '{name}' filename should end with .onnx")
 
-    def test_urls_are_https(self):
-        """All model URLs should use HTTPS."""
+    def test_input_sizes_are_valid(self):
+        """All model input sizes should be positive and divisible by 8."""
         for name, info in STYLE_MODELS.items():
-            self.assertTrue(info['url'].startswith('https://'),
-                            f"Model '{name}' URL should start with https://")
+            size = info['input_size']
+            self.assertGreater(size, 0, f"Model '{name}' input_size should be positive")
+            self.assertEqual(size % 8, 0, f"Model '{name}' input_size should be divisible by 8")
+
+
+class TestAlignTo8(unittest.TestCase):
+    """Tests for _align_to_8 helper."""
+
+    def test_already_aligned(self):
+        self.assertEqual(_align_to_8(512), 512)
+        self.assertEqual(_align_to_8(256), 256)
+
+    def test_rounds_up(self):
+        self.assertEqual(_align_to_8(510), 512)
+        self.assertEqual(_align_to_8(1), 8)
+        self.assertEqual(_align_to_8(9), 16)
 
 
 class TestFlowConfidence(unittest.TestCase):

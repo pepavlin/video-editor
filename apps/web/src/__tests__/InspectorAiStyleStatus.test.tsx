@@ -152,18 +152,17 @@ describe('Inspector – cartoon mode toggle', () => {
     const { asset, project, effectClipId } = makeCartoonScenario({ cartoonMode: 'aiStyle' });
     render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
 
-    // Should have a select element with all 5 presets
-    const select = screen.getByDisplayValue('Impressionist');
+    // Should have a select element with all 4 presets
+    const select = screen.getByDisplayValue('Ghibli (Hayao)');
     expect(select).toBeDefined();
     expect(select.tagName).toBe('SELECT');
 
     const options = select.querySelectorAll('option');
-    expect(options).toHaveLength(5);
-    expect(options[0].value).toBe('impressionist');
-    expect(options[1].value).toBe('bold');
-    expect(options[2].value).toBe('abstract');
-    expect(options[3].value).toBe('mosaic');
-    expect(options[4].value).toBe('expressive');
+    expect(options).toHaveLength(4);
+    expect(options[0].value).toBe('hayao');
+    expect(options[1].value).toBe('shinkai');
+    expect(options[2].value).toBe('paprika');
+    expect(options[3].value).toBe('celeb');
   });
 
   it('calls onUpdateEffectClipConfig with aiStyle when AI Style button is clicked', () => {
