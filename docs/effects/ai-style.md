@@ -1,12 +1,12 @@
-# AI Style Effect — Neural Style Transfer Video Stylization
+# AI Style Effect — AnimeGANv2 Cartoon Stylization
 
 ## Overview
 
-The AI Style mode extends the Cartoon effect with a second mode that produces **genuinely painted, brush-stroke** video stylization using **neural style transfer** (ONNX Runtime). It uses pre-trained Fast Neural Style Transfer models (Johnson et al. 2016) from the ONNX Model Zoo — each model is trained on a specific famous painting to produce real artistic brush-stroke textures, not just filter approximations.
+The AI Style mode extends the Cartoon effect with a second mode that produces **genuine cartoon/anime** video stylization using **AnimeGANv2** (ONNX Runtime). Unlike neural style transfer which applies painterly textures from reference paintings, AnimeGANv2 is a GAN specifically trained to convert real photos/video into cartoon art — producing flat color regions, clean edges, and stylized shading. This is true cartoonization, not just filter effects.
 
 The effect uses two modes accessible through the Cartoon effect panel:
 - **Classic** — Edge-detection cartoon (existing, default)
-- **AI Style** — Neural style transfer with temporal consistency
+- **AI Style** — AnimeGANv2 cartoon stylization with temporal consistency
 
 ---
 
@@ -25,18 +25,20 @@ Input proxy → Extract frames → Detect scene cuts
                                      │
                     ┌────────────────┘
                     ▼
-            Download ONNX model (cached in workspace/models/)
+            Load AnimeGANv2 ONNX model (from workspace/models/)
                     │
                     ▼
             Select keyframes (every 5 frames + scene boundaries)
                     │
                     ▼
-            Stylize keyframes with neural style transfer:
-              1. Downscale based on brushSize (controls brush stroke size)
-              2. ONNX Runtime inference (Fast Neural Style Transfer model)
-              3. Upscale back to original resolution (Lanczos4)
-              4. HSV color vibrance post-processing
-              5. Blend with original (styleStrength)
+            Cartoonize keyframes with AnimeGANv2:
+              1. Resize preserving aspect ratio (dims divisible by 8)
+              2. Normalize to [-1, 1] (AnimeGANv2 input range)
+              3. ONNX Runtime inference (AnimeGANv2 model)
+              4. Denormalize from [-1, 1] to [0, 255]
+              5. Upscale back to original resolution (Lanczos4)
+              6. HSV color vibrance post-processing
+              7. Blend with original (styleStrength)
                     │
                     ▼
             Propagate via optical flow (DIS FAST algorithm):
@@ -47,18 +49,18 @@ Input proxy → Extract frames → Detect scene cuts
               - Scene-cut aware (never propagates across cuts)
                     │
                     ▼
-            Assemble stylized frames → Output MP4
+            Assemble cartoonized frames → Output MP4
 ```
 
 ### Preview (Real-time Approximation)
 
-The preview uses a Canvas 2D approximation with preset-specific tinting:
+The preview uses a Canvas 2D approximation simulating cartoon output:
 
-1. Downscale + upscale to simulate brush stroke size (based on brushSize)
-2. Blur for smooth color regions
-3. Saturation/vibrance boost
-4. Preset-specific color tint overlay (each preset has a characteristic color cast)
-5. Posterization to reduce color levels
+1. Bilateral-style smoothing (downscale + upscale) for flat color regions
+2. Light blur for smooth cartoon regions
+3. Strong posterization for cel-shaded look
+4. Preset-specific color tint overlay
+5. Edge detection overlay for cartoon outlines
 6. Blend with original based on strength
 
 ### Export
@@ -74,17 +76,25 @@ When no pre-processed video exists:
 
 ## Style Presets
 
-Each preset maps to a pre-trained ONNX neural style transfer model, producing genuinely different artistic styles:
+Each preset maps to an AnimeGANv2 ONNX model trained on a specific anime/cartoon style:
 
-| Preset | Model | Description |
+| Preset | Style | Description |
 |--------|-------|-------------|
-| `impressionist` | Rain Princess | Watercolor/impressionist brush strokes |
-| `bold` | Candy | Bold, colorful brush strokes |
-| `abstract` | Udnie (Francis Picabia) | Abstract brush strokes |
-| `mosaic` | Mosaic | Cubist/mosaic pattern |
-| `expressive` | Pointilism | Expressive pointillist strokes |
+| `hayao` | Studio Ghibli / Hayao Miyazaki | Soft colors, natural scenery, gentle cartoon look |
+| `shinkai` | Makoto Shinkai | Vivid sky colors, crisp details, vibrant palette |
+| `paprika` | Satoshi Kon / Paprika | Dreamy, expressive colors, stylized look |
+| `celeb` | Portrait-focused | Optimized for faces and portraits |
 
-Models are downloaded on first use from the ONNX Model Zoo (~6-8 MB each) and cached in `workspace/models/style_transfer/`.
+### Obtaining Models
+
+AnimeGANv2 ONNX models must be placed in the models directory:
+- `workspace/models/style_transfer/animeganv2_hayao.onnx`
+- `workspace/models/style_transfer/animeganv2_shinkai.onnx`
+- `workspace/models/style_transfer/animeganv2_paprika.onnx`
+- `workspace/models/style_transfer/animeganv2_celeb.onnx`
+
+Models can be obtained from AnimeGANv2 repositories and converted to ONNX format.
+Typical model size: ~8-15 MB each.
 
 ---
 
@@ -92,18 +102,19 @@ Models are downloaded on first use from the ONNX Model Zoo (~6-8 MB each) and ca
 
 | Parameter | Range | Default | Description |
 |-----------|-------|---------|-------------|
-| `stylePreset` | enum | `'impressionist'` | Neural style transfer model preset |
-| `styleStrength` | 0–1 | 0.8 | Blend weight between original and stylized (1 = full style) |
-| `brushSize` | 0–1 | 0.5 | Controls brush stroke coarseness via downscale ratio |
-| `colorVibrance` | 0–2 | 1.3 | Color vibrancy of the painterly output (1 = normal) |
+| `stylePreset` | enum | `'hayao'` | AnimeGANv2 model preset |
+| `styleStrength` | 0–1 | 0.8 | Blend weight between original and cartoonized (1 = full cartoon) |
+| `brushSize` | 0–1 | 0.5 | Controls detail level via input resolution |
+| `colorVibrance` | 0–2 | 1.3 | Color vibrancy of the cartoon output (1 = normal) |
 
 ### How brushSize works
 
-The `brushSize` parameter controls the resolution at which the neural model processes each frame:
-- **brushSize = 0**: Process at full resolution → fine, detailed brush strokes
-- **brushSize = 1**: Process at 40% resolution → large, coarse brush strokes
+The `brushSize` parameter controls the resolution at which the AnimeGANv2 model processes each frame:
+- **brushSize = 0**: Process at higher resolution → finer cartoon details
+- **brushSize = 1**: Process at 50% resolution → broader, more stylized cartoon
 
-Lower resolution input to the model naturally produces larger brush-stroke effects when upscaled back, similar to painting with a wider brush.
+Lower resolution input produces more abstract/stylized cartoon output with less fine detail.
+All dimensions are aligned to multiples of 8 (required by the AnimeGANv2 architecture).
 
 ---
 
@@ -111,7 +122,7 @@ Lower resolution input to the model naturally produces larger brush-stroke effec
 
 All dependencies are already in the Docker image (no new installs required):
 
-- **onnxruntime** (>=1.16.0) — ONNX model inference for neural style transfer
+- **onnxruntime** (>=1.16.0) — ONNX model inference for AnimeGANv2
 - **opencv-python-headless** — Optical flow (DIS), frame warping, color conversion
 - **numpy** — Array operations, flow warping, frame blending
 - **ffmpeg** — Frame extraction and video assembly
@@ -128,7 +139,7 @@ Body: {
   styleStrength?: number,  // 0–1, default 0.8
   brushSize?: number,      // 0–1, default 0.5
   colorVibrance?: number,  // 0–2, default 1.3
-  stylePreset?: string     // 'impressionist' | 'bold' | 'abstract' | 'mosaic' | 'expressive'
+  stylePreset?: string     // 'hayao' | 'shinkai' | 'paprika' | 'celeb'
 }
 Response: { jobId: string }
 ```
@@ -137,7 +148,7 @@ The job can be polled via `GET /api/jobs/:jobId/status`.
 
 ### Output
 
-The stylized video is stored at `assets/{assetId}/ai_style.mp4` and the `asset.aiStylePath` field is updated on completion.
+The cartoonized video is stored at `assets/{assetId}/ai_style.mp4` and the `asset.aiStylePath` field is updated on completion.
 
 ---
 
@@ -146,7 +157,7 @@ The stylized video is stored at `assets/{assetId}/ai_style.mp4` and the `asset.a
 | Component | File |
 |-----------|------|
 | Type definitions | `packages/shared/src/types.ts` — `AiStylePreset`, `CartoonMode`, `EffectClipConfig` |
-| Python processing | `scripts/ai_style.py` — ONNX neural style transfer pipeline |
+| Python processing | `scripts/ai_style.py` — AnimeGANv2 cartoonization pipeline |
 | Python tests | `scripts/test_ai_style.py` — Unit tests for pure functions |
 | Effect implementation | `packages/elements/src/effects/Cartoon.ts` — Preview + export for both modes |
 | API route | `apps/api/src/routes/assets.ts` — `POST /assets/:id/ai-style` |
@@ -161,12 +172,25 @@ The stylized video is stored at `assets/{assetId}/ai_style.mp4` and the `asset.a
 
 ## Temporal Consistency
 
-The neural style transfer approach provides inherently better temporal consistency than the previous bilateral-filter approach, because:
+The AnimeGANv2 approach provides inherently good temporal consistency because:
 
-1. **Deterministic model output**: Same input always produces the same stylized output
+1. **Deterministic model output**: Same input always produces the same cartoonized output
 2. **Dense keyframes**: Every 5 frames (~6 per second) for minimal inter-keyframe drift
 3. **Flow propagation with high temporal weight (0.85)**: Smooth blending between frames
 4. **Improved confidence function**: Smoother sigmoid-based confidence curve instead of exponential decay
 5. **Scene-cut awareness**: Never propagates across detected scene boundaries
 
 This eliminates the flickering and jittering common with per-frame filter-based approaches.
+
+---
+
+## Why AnimeGANv2 over Neural Style Transfer
+
+The previous implementation used Fast Neural Style Transfer models (Johnson et al. 2016) from the ONNX Model Zoo. These models apply artistic textures from reference paintings but don't produce a convincing cartoon look — they tend to look more like blurred/textured versions of the original.
+
+AnimeGANv2 is purpose-built for cartoonization:
+- **Flat color regions** — like real cartoons, not gradients with texture overlays
+- **Clean edges** — proper cartoon outlines, not just edge-detected artifacts
+- **Stylized shading** — anime-style light/shadow separation
+- **Face-aware** — models trained with face detection to preserve facial features
+- **Multiple styles** — each model captures a specific anime director's visual style

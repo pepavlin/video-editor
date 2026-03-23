@@ -25,15 +25,14 @@ export type EffectType = 'beatZoom' | 'cutout' | 'headStabilization' | 'cartoon'
 export type CartoonMode = 'classic' | 'aiStyle';
 
 /**
- * AI Style presets — each maps to a pre-trained ONNX neural style transfer model.
+ * AI Style presets — each maps to an AnimeGANv2 ONNX model for true cartoonization.
  *
- * - impressionist: Rain Princess — watercolor/impressionist brush strokes
- * - bold:          Candy — bold, colorful brush strokes
- * - abstract:      Udnie (Francis Picabia) — abstract brush strokes
- * - mosaic:        Mosaic — cubist/mosaic pattern
- * - expressive:    La Muse (Picasso) — expressive thick brush strokes
+ * - hayao:   Hayao Miyazaki / Studio Ghibli style — soft colors, natural scenery
+ * - shinkai: Makoto Shinkai style — vivid sky colors, crisp details
+ * - paprika: Satoshi Kon / Paprika style — dreamy, expressive colors
+ * - celeb:   Portrait-focused cartoon style — optimized for faces
  */
-export type AiStylePreset = 'impressionist' | 'bold' | 'abstract' | 'mosaic' | 'expressive';
+export type AiStylePreset = 'hayao' | 'shinkai' | 'paprika' | 'celeb';
 
 export interface Track {
   id: string;
@@ -119,7 +118,7 @@ export interface EffectClipConfig {
   colorSimplification?: number; // 0-1: how much to simplify/flatten colors
   saturation?: number;          // 0-2: color saturation (1=normal)
   // cartoon aiStyle params
-  stylePreset?: AiStylePreset;  // AI style model preset (default: 'impressionist')
+  stylePreset?: AiStylePreset;  // AI style model preset (default: 'hayao')
   styleStrength?: number;       // 0-1: blending weight between original and stylized (1=full style)
   brushSize?: number;           // 0-1: controls brush stroke coarseness
   colorVibrance?: number;       // 0-2: color vibrancy of the painterly output (1=normal)

@@ -417,8 +417,8 @@ export async function assetsRoutes(app: FastifyInstance) {
     const strength = String(Math.max(0, Math.min(1, body.styleStrength ?? 0.8)));
     const brush = String(Math.max(0, Math.min(1, body.brushSize ?? 0.5)));
     const vibrance = String(Math.max(0, Math.min(2, body.colorVibrance ?? 1.3)));
-    const validPresets = ['impressionist', 'bold', 'abstract', 'mosaic', 'expressive'];
-    const preset = validPresets.includes(body.stylePreset ?? '') ? body.stylePreset! : 'impressionist';
+    const validPresets = ['hayao', 'shinkai', 'paprika', 'celeb'];
+    const preset = validPresets.includes(body.stylePreset ?? '') ? body.stylePreset! : 'hayao';
 
     const job = jq.createJob('aiStyle', asset.id);
     const aiStyleOutputPath = path.join(ws.getAssetDir(asset.id), 'ai_style.mp4');

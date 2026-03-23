@@ -488,7 +488,7 @@ export default function Editor() {
     styleStrength: number,
     brushSize: number,
     colorVibrance: number,
-    stylePreset: string = 'impressionist',
+    stylePreset: string = 'hayao',
   ) => {
     try {
       const { jobId } = await api.startAiStyle(assetId, { styleStrength, brushSize, colorVibrance, stylePreset });
