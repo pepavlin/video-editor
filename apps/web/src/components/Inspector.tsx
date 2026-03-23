@@ -13,6 +13,7 @@ import type {
 } from '@video-editor/shared';
 import { formatTime } from '@/lib/utils';
 import { SnapSlider } from './effects/SnapSlider';
+import { CartoonEffectPreview } from './effects/CartoonEffectPreview';
 
 type AssetJobEntry = { jobId: string; status: string; progress: number; logLines: string[] };
 type AssetJobs = Record<string, { cutout?: AssetJobEntry; headStab?: AssetJobEntry; aiStyle?: AssetJobEntry }>;
@@ -667,6 +668,17 @@ export default function Inspector({
                       </div>
                     </Row>
 
+                    {/* Effect preview — captures a frame from the video and applies the cartoon filter */}
+                    {selectedAsset?.proxyPath && (
+                      <div style={{ padding: '4px 0' }}>
+                        <CartoonEffectPreview
+                          proxyUrl={`/files/${selectedAsset.proxyPath}`}
+                          cfg={cfg}
+                          sourceTime={selectedClip ? selectedClip.sourceStart + (selectedClip.sourceEnd - selectedClip.sourceStart) * 0.25 : undefined}
+                        />
+                      </div>
+                    )}
+
                     {/* Classic mode controls */}
                     {(cfg.cartoonMode ?? 'classic') === 'classic' && (
                       <>
@@ -745,40 +757,166 @@ export default function Inspector({
                             <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36, flexShrink: 0 }}>{(cfg.colorVibrance ?? 1.3).toFixed(1)}×</span>
                           </div>
                         </Row>
-                        <Row label="Process">
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {selectedAsset?.aiStylePath ? (
-                              <span style={{ fontSize: 12, color: 'rgba(132,204,22,0.85)' }}>Stylized video ready</span>
-                            ) : aiStyleJobStatus === 'RUNNING' ? (
-                              <span style={{ fontSize: 12, color: 'rgba(251,191,36,0.85)' }}>Processing...</span>
-                            ) : (
-                              <button
-                                style={{
-                                  fontSize: 12,
-                                  padding: '4px 10px',
-                                  border: '1px solid rgba(132,204,22,0.40)',
-                                  borderRadius: 4,
-                                  background: 'rgba(132,204,22,0.10)',
-                                  color: 'rgba(132,204,22,0.90)',
-                                  cursor: 'pointer',
-                                }}
-                                onClick={() => {
-                                  if (selectedAsset && onStartAiStyleJob) {
-                                    onStartAiStyleJob(
-                                      selectedAsset.id,
-                                      cfg.styleStrength ?? 0.8,
-                                      cfg.brushSize ?? 0.5,
-                                      cfg.colorVibrance ?? 1.3,
-                                      cfg.stylePreset ?? 'hayao',
-                                    );
-                                  }
-                                }}
-                              >
-                                Generate Stylized Video
-                              </button>
-                            )}
+
+                        {/* Preprocessing section */}
+                        <div style={{
+                          marginTop: 4,
+                          padding: '8px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface-overlay)',
+                        }}>
+                          <div style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06em',
+                            color: 'var(--text-muted)',
+                            marginBottom: 8,
+                          }}>
+                            Preprocessing
                           </div>
-                        </Row>
+
+                          {/* Status indicator */}
+                          {selectedAsset?.aiStylePath && (
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              marginBottom: 8,
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              background: 'rgba(132,204,22,0.08)',
+                              border: '1px solid rgba(132,204,22,0.20)',
+                            }}>
+                              <span style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                background: 'rgba(132,204,22,0.85)',
+                                flexShrink: 0,
+                              }} />
+                              <span style={{ fontSize: 11, color: 'rgba(132,204,22,0.85)' }}>
+                                Stylized video ready
+                              </span>
+                            </div>
+                          )}
+
+                          {aiStyleJobStatus === 'RUNNING' && (
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              marginBottom: 8,
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              background: 'rgba(251,191,36,0.08)',
+                              border: '1px solid rgba(251,191,36,0.20)',
+                            }}>
+                              <div style={{
+                                width: 10,
+                                height: 10,
+                                border: '2px solid rgba(251,191,36,0.30)',
+                                borderTopColor: 'rgba(251,191,36,0.90)',
+                                borderRadius: '50%',
+                                animation: 'spin 0.8s linear infinite',
+                                flexShrink: 0,
+                              }} />
+                              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                              <span style={{ fontSize: 11, color: 'rgba(251,191,36,0.85)' }}>
+                                Processing {cfg.stylePreset ?? 'hayao'} style...
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Preprocessing buttons — one per preset for quick access */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {/* Generate with current settings */}
+                            <button
+                              disabled={aiStyleJobStatus === 'RUNNING'}
+                              style={{
+                                width: '100%',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                padding: '6px 10px',
+                                border: '1px solid rgba(132,204,22,0.50)',
+                                borderRadius: 4,
+                                background: aiStyleJobStatus === 'RUNNING'
+                                  ? 'rgba(132,204,22,0.05)'
+                                  : 'rgba(132,204,22,0.12)',
+                                color: aiStyleJobStatus === 'RUNNING'
+                                  ? 'rgba(132,204,22,0.40)'
+                                  : 'rgba(132,204,22,0.95)',
+                                cursor: aiStyleJobStatus === 'RUNNING' ? 'not-allowed' : 'pointer',
+                              }}
+                              onClick={() => {
+                                if (selectedAsset && onStartAiStyleJob) {
+                                  onStartAiStyleJob(
+                                    selectedAsset.id,
+                                    cfg.styleStrength ?? 0.8,
+                                    cfg.brushSize ?? 0.5,
+                                    cfg.colorVibrance ?? 1.3,
+                                    cfg.stylePreset ?? 'hayao',
+                                  );
+                                }
+                              }}
+                            >
+                              Generate Stylized Video
+                            </button>
+
+                            {/* Quick preset buttons */}
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 1fr',
+                              gap: 4,
+                              marginTop: 2,
+                            }}>
+                              {([
+                                { preset: 'hayao', label: 'Ghibli' },
+                                { preset: 'shinkai', label: 'Shinkai' },
+                                { preset: 'paprika', label: 'Paprika' },
+                                { preset: 'celeb', label: 'Portrait' },
+                              ] as const).map(({ preset, label }) => (
+                                <button
+                                  key={preset}
+                                  disabled={aiStyleJobStatus === 'RUNNING'}
+                                  style={{
+                                    fontSize: 11,
+                                    padding: '4px 6px',
+                                    border: '1px solid',
+                                    borderColor: (cfg.stylePreset ?? 'hayao') === preset
+                                      ? 'rgba(132,204,22,0.50)'
+                                      : 'var(--border)',
+                                    borderRadius: 4,
+                                    background: (cfg.stylePreset ?? 'hayao') === preset
+                                      ? 'rgba(132,204,22,0.08)'
+                                      : 'transparent',
+                                    color: aiStyleJobStatus === 'RUNNING'
+                                      ? 'var(--text-muted)'
+                                      : 'var(--text)',
+                                    cursor: aiStyleJobStatus === 'RUNNING' ? 'not-allowed' : 'pointer',
+                                    opacity: aiStyleJobStatus === 'RUNNING' ? 0.5 : 1,
+                                  }}
+                                  onClick={() => {
+                                    if (selectedAsset && onStartAiStyleJob) {
+                                      // Switch to this preset and start processing
+                                      update({ stylePreset: preset });
+                                      onStartAiStyleJob(
+                                        selectedAsset.id,
+                                        cfg.styleStrength ?? 0.8,
+                                        cfg.brushSize ?? 0.5,
+                                        cfg.colorVibrance ?? 1.3,
+                                        preset,
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Process {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                       </>
                     )}
                   </>

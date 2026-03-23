@@ -162,11 +162,44 @@ The cartoonized video is stored at `assets/{assetId}/ai_style.mp4` and the `asse
 | Effect implementation | `packages/elements/src/effects/Cartoon.ts` — Preview + export for both modes |
 | API route | `apps/api/src/routes/assets.ts` — `POST /assets/:id/ai-style` |
 | Export pipeline | `apps/api/src/elements/ExportPipeline.ts` — AI style input collection |
-| UI controls | `apps/web/src/components/Inspector.tsx` — Style preset selector + sliders |
+| UI controls | `apps/web/src/components/Inspector.tsx` — Style preset selector + sliders + preprocessing buttons |
+| Effect preview | `apps/web/src/components/effects/CartoonEffectPreview.tsx` — Frame capture + filter preview |
 | Frontend API | `apps/web/src/lib/api.ts` — `startAiStyle()` |
 | Editor wiring | `apps/web/src/components/Editor.tsx` — Job tracking + polling |
 | Tests (effects) | `packages/elements/src/__tests__/effectRegistry.test.ts` — AI style filter tests |
 | Tests (UI) | `apps/web/src/__tests__/InspectorAiStyleStatus.test.tsx` — Inspector AI style UI tests |
+| Tests (preview) | `apps/web/src/components/effects/CartoonEffectPreview.test.tsx` — Preview component tests |
+
+---
+
+## Effect Preview
+
+The cartoon effect settings panel includes a live preview that captures a frame from the video and applies the actual cartoon filter (classic or AI style) in real-time as the user adjusts parameters.
+
+### How it works
+
+1. A hidden `<video>` element loads the proxy video and seeks to 25% of the clip duration
+2. The captured frame is drawn to an offscreen canvas
+3. The same `processCartoonFrame()` / `processAiStyleFrame()` functions used by the real-time preview pipeline are applied
+4. A before/after split view allows comparison (draggable divider)
+5. Processing is debounced (50ms) when parameters change
+
+### View modes
+- **Split** — Draggable divider shows effect on left, original on right
+- **Original** — Full original frame
+
+### Component
+`apps/web/src/components/effects/CartoonEffectPreview.tsx`
+
+---
+
+## Preprocessing Buttons
+
+The AI Style section includes a dedicated preprocessing panel with:
+
+1. **Generate Stylized Video** — Main button using current settings (preset, strength, brush, vibrance)
+2. **Quick preset buttons** — Grid of 4 buttons (Ghibli, Shinkai, Paprika, Portrait) that switch to the preset and immediately start processing
+3. **Status indicators** — Shows "Stylized video ready" (green) or "Processing [preset] style..." (amber spinner) with disabled buttons during processing
 
 ---
 
