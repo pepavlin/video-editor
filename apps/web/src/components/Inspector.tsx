@@ -34,6 +34,7 @@ interface Props {
   onSyncAudio?: (clipId: string) => Promise<void>;
   onStartAiStyleJob?: (assetId: string, strength: number, brush: number, vibrance: number, stylePreset?: string) => Promise<void>;
   assetJobs?: AssetJobs;
+  onExplodeLyricsToChunks?: (clipId: string) => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -145,6 +146,7 @@ export default function Inspector({
   onSyncAudio,
   onStartAiStyleJob,
   assetJobs,
+  onExplodeLyricsToChunks,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
 
@@ -1214,6 +1216,7 @@ export default function Inspector({
               onClipUpdate={onClipUpdate}
               onAlignLyricsClip={onAlignLyricsClip}
               onTranscribeLyricsClip={onTranscribeLyricsClip}
+              onExplodeLyricsToChunks={onExplodeLyricsToChunks}
             />
           )}
 
@@ -1303,11 +1306,13 @@ function LyricsClipInspector({
   onClipUpdate,
   onAlignLyricsClip,
   onTranscribeLyricsClip,
+  onExplodeLyricsToChunks,
 }: {
   clip: Clip;
   onClipUpdate: (clipId: string, updates: Partial<Clip>) => void;
   onAlignLyricsClip: (clipId: string, text: string, onProgress: (logLines: string[]) => void) => Promise<void>;
   onTranscribeLyricsClip: (clipId: string, onProgress: (logLines: string[]) => void) => Promise<void>;
+  onExplodeLyricsToChunks?: (clipId: string) => void;
 }) {
   const [aligning, setAligning] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -1422,6 +1427,20 @@ function LyricsClipInspector({
           <p style={{ fontSize: 12, color: '#4ade80', marginTop: 4 }}>
             {clip.lyricsWords.length} words aligned
           </p>
+        )}
+        {clip.lyricsWords && clip.lyricsWords.length > (style.wordsPerChunk) && !busy && onExplodeLyricsToChunks && (
+          <button
+            className="btn btn-ghost"
+            style={{
+              width: '100%',
+              fontSize: 13,
+              color: '#8b5cf6',
+              marginTop: 4,
+            }}
+            onClick={() => onExplodeLyricsToChunks(clip.id)}
+          >
+            Split to individual clips ({Math.ceil(clip.lyricsWords!.length / style.wordsPerChunk)} chunks)
+          </button>
         )}
         {clip.lyricsAlignStatus === 'error' && !busy && (
           <p style={{ fontSize: 12, color: '#f87171', marginTop: 4 }}>Operation failed – try again</p>

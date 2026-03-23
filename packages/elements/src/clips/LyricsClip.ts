@@ -267,14 +267,11 @@ const lyricsClipPreview: ClipPreviewApi = {
   ): void {
     if (!clip.lyricsWords || clip.lyricsWords.length === 0) return;
 
-    // Word timestamps are relative to the master audio WAV start.
-    // Compute audio time by accounting for master clip's timeline/source offset.
-    const audioTimeOffset = context.masterClip
-      ? context.masterClip.sourceStart - context.masterClip.timelineStart
-      : 0;
-    const audioTime = context.currentTime + audioTimeOffset;
+    // Word timestamps are clip-relative (0 = clip start).
+    // Compute local time within the clip for word highlighting.
+    const clipLocalTime = context.currentTime - clip.timelineStart;
 
-    drawLyricsWords(ctx, context.W, context.H, audioTime, clip.lyricsWords, clip.lyricsStyle);
+    drawLyricsWords(ctx, context.W, context.H, clipLocalTime, clip.lyricsWords, clip.lyricsStyle);
   },
 
   getBounds(
@@ -300,19 +297,26 @@ const lyricsClipExport: ClipExportApi = {
   ): ClipFilterResult | null {
     if (!clip.lyricsWords || clip.lyricsWords.length === 0) return null;
 
+    // Word timestamps are clip-relative (0 = clip start).
+    // Convert to absolute video timeline time by adding clip.timelineStart.
+    const absoluteWords = clip.lyricsWords.map((w) => ({
+      word: w.word,
+      start: w.start + clip.timelineStart,
+      end: w.end + clip.timelineStart,
+    }));
+
     const lyricsData: LyricsData = {
       text: clip.lyricsContent ?? '',
-      words: clip.lyricsWords,
+      words: absoluteWords,
       style: clip.lyricsStyle,
       enabled: true,
     };
 
-    // Build timing options: convert WAV timestamps → video timeline time,
-    // and restrict events to the lyrics clip's visible time window.
-    const masterClip = context.masterAudioClip;
+    // No master audio offset needed — words are already absolute timeline time.
+    // Restrict events to the lyrics clip's visible time window.
     const assOpts: AssGenerationOptions = {
-      masterTimelineStart: masterClip?.timelineStart ?? 0,
-      masterSourceStart: masterClip?.sourceStart ?? 0,
+      masterTimelineStart: 0,
+      masterSourceStart: 0,
       clipTimelineStart: clip.timelineStart,
       clipTimelineEnd: clip.timelineEnd,
     };

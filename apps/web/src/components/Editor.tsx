@@ -75,6 +75,7 @@ export default function Editor() {
     moveClipToTrack,
     moveClipToNewTrack,
     moveClipToNewTrackAt,
+    explodeLyricsToChunks,
   } = projectHook;
 
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -394,7 +395,9 @@ export default function Editor() {
       // Reload project to get updated lyricsWords on the clip
       const { project: updated } = await api.loadProject(project.id);
       setProject(updated);
-      notify('Lyrics aligned!');
+      // Auto-split lyrics into individual draggable chunks
+      explodeLyricsToChunks(clipId, masterClip);
+      notify('Lyrics aligned & split into individual clips!');
     } catch (e: any) {
       notify(`Lyrics alignment failed: ${e.message}`);
       throw e;
@@ -840,6 +843,7 @@ export default function Editor() {
           onSyncAudio={masterAssetId ? handleSyncAudio : undefined}
           onStartAiStyleJob={handleStartAiStyleJob}
           assetJobs={assetJobs}
+          onExplodeLyricsToChunks={(clipId: string) => explodeLyricsToChunks(clipId, masterClip)}
         />
       </div>
     ),

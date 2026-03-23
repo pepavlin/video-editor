@@ -43,6 +43,93 @@ export function buildNewTrack(newTrackType: Track['type'], existingTracks: Track
   };
 }
 
+/**
+ * Pure helper: explode a single lyrics clip into individual per-chunk clips.
+ * Each chunk becomes its own clip with clip-relative word timestamps (0 = clip start),
+ * allowing the user to drag/reposition individual lyrics chunks on the timeline.
+ *
+ * Returns the updated project, or the original project if nothing changed.
+ */
+export function explodeLyricsClipToChunks(
+  p: Project,
+  clipId: string,
+  masterClipRef?: Clip,
+): Project {
+  // Find the clip and its track
+  let foundClip: Clip | undefined;
+  let foundTrack: Track | undefined;
+  for (const t of p.tracks) {
+    const c = t.clips.find((cl) => cl.id === clipId);
+    if (c) { foundClip = c; foundTrack = t; break; }
+  }
+  if (!foundClip || !foundTrack || foundTrack.type !== 'lyrics') return p;
+  if (!foundClip.lyricsWords || foundClip.lyricsWords.length === 0) return p;
+
+  const words = foundClip.lyricsWords;
+  const style = foundClip.lyricsStyle;
+  const chunkSize = style?.wordsPerChunk ?? 3;
+
+  // If only one chunk's worth of words or fewer, nothing to split
+  if (words.length <= chunkSize) return p;
+
+  // Resolve master audio clip for WAV→timeline conversion
+  const mc = masterClipRef ?? p.tracks
+    .find((t) => t.type === 'audio' && t.isMaster)?.clips[0];
+  const audioTimeOffset = mc
+    ? mc.sourceStart - mc.timelineStart
+    : 0;
+
+  const newClips: Clip[] = [];
+
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const chunk = words.slice(i, i + chunkSize);
+    if (chunk.length === 0) continue;
+
+    const chunkFirstStart = chunk[0].start;
+    const chunkLastEnd = chunk[chunk.length - 1].end;
+
+    // Convert WAV time → timeline time
+    const tlStart = chunkFirstStart - audioTimeOffset;
+    const tlEnd = chunkLastEnd - audioTimeOffset;
+
+    // Shift word timestamps to be clip-relative (start from 0)
+    const clipRelativeWords = chunk.map((w) => ({
+      word: w.word,
+      start: w.start - chunkFirstStart,
+      end: w.end - chunkFirstStart,
+    }));
+
+    const chunkText = chunk.map((w) => w.word).join(' ');
+
+    newClips.push({
+      id: genId('clip'),
+      assetId: '',
+      trackId: foundTrack!.id,
+      timelineStart: Math.max(0, tlStart),
+      timelineEnd: Math.max(0.01, tlEnd),
+      sourceStart: 0,
+      sourceEnd: tlEnd - tlStart,
+      lyricsContent: chunkText,
+      lyricsWords: clipRelativeWords,
+      lyricsStyle: style ? { ...style } : undefined,
+      lyricsAlignStatus: 'done',
+      transform: foundClip!.transform ? { ...foundClip!.transform } : undefined,
+    });
+  }
+
+  if (newClips.length === 0) return p;
+
+  // Replace the original clip with the new chunk clips
+  return {
+    ...p,
+    tracks: p.tracks.map((t) => {
+      if (t.id !== foundTrack!.id) return t;
+      const otherClips = t.clips.filter((c) => c.id !== clipId);
+      return { ...t, clips: [...otherClips, ...newClips] };
+    }),
+  };
+}
+
 const AUTOSAVE_DELAY = 1500;
 
 export function useProject() {
@@ -611,6 +698,15 @@ export function useProject() {
     [updateProject]
   );
 
+  // Explode a single lyrics clip into individual per-chunk clips.
+  // Delegates to the pure explodeLyricsClipToChunks helper.
+  const explodeLyricsToChunks = useCallback(
+    (clipId: string, masterClipRef?: Clip) => {
+      updateProject((p) => explodeLyricsClipToChunks(p, clipId, masterClipRef));
+    },
+    [updateProject]
+  );
+
   return {
     project,
     setProject,
@@ -633,5 +729,6 @@ export function useProject() {
     moveClipToTrack,
     moveClipToNewTrack,
     moveClipToNewTrackAt,
+    explodeLyricsToChunks,
   };
 }

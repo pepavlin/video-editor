@@ -986,13 +986,10 @@ export default function Timeline({
           // ─── Lyrics word-chunk visualization ─────────────────────────────
           // Draw alternating colored blocks for each word chunk so the user
           // can see WHEN each group of words appears on the timeline.
-          // Chunk timing is in master-audio WAV time; convert to timeline px.
+          // Word timestamps are clip-relative (0 = clip start) after explode.
           if (isLyrics && clip.lyricsWords && clip.lyricsWords.length > 0) {
             const lyricsWords = clip.lyricsWords;
             const chunkSize = clip.lyricsStyle?.wordsPerChunk ?? 3;
-            const audioTimeOffset = masterClip
-              ? masterClip.sourceStart - masterClip.timelineStart
-              : 0;
 
             const chunkColors = [
               'rgba(168,85,247,0.80)',
@@ -1007,15 +1004,16 @@ export default function Timeline({
               if (chunk.length === 0) continue;
 
               // Chunk starts at first word, ends at next chunk's first word
-              const chunkWavStart = chunk[0].start;
+              // Word timestamps are clip-relative, so add clip.timelineStart
+              const chunkRelStart = chunk[0].start;
               const nextChunkFirstWord = lyricsWords[ci + chunkSize];
-              const chunkWavEnd = nextChunkFirstWord
+              const chunkRelEnd = nextChunkFirstWord
                 ? nextChunkFirstWord.start
                 : chunk[chunk.length - 1].end + 0.3;
 
-              // Convert WAV timestamps → timeline pixel positions
-              const chunkTlStart = chunkWavStart - audioTimeOffset;
-              const chunkTlEnd = chunkWavEnd - audioTimeOffset;
+              // Convert clip-relative → absolute timeline positions
+              const chunkTlStart = clip.timelineStart + chunkRelStart;
+              const chunkTlEnd = clip.timelineStart + chunkRelEnd;
 
               const bxFull = chunkTlStart * Z - SL + HEADER_WIDTH;
               const bwFull = (chunkTlEnd - chunkTlStart) * Z;
