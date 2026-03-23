@@ -82,6 +82,10 @@ Key types:
 - `Job` — Background job with status, progress, log lines
 - `LyricsData` / `WordTimestamp` — Word-level subtitle alignment
 
+### Lyrics Timing Model
+
+After alignment, lyrics are auto-split into **individual per-chunk clips** (`explodeLyricsClipToChunks`). Each clip's `lyricsWords` use **clip-relative timestamps** (0 = clip start). When the user drags a lyrics chunk clip, words render at the new position automatically. For export, clip-relative timestamps are converted to absolute by adding `clip.timelineStart`. The `explodeLyricsClipToChunks` pure function is in `hooks/useProject.ts`.
+
 ## Key Constraints
 
 - **Build order matters**: shared must build before api or web

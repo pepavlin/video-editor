@@ -240,63 +240,71 @@ PreviewPipeline.renderFrame()
 
 ## Lyrics Clip — Timing Model
 
-The lyrics clip (LyricsClip.ts) is the most timing-sensitive element because word timestamps come from Whisper/alignment scripts and are anchored to the **master audio WAV file**, not to the video timeline.
+### Individual Lyrics Chunks as Clips
+
+After lyrics alignment (Whisper word-level timing), lyrics are **automatically split into individual per-chunk clips** on the lyrics track. Each clip represents one chunk of words (controlled by `lyricsStyle.wordsPerChunk`, default 3).
+
+This means the user can **drag and reposition individual lyrics chunks** in the timeline to manually adjust timing. The rendering uses each clip's timeline position, not the original WAV timestamps.
+
+### Explode Flow
+
+1. User adds lyrics text and triggers alignment (Whisper)
+2. Whisper returns word-level timestamps (WAV-relative)
+3. `explodeLyricsClipToChunks()` splits the single clip into per-chunk clips:
+   - Each clip gets its subset of words
+   - Word timestamps are shifted to be **clip-relative** (first word starts at 0)
+   - `clip.timelineStart/End` is set based on WAV→timeline time conversion
+4. User can now drag each chunk clip independently in the timeline
+5. The Inspector also offers a manual "Split to individual clips" button
 
 ### Time Domains
 
 | Domain | Description | Example |
 |--------|-------------|---------|
-| **WAV time** | Seconds from the start of the master audio WAV file | `w.start`, `w.end` from Whisper output |
+| **Clip-relative time** | Seconds from the start of the clip (0 = clip start) | `word.start`, `word.end` in `clip.lyricsWords` |
 | **Video timeline time** | Seconds from position 0 on the video timeline | `clip.timelineStart`, `currentTime` |
 
-The master audio clip connects the two domains via:
-- `masterClip.timelineStart` — where on the timeline the audio starts
-- `masterClip.sourceStart` — where in the WAV file the master clip begins
-
-**Conversion: WAV time → video timeline time**
+**Conversion: clip-relative → video timeline time**
 ```
-videoTime = masterClip.timelineStart + (wavTime - masterClip.sourceStart)
+videoTime = clip.timelineStart + word.start
 ```
 
-**Conversion: video timeline time → WAV time (for preview)**
+**Conversion: video timeline time → clip-relative (for preview)**
 ```
-audioTimeOffset = masterClip.sourceStart - masterClip.timelineStart
-audioTime = currentTime + audioTimeOffset
+clipLocalTime = currentTime - clip.timelineStart
 ```
 
 ### Chunk-Based Display
 
-Words are grouped into chunks (controlled by `lyricsStyle.wordsPerChunk`, default 3). An entire chunk is displayed while any word in it is active:
+Each clip after explosion contains exactly one chunk of words. Within a clip, words are highlighted based on clip-relative timing:
 
-- **Chunk start** = `chunk[0].start` (in WAV time)
-- **Chunk end** = first word of the NEXT chunk's `start` (WAV time), or `chunk[-1].end + 2.0` if last chunk
 - **Word highlight** extends from `word.start` to the next word's `start` (fills the gap between words)
+- The entire chunk is visible whenever the playhead is within the clip's `timelineStart..timelineEnd`
 
-This prevents the "disappearing words" bug where a small gap between chunks would show nothing.
+### ASS Export Timing
 
-### ASS Export Timing (`generateAssContent`)
-
-For FFmpeg export, `generateAssContent()` converts word timestamps to ASS subtitle format with optional timing offset correction:
+For FFmpeg export, clip-relative word timestamps are converted back to absolute video timeline time by adding `clip.timelineStart`. The `generateAssContent()` function handles this via `AssGenerationOptions`:
 
 ```typescript
-export interface AssGenerationOptions {
-  masterTimelineStart?: number; // masterClip.timelineStart
-  masterSourceStart?: number;   // masterClip.sourceStart
-  clipTimelineStart?: number;   // clip.timelineStart (for visibility clamping)
-  clipTimelineEnd?: number;     // clip.timelineEnd   (for visibility clamping)
-}
+// Words are clip-relative, convert to absolute for ASS
+const absoluteWords = clip.lyricsWords.map(w => ({
+  word: w.word,
+  start: w.start + clip.timelineStart,
+  end: w.end + clip.timelineStart,
+}));
 ```
 
-- Without `opts`: timestamps are used as-is (raw WAV time, for project-level lyrics overlay when master starts at t=0)
-- With `opts`: timestamps are converted from WAV time to video timeline time and clamped to the clip's visibility window
+### Moving a Lyrics Chunk Clip
 
-### Moving a Lyrics Clip
-
-When the user moves the lyrics clip on the timeline, the word positions stay correct because they're always computed relative to the master audio. Only the clip's visibility window changes (`clip.timelineStart / clip.timelineEnd`). No reprocessing is needed.
+When the user drags a lyrics chunk clip to a new position on the timeline, the words move with it. The word timestamps are clip-relative, so they automatically render at the new position. No reprocessing or re-alignment is needed.
 
 ### Timeline Visualization
 
-The timeline renders colored blocks for each word chunk inside the lyrics clip row (lower 55% of the clip height). Alternating purple shades show which groups of words display together. The block positions are computed from WAV timestamps converted back to timeline pixels using the same `audioTimeOffset`.
+The timeline renders colored blocks for each word chunk inside the lyrics clip row (lower 55% of the clip height). Alternating purple shades show which groups of words display together. Block positions are computed from clip-relative timestamps + `clip.timelineStart`.
+
+### Project-Level Lyrics Overlay
+
+`project.lyrics` (the global overlay) still uses WAV-relative timestamps and renders on top of all tracks. This is separate from clip-level lyrics on lyrics tracks.
 
 ---
 
@@ -333,8 +341,8 @@ The timeline renders colored blocks for each word chunk inside the lyrics clip r
 | Wrong element dispatch (wrong element handles clip) | `packages/elements/src/clips/index.ts` → `CLIP_REGISTRY` order |
 | Cutout mask not collected | `apps/api/src/elements/ExportPipeline.ts` → mask input collection section |
 | Project lyrics not showing | `packages/elements/src/clips/LyricsClip.ts` → `buildProjectLyricsFilter` |
-| Lyrics words wrong timing in preview | `apps/web/src/components/Preview.tsx` → `drawClipLyricsOverlay` (check `audioTimeOffset`) |
-| Lyrics words wrong timing in export | `packages/elements/src/clips/LyricsClip.ts` → `generateAssContent` + `AssGenerationOptions` |
+| Lyrics words wrong timing in preview | `apps/web/src/components/Preview.tsx` → `drawClipLyricsOverlay` (check clip-relative `clipLocalTime`) |
+| Lyrics words wrong timing in export | `packages/elements/src/clips/LyricsClip.ts` → export buildFilter (clip-relative → absolute conversion) |
 | Lyrics words disappear between chunks | `packages/elements/src/clips/LyricsClip.ts` → chunk end calculation (use next chunk first word) |
 | Lyrics words missing after alignment | `scripts/align_lyrics.py` → `_map_to_provided_lyrics` guarantees ALL input words appear in output |
 | Lyrics timeline blocks missing | `apps/web/src/components/Timeline.tsx` → lyrics word-chunk visualization block |

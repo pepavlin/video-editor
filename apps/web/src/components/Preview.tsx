@@ -1104,13 +1104,10 @@ export default function Preview({
 
         // Lyrics clips – render word-level karaoke overlay
         if (track.type === 'lyrics' && clip.lyricsWords && clip.lyricsWords.length > 0) {
-          // Word timestamps are relative to the master audio WAV start.
-          // Compute audio time by accounting for master clip's timeline/source offset.
-          const audioTimeOffset = masterClip
-            ? masterClip.sourceStart - masterClip.timelineStart
-            : 0;
-          const audioTime = currentTime + audioTimeOffset;
-          drawClipLyricsOverlay(ctx, W, H, audioTime, clip.lyricsWords, clip.lyricsStyle);
+          // Word timestamps are clip-relative (0 = clip start).
+          // Compute local time within the clip for word highlighting.
+          const clipLocalTime = currentTime - clip.timelineStart;
+          drawClipLyricsOverlay(ctx, W, H, clipLocalTime, clip.lyricsWords, clip.lyricsStyle);
           continue;
         }
 
@@ -2234,12 +2231,16 @@ export default function Preview({
 }
 
 // ─── Clip-level lyrics overlay (for 'lyrics' track clips with lyricsWords) ───
+// Words use clip-relative timestamps (0 = clip start). clipLocalTime is
+// currentTime - clip.timelineStart, so word highlighting aligns to the
+// clip's position on the timeline. After explodeLyricsToChunks, each clip
+// contains only one chunk of words.
 
 function drawClipLyricsOverlay(
   ctx: CanvasRenderingContext2D,
   W: number,
   H: number,
-  audioTime: number,
+  clipLocalTime: number,
   words: WordTimestamp[],
   lyricsStyle?: LyricsStyle,
 ) {
@@ -2254,18 +2255,16 @@ function drawClipLyricsOverlay(
   const chunkSize = style.wordsPerChunk;
   const fontSize = Math.round((style.fontSize / 1920) * H);
 
-  // Find the chunk that is active at audioTime.
+  // Find the chunk that is active at clipLocalTime.
   // A chunk is active from its first word's start until the NEXT chunk's first word's start.
-  // This eliminates gaps between chunks.
   let chunkStart = -1;
   for (let i = 0; i < words.length; i += chunkSize) {
     const chunk = words.slice(i, i + chunkSize);
     const nextChunkFirstWord = words[i + chunkSize];
-    // Chunk is visible from chunk[0].start until next chunk starts (or +2s after last word)
     const displayEnd = nextChunkFirstWord
       ? nextChunkFirstWord.start
       : chunk[chunk.length - 1].end + 2.0;
-    if (audioTime >= chunk[0].start && audioTime < displayEnd) {
+    if (clipLocalTime >= chunk[0].start && clipLocalTime < displayEnd) {
       chunkStart = i;
       break;
     }
@@ -2295,11 +2294,9 @@ function drawClipLyricsOverlay(
 
   for (let i = 0; i < chunk.length; i++) {
     const w = chunk[i];
-    // Highlight word when audio is within its start..end window;
-    // after the last word ends, keep it highlighted until the chunk changes
     const nextWord = chunk[i + 1];
     const wordDisplayEnd = nextWord ? nextWord.start : chunk[chunk.length - 1].end + 2.0;
-    const isCurrentWord = audioTime >= w.start && audioTime < wordDisplayEnd;
+    const isCurrentWord = clipLocalTime >= w.start && clipLocalTime < wordDisplayEnd;
     ctx.fillStyle = isCurrentWord ? style.highlightColor : style.color;
     const wordText = i < chunk.length - 1 ? w.word + ' ' : w.word;
     ctx.fillText(wordText, x + ctx.measureText(wordText).width / 2, y);
