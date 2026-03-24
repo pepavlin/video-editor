@@ -8,6 +8,8 @@ import http.server
 import threading
 import numpy as np
 
+from unittest.mock import MagicMock
+
 from ai_style import (
     STYLE_MODELS,
     MODEL_BASE_URL,
@@ -22,6 +24,7 @@ from ai_style import (
     download_model,
     get_model_status,
     resolve_model,
+    stylize_frame_neural,
     _get_models_dir,
 )
 
@@ -531,6 +534,70 @@ class TestStyleModelConfig(unittest.TestCase):
         """Each model should have a sha256 field (can be None)."""
         for name, info in STYLE_MODELS.items():
             self.assertIn('sha256', info, f"Model '{name}' missing 'sha256'")
+
+
+class TestStylizeFrameNeural(unittest.TestCase):
+    """Tests for stylize_frame_neural ONNX input layout auto-detection."""
+
+    def _make_mock_session(self, input_shape, output_is_nchw=None):
+        """Create a mock ONNX session with given input shape.
+
+        The mock session.run returns a transformed tensor that can be verified.
+        If output_is_nchw is None, it matches the input layout.
+        """
+        session = MagicMock()
+
+        input_meta = MagicMock()
+        input_meta.name = 'input:0'
+        input_meta.shape = input_shape
+        session.get_inputs.return_value = [input_meta]
+
+        output_meta = MagicMock()
+        output_meta.name = 'output:0'
+        session.get_outputs.return_value = [output_meta]
+
+        # Detect layout from input shape
+        is_nchw = (len(input_shape) == 4 and isinstance(input_shape[1], int)
+                   and input_shape[1] == 3)
+
+        def mock_run(output_names, input_feed, run_options=None):
+            tensor = list(input_feed.values())[0]
+            # Verify tensor shape matches expected layout
+            if is_nchw:
+                assert tensor.shape[1] == 3, (
+                    f"NCHW model got channel dim {tensor.shape[1]}, expected 3")
+            else:
+                assert tensor.shape[3] == 3, (
+                    f"NHWC model got channel dim {tensor.shape[3]}, expected 3")
+            # Return same tensor as output (identity stylization for testing)
+            return [tensor]
+
+        session.run = mock_run
+        return session
+
+    def test_nhwc_model_input_not_transposed(self):
+        """NHWC model (TF-exported) should receive [1, H, W, 3] tensor."""
+        frame = np.random.randint(0, 255, (64, 80, 3), dtype=np.uint8)
+        session = self._make_mock_session([1, None, None, 3])
+        result = stylize_frame_neural(frame, session, brush_size=0.5)
+        self.assertEqual(result.shape, frame.shape)
+        self.assertEqual(result.dtype, np.uint8)
+
+    def test_nchw_model_input_transposed(self):
+        """NCHW model (PyTorch-exported) should receive [1, 3, H, W] tensor."""
+        frame = np.random.randint(0, 255, (64, 80, 3), dtype=np.uint8)
+        session = self._make_mock_session([1, 3, None, None])
+        result = stylize_frame_neural(frame, session, brush_size=0.5)
+        self.assertEqual(result.shape, frame.shape)
+        self.assertEqual(result.dtype, np.uint8)
+
+    def test_output_values_in_valid_range(self):
+        """Output pixels should be in [0, 255] uint8 range."""
+        frame = np.random.randint(0, 255, (64, 80, 3), dtype=np.uint8)
+        session = self._make_mock_session([1, None, None, 3])
+        result = stylize_frame_neural(frame, session, brush_size=0.5)
+        self.assertTrue(np.all(result >= 0))
+        self.assertTrue(np.all(result <= 255))
 
 
 if __name__ == '__main__':
