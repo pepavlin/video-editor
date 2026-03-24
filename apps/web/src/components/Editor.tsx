@@ -54,7 +54,7 @@ function pickLogLine(lines: string[]): string | null {
 
 export default function Editor() {
   const isMobile = useIsMobile();
-  const { isDark, toggleTheme } = useThemeContext();
+  const { theme, isDark, toggleTheme } = useThemeContext();
   const projectHook = useProject();
   const {
     project,
@@ -619,7 +619,7 @@ export default function Editor() {
         <button
           className="theme-toggle-btn"
           onClick={toggleTheme}
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'light' ? 'Switch to dark mode' : theme === 'dark' ? 'Switch to system mode' : 'Switch to light mode'}
           style={{
             position: 'absolute', top: 16, right: 16,
             width: 36, height: 36, borderRadius: 10,
@@ -632,7 +632,7 @@ export default function Editor() {
           }}
         >
           <span className="theme-toggle-icon" style={{ fontSize: 16, lineHeight: 1 }}>
-            {isDark ? '☀' : '◑'}
+            {theme === 'light' ? '◑' : theme === 'dark' ? '⊙' : '☀'}
           </span>
         </button>
 
@@ -1078,7 +1078,7 @@ export default function Editor() {
         <button
           className="theme-toggle-btn"
           onClick={toggleTheme}
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'light' ? 'Switch to dark mode' : theme === 'dark' ? 'Switch to system mode' : 'Switch to light mode'}
           style={{
             width: isMobile ? 32 : 34,
             height: isMobile ? 32 : 34,
@@ -1093,7 +1093,7 @@ export default function Editor() {
           }}
         >
           <span className="theme-toggle-icon" style={{ fontSize: 14, lineHeight: 1 }}>
-            {isDark ? '☀' : '◑'}
+            {theme === 'light' ? '◑' : theme === 'dark' ? '⊙' : '☀'}
           </span>
         </button>
 

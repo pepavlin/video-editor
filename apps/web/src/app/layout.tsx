@@ -32,8 +32,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   try {
     var stored = localStorage.getItem('video-editor-theme');
     var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var theme = stored || (prefersDark ? 'dark' : 'light');
-    if (theme === 'dark') document.documentElement.classList.add('dark');
+    var theme = stored || 'system';
+    var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
+    if (isDark) document.documentElement.classList.add('dark');
   } catch(e) {}
 })();
             `,
