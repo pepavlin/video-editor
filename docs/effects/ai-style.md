@@ -89,7 +89,9 @@ Each preset maps to an AnimeGANv2 ONNX model trained on a specific anime/cartoon
 
 Models are **automatically downloaded** on first use. When a style preset is selected and
 no local model exists, the processing script downloads it from the configured model server
-(default: Hugging Face `bryandlee/animegan2-pytorch` repository).
+(default: Hugging Face `bryandlee/animegan2-pytorch` repository). If the primary source is
+unavailable (e.g. gated/private), the downloader automatically falls back to publicly
+accessible mirror repositories on HuggingFace (vumichien, akhaliq).
 
 Models are stored in:
 - `$WORKSPACE_DIR/models/style_transfer/` (if `WORKSPACE_DIR` is set)
@@ -140,7 +142,7 @@ Models can also be manually placed in the models directory:
 | `AI_STYLE_MODEL_BASE_URL` | Override the model download base URL |
 | `HF_TOKEN` | HuggingFace access token for authenticated downloads (get one at https://huggingface.co/settings/tokens) |
 
-For HuggingFace URLs, the downloader automatically appends `?download=true` (required by HuggingFace for direct file downloads) and tries multiple URL patterns with fallback. If you encounter 401/403 errors, set `HF_TOKEN` with a valid HuggingFace access token.
+For HuggingFace URLs, the downloader automatically appends `?download=true` (required by HuggingFace for direct file downloads) and tries multiple URL patterns with fallback. When the primary `bryandlee/animegan2-pytorch` repository returns 401/403 (gated or private), the downloader automatically tries publicly accessible mirror repositories. If all mirrors also fail, set `HF_TOKEN` with a valid HuggingFace access token.
 
 Typical model size: ~8-15 MB each.
 

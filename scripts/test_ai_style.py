@@ -14,6 +14,7 @@ from ai_style import (
     _align_to_8,
     _build_download_urls,
     _compute_sha256,
+    _FALLBACK_URLS,
     compute_flow_confidence,
     warp_frame,
     enhance_colors,
@@ -319,6 +320,7 @@ class TestBuildDownloadUrls(unittest.TestCase):
         )
         plain = 'https://huggingface.co/bryandlee/animegan2-pytorch/resolve/main/onnx/model.onnx'
         self.assertIn(plain, urls)
+        # 2 primary URLs (no preset fallback when preset=None)
         self.assertEqual(len(urls), 2)
 
     def test_non_huggingface_url_no_download_param(self):
@@ -332,6 +334,44 @@ class TestBuildDownloadUrls(unittest.TestCase):
         """Trailing slash in base URL should be stripped."""
         urls = _build_download_urls('http://localhost:8000/', 'model.onnx')
         self.assertEqual(urls[0], 'http://localhost:8000/model.onnx')
+
+    def test_fallback_urls_appended_for_preset(self):
+        """When preset is given, fallback mirror URLs should be appended."""
+        urls = _build_download_urls(MODEL_BASE_URL, 'animeganv2_hayao.onnx',
+                                    preset='hayao')
+        # 2 primary + 1 fallback
+        self.assertEqual(len(urls), 3)
+        self.assertTrue(any('vumichien' in u for u in urls))
+
+    def test_no_fallback_without_preset(self):
+        """Without preset arg, no fallback URLs are added."""
+        urls = _build_download_urls(MODEL_BASE_URL, 'animeganv2_hayao.onnx')
+        self.assertEqual(len(urls), 2)
+        self.assertFalse(any('vumichien' in u for u in urls))
+
+    def test_all_presets_have_fallback_urls(self):
+        """Every preset in STYLE_MODELS should have fallback URLs defined."""
+        for preset in STYLE_MODELS:
+            self.assertIn(preset, _FALLBACK_URLS,
+                          f"Missing fallback for preset '{preset}'")
+            self.assertGreater(len(_FALLBACK_URLS[preset]), 0,
+                               f"Empty fallback list for '{preset}'")
+
+    def test_fallback_urls_are_valid_onnx(self):
+        """All fallback URLs should point to .onnx files over HTTPS."""
+        for preset, fb_urls in _FALLBACK_URLS.items():
+            for url in fb_urls:
+                self.assertTrue(url.startswith('https://'),
+                                f"Fallback URL not HTTPS: {url}")
+                self.assertIn('.onnx', url,
+                              f"Fallback URL not ONNX: {url}")
+
+    def test_custom_base_url_still_gets_fallbacks(self):
+        """Custom base URL should still get preset fallbacks appended."""
+        urls = _build_download_urls('http://myserver/models', 'x.onnx',
+                                    preset='shinkai')
+        self.assertEqual(urls[0], 'http://myserver/models/x.onnx')
+        self.assertTrue(any('vumichien' in u for u in urls))
 
 
 class TestDownloadModelWithAuth(unittest.TestCase):
@@ -396,6 +436,87 @@ class TestDownloadModelWithAuth(unittest.TestCase):
             base_url = f'http://127.0.0.1:{self._port}'
             path = download_model('hayao', dl_dir, base_url)
             self.assertTrue(os.path.exists(path))
+
+
+class TestDownloadModelFallback(unittest.TestCase):
+    """Tests for fallback URL behavior when primary server returns 401."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Start two servers: one returning 401, one serving files."""
+        cls._tmpdir = tempfile.mkdtemp()
+        cls._serve_dir = os.path.join(cls._tmpdir, 'serve')
+        os.makedirs(cls._serve_dir)
+
+        # Create a fake ONNX file on the fallback server
+        fpath = os.path.join(cls._serve_dir, STYLE_MODELS['hayao']['filename'])
+        with open(fpath, 'wb') as f:
+            f.write(b'\x00' * (2 * 1024 * 1024))
+
+        # Server that always returns 401
+        class Deny401Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_error(401, 'Unauthorized')
+
+            def log_message(self, *args):
+                pass
+
+        cls._deny_server = http.server.HTTPServer(('127.0.0.1', 0), Deny401Handler)
+        cls._deny_port = cls._deny_server.server_address[1]
+        cls._deny_thread = threading.Thread(
+            target=cls._deny_server.serve_forever, daemon=True)
+        cls._deny_thread.start()
+
+        # Server that serves files normally
+        handler = lambda *a, **kw: http.server.SimpleHTTPRequestHandler(
+            *a, directory=cls._serve_dir, **kw
+        )
+        cls._ok_server = http.server.HTTPServer(('127.0.0.1', 0), handler)
+        cls._ok_port = cls._ok_server.server_address[1]
+        cls._ok_thread = threading.Thread(
+            target=cls._ok_server.serve_forever, daemon=True)
+        cls._ok_thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._deny_server.shutdown()
+        cls._ok_server.shutdown()
+        import shutil
+        shutil.rmtree(cls._tmpdir, ignore_errors=True)
+
+    def test_fallback_used_when_primary_returns_401(self):
+        """Download should succeed via fallback when primary returns 401."""
+        import ai_style
+        # Temporarily override _FALLBACK_URLS to point to our OK server
+        original_fallbacks = ai_style._FALLBACK_URLS.copy()
+        filename = STYLE_MODELS['hayao']['filename']
+        ai_style._FALLBACK_URLS['hayao'] = [
+            f'http://127.0.0.1:{self._ok_port}/{filename}',
+        ]
+        try:
+            with tempfile.TemporaryDirectory() as dl_dir:
+                # Primary URL returns 401
+                base_url = f'http://127.0.0.1:{self._deny_port}'
+                path = download_model('hayao', dl_dir, base_url)
+                self.assertTrue(os.path.exists(path))
+                self.assertGreater(os.path.getsize(path), 1024 * 1024)
+        finally:
+            ai_style._FALLBACK_URLS = original_fallbacks
+
+    def test_all_fail_raises_error(self):
+        """Should raise RuntimeError when all URLs (including fallback) fail."""
+        import ai_style
+        original_fallbacks = ai_style._FALLBACK_URLS.copy()
+        ai_style._FALLBACK_URLS['hayao'] = [
+            f'http://127.0.0.1:{self._deny_port}/also_bad.onnx',
+        ]
+        try:
+            with tempfile.TemporaryDirectory() as dl_dir:
+                base_url = f'http://127.0.0.1:{self._deny_port}'
+                with self.assertRaises(RuntimeError):
+                    download_model('hayao', dl_dir, base_url)
+        finally:
+            ai_style._FALLBACK_URLS = original_fallbacks
 
 
 class TestStyleModelConfig(unittest.TestCase):
