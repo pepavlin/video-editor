@@ -492,24 +492,34 @@ def stylize_frame_neural(frame: np.ndarray, session,
     input_meta = session.get_inputs()[0]
     input_name = input_meta.name
     input_shape = input_meta.shape  # e.g. [1, 3, H, W] or [1, H, W, 3]
-    # Determine if model expects NCHW (channel dim at index 1) or NHWC (channel dim at index 3)
-    is_nchw = (len(input_shape) == 4 and isinstance(input_shape[1], int) and input_shape[1] == 3)
-
-    if is_nchw:
-        input_tensor = np.transpose(input_tensor, (2, 0, 1))  # HWC → CHW
-    # else: keep HWC layout for NHWC models (e.g. TensorFlow-exported AnimeGANv2)
-
-    input_tensor = np.expand_dims(input_tensor, axis=0)  # add batch dim
-
-    # Run inference
     output_name = session.get_outputs()[0].name
-    result = session.run([output_name], {input_name: input_tensor})[0]
 
-    # Convert output back to HWC BGR uint8
-    output = result[0]  # remove batch dim
-    if is_nchw:
-        output = np.transpose(output, (1, 2, 0))  # CHW → HWC
-    # else: output is already HWC for NHWC models
+    # Determine if model expects NCHW (channel dim at index 1) or NHWC (channel dim at index 3)
+    # Check NHWC first: if index 3 is explicitly 3, it's channels-last (TF convention)
+    is_nhwc = (len(input_shape) == 4 and isinstance(input_shape[3], int) and input_shape[3] == 3)
+    is_nchw = (len(input_shape) == 4 and isinstance(input_shape[1], int) and input_shape[1] == 3 and not is_nhwc)
+    # TF-exported models use ':N' suffix in input names — override to NHWC
+    # (some TF→ONNX exports declare NCHW in metadata but graph ops remain NHWC)
+    if is_nchw and ':' in input_name:
+        is_nchw = False
+
+    def _run_inference(tensor_hwc, use_nchw):
+        """Prepare tensor, run inference, return HWC output."""
+        t = tensor_hwc
+        if use_nchw:
+            t = np.transpose(t, (2, 0, 1))  # HWC → CHW
+        t = np.expand_dims(t, axis=0)  # add batch dim
+        out = session.run([output_name], {input_name: t})[0]
+        out = out[0]  # remove batch dim
+        if use_nchw:
+            out = np.transpose(out, (1, 2, 0))  # CHW → HWC
+        return out
+
+    # Run inference with fallback: if detected layout fails, try the other
+    try:
+        output = _run_inference(input_tensor, is_nchw)
+    except Exception:
+        output = _run_inference(input_tensor, not is_nchw)
 
     # Denormalize from [-1, 1] → [0, 255]
     output = (output + 1.0) * 127.5
