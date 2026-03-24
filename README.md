@@ -1,57 +1,31 @@
-# Local Video Editor — MVP
+# Local Video Editor
 
-Fast local video editor for music shorts. Runs entirely offline. UI at `localhost:3000`, API at `localhost:3001`.
+Fast local video editor for music shorts. Runs entirely offline.
 
-## Quick Start — Docker Compose (recommended)
+## Quick Start
+
+### Docker (recommended)
 
 ```bash
-# Clone / enter project
-cd video-editor
-
-# Build and start both services
 docker compose up --build
-
-# Open browser
 open http://localhost:3000
 ```
 
-**Note:** First build installs ffmpeg, Python, and Node.js deps — takes a few minutes. Subsequent starts are fast.
+First build takes a few minutes (installs ffmpeg, Python, Node deps). Workspace data persists in a Docker volume.
 
-The workspace data (assets, projects) is persisted in a Docker volume `video-editor_workspace`.
-
----
-
-## Quick Start — Local (macOS)
-
-### Prerequisites
+### Local (macOS)
 
 ```bash
-# Install ffmpeg
-brew install ffmpeg
-
-# Install Node.js 20+
-brew install node
-
-# Install Python 3.10+ and pip
-brew install python3
-
-# Install Python dependencies
+brew install ffmpeg node python3
 pip3 install -r requirements.txt
 
-# For lyrics alignment (optional, ~1.5GB download)
+# Optional: lyrics alignment (~1.5GB)
 pip3 install openai-whisper
 
-# For cutout effect (optional)
+# Optional: cutout effect
 pip3 install rembg onnxruntime pillow
-```
 
-### Install & Run
-
-```bash
-# Install all Node packages
 npm install
-
-# Start both API (port 3001) and Web (port 3000)
 npm run dev
 ```
 
@@ -59,186 +33,71 @@ Open `http://localhost:3000`.
 
 ---
 
-## Architecture
-
-```
-video-editor/
-├── docker-compose.yml         # Docker orchestration
-├── requirements.txt           # Python deps
-├── packages/
-│   ├── shared/                # Shared TypeScript types & utilities
-│   └── elements/              # Clip & effect registries (preview + export)
-└── apps/
-    ├── api/                   # Fastify API (Node.js + TypeScript)
-    │   └── Dockerfile
-    └── web/                   # Next.js UI (multi-stage Docker build)
-        └── Dockerfile
-scripts/
-├── beat_detect.py             # librosa beat detection
-├── align_lyrics.py            # Whisper word alignment
-├── cutout.py                  # rembg person cutout
-└── ai_style.py                # Painterly AI stylization (EbSynth-like)
-```
-
-### Workspace layout
-
-```
-workspace/
-├── assets.json                # Asset index
-├── assets/
-│   └── <assetId>/
-│       ├── original.*         # Original file
-│       ├── proxy.mp4          # 540p proxy (for editing)
-│       ├── audio.wav          # Extracted PCM audio
-│       ├── waveform.json      # Amplitude data for UI
-│       ├── beats.json         # Beat timestamps (optional)
-│       ├── mask.mp4           # Person mask (optional)
-│       └── ai_style.mp4      # AI-stylized video (optional)
-└── projects/
-    └── <projectId>/
-        ├── project.json       # Project EDL
-        ├── words.json         # Aligned lyrics (optional)
-        ├── lyrics.ass         # Generated subtitles (optional)
-        └── exports/           # Exported MP4 files
-```
-
----
-
 ## Features
 
-### MVP
-- **Asset import** — drag & drop or click Import (MP4, MOV, MP3, WAV, M4A)
-- **Proxy rendering** — 540p proxy created on import for fast editing
-- **Waveform** — computed from extracted audio WAV
-- **Multi-track timeline** — 2 video tracks + master audio
-- **Non-destructive editing** — project is a JSON EDL, originals untouched
-- **Clip operations** — drag to move, drag edges to trim, `S` to split, `Delete` to delete, `Cmd+C`/`Cmd+V` to copy-paste
-- **Snap** — snaps to clip edges and beat markers
-- **Undo/Redo** — `Cmd+Z` / `Shift+Cmd+Z`
-- **Audio playback** — master song via WebAudio API (audio is source of truth for sync)
-- **Canvas preview** — proxy videos rendered to canvas, synced to audio playhead
-- **Beat markers** — click "Analyze Beats" → librosa detects beats, shown on timeline
-- **Beat Zoom effect** — automatic zoom pulse on each beat (configurable per-clip)
-- **Lyrics overlay** — paste lyrics → "Align Lyrics" → Whisper aligns word timestamps
-- **Export** — ffmpeg filtergraph, H.264, default 1080×1920
+- **Import** — MP4, MOV, MP3, WAV, M4A; 540p proxy created on import
+- **Timeline** — 2 video tracks + master audio, non-destructive JSON EDL
+- **Editing** — drag to move, drag edges to trim, snap to clips & beats
+- **Beat detection** — librosa; beat markers on timeline + Beat Zoom effect
+- **Lyrics overlay** — Whisper word alignment, auto-split into per-word clips
+- **Cutout effect** — rembg person segmentation mask
+- **AI style** — painterly stylization with optical-flow temporal consistency
+- **Export** — ffmpeg filtergraph, H.264, 1080×1920
 
 ### Keyboard Shortcuts
+
 | Key | Action |
 |-----|--------|
 | `Space` | Play / Pause |
 | `S` | Split clip at playhead |
 | `Delete` | Delete selected clip |
-| `Cmd+Z` | Undo |
-| `Shift+Cmd+Z` | Redo |
-| `Cmd+C` | Copy selected clip (with effects) |
-| `Cmd+V` | Paste clip into new track (offset diagonally) |
+| `Cmd+Z` / `Shift+Cmd+Z` | Undo / Redo |
+| `Cmd+C` / `Cmd+V` | Copy / Paste clip |
 
 ---
 
-## API Endpoints
+## Architecture
+
+```
+apps/api/       Fastify 4 backend (port 3001)
+apps/web/       Next.js 14 frontend (port 3000)
+packages/shared TypeScript types
+scripts/        Python processing scripts
+workspace/      Assets & projects (configurable via WORKSPACE_DIR)
+```
+
+### API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/assets/import` | Upload video/audio file |
-| GET | `/api/assets` | List all assets |
-| GET | `/api/assets/:id/waveform` | Get waveform data |
-| GET | `/api/assets/:id/beats` | Get beat timestamps |
-| POST | `/api/assets/:id/analyze-beats` | Start beat detection job |
-| POST | `/api/assets/:id/cutout` | Start person cutout job |
-| POST | `/api/assets/:id/ai-style` | Start AI painterly stylization job |
-| POST | `/api/projects` | Create new project |
-| GET | `/api/projects` | List projects |
-| GET | `/api/projects/:id` | Load project |
-| PUT | `/api/projects/:id` | Save project |
-| POST | `/api/projects/:id/align-lyrics` | Start lyrics alignment job |
-| POST | `/api/projects/:id/export` | Start export job |
-| GET | `/api/jobs/:id/status` | Get job status + log |
-| GET | `/api/jobs/:id/output` | Download job output |
-| GET | `/files/**` | Serve workspace files (proxy, audio, etc.) |
+| POST | `/api/assets/import` | Upload file |
+| GET | `/api/assets` | List assets |
+| POST | `/api/assets/:id/analyze-beats` | Beat detection job |
+| POST | `/api/assets/:id/cutout` | Person cutout job |
+| POST | `/api/assets/:id/ai-style` | AI stylization job |
+| POST/GET/PUT | `/api/projects[/:id]` | Project CRUD |
+| POST | `/api/projects/:id/align-lyrics` | Lyrics alignment job |
+| POST | `/api/projects/:id/export` | Export job |
+| GET | `/api/jobs/:id/status` | Job status + log |
+| GET | `/files/**` | Serve workspace files |
 
----
+### Environment Variables
 
-## Python Scripts
-
-All scripts are run by the API as child processes.
-
-### beat_detect.py
-```bash
-python3 scripts/beat_detect.py <audio.wav> <beats.json>
-```
-Uses `librosa.beat.beat_track()`. Outputs `{ tempo, beats: [...timestamps...] }`.
-
-### align_lyrics.py
-```bash
-python3 scripts/align_lyrics.py <audio.wav> <lyrics.txt> <words.json>
-```
-Uses OpenAI Whisper with `word_timestamps=True`. Maps Whisper transcription to provided lyrics via fuzzy matching. Outputs `[{ word, start, end }, ...]`.
-
-### cutout.py
-```bash
-python3 scripts/cutout.py <input.mp4> <mask.mp4>
-```
-Uses `rembg` with `u2net_human_seg` model. Extracts frames, removes background, outputs grayscale mask video. Requires: `pip3 install rembg onnxruntime pillow`.
-
-### ai_style.py
-```bash
-python3 scripts/ai_style.py <input.mp4> <output.mp4> [strength] [brush_size] [vibrance]
-```
-Painterly stylization with EbSynth-like temporal consistency. Extracts keyframes, applies OpenCV stylization + bilateral filtering + edge darkening, then propagates style via DIS optical flow. Uses `opencv-python-headless` and `numpy` (already installed). See [docs/effects/ai-style.md](docs/effects/ai-style.md) for details.
-
----
-
-## Export Pipeline
-
-Export uses ffmpeg's `filter_complex` to:
-1. Layer video clips on a black canvas with correct timing (`overlay` with `enable='between(t,...)'`)
-2. Apply smart crop / scaling per clip
-3. Beat Zoom: per-beat `scale` filter with `enable` expression
-4. Mix audio: master song + optional clip audio via `amix`
-5. Burn-in lyrics via `subtitles=lyrics.ass` filter
-
-Output: 1080×1920 (default), H.264, CRF 20, preset medium.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | API port |
+| `WORKSPACE_DIR` | `./workspace` | Assets & projects storage |
+| `PYTHON_BIN` | `python3` | Python executable |
+| `FFMPEG_BIN` | `ffmpeg` | ffmpeg executable |
+| `CORS_ORIGIN` | `http://localhost:3000` | Allowed CORS origin |
 
 ---
 
 ## Development
 
 ```bash
-# Watch mode
-npm run dev:api   # API on :3001 with ts-node-dev
-npm run dev:web   # Web on :3000 with Next.js dev server
-
-# Build
-npm run build
-
-# Just shared types
-npm run build:shared
+npm run dev          # API + Web concurrently
+npm run build        # shared → api → web
+npm run test -w apps/api
+npm run test -w apps/web
 ```
-
-### Environment Variables
-
-**API** (`apps/api`):
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3001` | API port |
-| `WORKSPACE_DIR` | `./workspace` | Where assets/projects are stored |
-| `SCRIPTS_DIR` | `../../scripts` | Path to Python scripts |
-| `PYTHON_BIN` | `python3` | Python executable |
-| `FFMPEG_BIN` | `ffmpeg` | ffmpeg executable |
-| `CORS_ORIGIN` | `http://localhost:3000` | Allowed CORS origin |
-
-**Web** (`apps/web`):
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:3001` | API URL (used in rewrites) |
-
----
-
-## Not Implemented (out of scope for MVP)
-
-- Automatic cuts / AI editing
-- Keyframing (except Beat Zoom which is procedural)
-- Face tracking
-- Complex audio mixer (just master + clip audio toggle)
-- Cloud storage, accounts, databases
-- Timeline zoom keyboard shortcut (use Ctrl+Scroll)
