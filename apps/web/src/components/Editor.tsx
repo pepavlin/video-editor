@@ -6,6 +6,7 @@ import { useProject } from '@/hooks/useProject';
 import { usePlayback } from '@/hooks/usePlayback';
 import { useHistory } from '@/hooks/useHistory';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useErrorLog } from '@/hooks/useErrorLog';
 import * as api from '@/lib/api';
 import { genId } from '@/lib/utils';
 import MediaBin from './MediaBin';
@@ -15,6 +16,7 @@ import Inspector from './Inspector';
 import TransportControls from './TransportControls';
 import ProjectBar from './ProjectBar';
 import ToolsPanel from './ToolsPanel';
+import ErrorLog from './ErrorLog';
 import { DockLayout } from './DockLayout';
 import { MobileLayout } from './MobileLayout';
 import { useThemeContext } from '@/contexts/ThemeContext';
@@ -121,6 +123,24 @@ export default function Editor() {
   const playback = usePlayback(project, assets, beatsData, workArea);
   const history = useHistory(project, setProject);
   const clipboard = useClipboard();
+  const errorLog = useErrorLog();
+
+  // Global unhandled error / rejection catcher
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      errorLog.addError('Unhandled error', event.message || 'Unknown error', 'unknown');
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const msg = event.reason instanceof Error ? event.reason.message : String(event.reason ?? 'Unknown rejection');
+      errorLog.addError('Unhandled promise rejection', msg, 'unknown');
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [errorLog.addError]);
 
   const refreshAssets = useCallback(async () => {
     try {
@@ -233,6 +253,16 @@ export default function Editor() {
               },
             };
           });
+          if (job.status === 'ERROR') {
+            const kindLabels: Record<string, string> = { cutout: 'Cutout', headStab: 'Head Stabilization', aiStyle: 'AI Style' };
+            const kindSources: Record<string, 'cutout' | 'headStab' | 'aiStyle'> = { cutout: 'cutout', headStab: 'headStab', aiStyle: 'aiStyle' };
+            notifyError(
+              `${kindLabels[kind] ?? kind} failed`,
+              job.error ?? 'Process failed — check log details for more info',
+              kindSources[kind] ?? 'unknown',
+              job.lastLogLines,
+            );
+          }
           if (job.status === 'DONE' || job.status === 'ERROR' || job.status === 'CANCELLED') {
             refreshAssetsRef.current();
           }
@@ -314,6 +344,17 @@ export default function Editor() {
     setTimeout(() => setJobNotifications((prev) => prev.filter((m) => m !== msg)), 5000);
   };
 
+  const notifyError = (
+    title: string,
+    error: unknown,
+    source: Parameters<typeof errorLog.addError>[2] = 'unknown',
+    logLines?: string[],
+  ) => {
+    const msg = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+    notify(`${title}: ${msg}`);
+    errorLog.addError(title, msg, source, logLines);
+  };
+
   // Clear dragged asset when drag ends anywhere on the document
   useEffect(() => {
     const onDragEnd = () => setDraggedAssetId(null);
@@ -380,7 +421,7 @@ export default function Editor() {
       const beats = await api.getBeats(id);
       setBeatsData((prev) => new Map(prev).set(id, beats));
       refreshAssets();
-    } catch (e: any) { notify(`Beat analysis failed: ${e.message}`); }
+    } catch (e: any) { notifyError('Beat analysis failed', e, 'beats'); }
     finally { setBeatsProgress(null); setBeatsLogLine(null); }
   };
 
@@ -399,7 +440,7 @@ export default function Editor() {
       explodeLyricsToChunks(clipId, masterClip);
       notify('Lyrics aligned & split into individual clips!');
     } catch (e: any) {
-      notify(`Lyrics alignment failed: ${e.message}`);
+      notifyError('Lyrics alignment failed', e, 'lyrics');
       throw e;
     }
   };
@@ -417,7 +458,7 @@ export default function Editor() {
       setProject(updated);
       notify('Lyrics detected! Edit the text below if needed, then re-align.');
     } catch (e: any) {
-      notify(`Lyrics detection failed: ${e.message}`);
+      notifyError('Lyrics detection failed', e, 'lyrics');
       throw e;
     }
   };
@@ -433,7 +474,7 @@ export default function Editor() {
         },
       }));
     } catch (e: any) {
-      notify(`Cutout error: ${e.message}`);
+      notifyError('Cutout error', e, 'cutout');
     }
   };
 
@@ -472,7 +513,7 @@ export default function Editor() {
         },
       }));
     } catch (e: any) {
-      notify(`Head stabilization error: ${e.message}`);
+      notifyError('Head stabilization error', e, 'headStab');
     }
   };
 
@@ -503,7 +544,7 @@ export default function Editor() {
         },
       }));
     } catch (e: any) {
-      notify(`AI Style error: ${e.message}`);
+      notifyError('AI Style error', e, 'aiStyle');
     }
   };
 
@@ -522,7 +563,7 @@ export default function Editor() {
       const pct = Math.round(result.confidence * 100);
       notify(`Audio synced! Confidence: ${pct}%`);
     } catch (e: any) {
-      notify(`Auto sync failed: ${e.message}`);
+      notifyError('Auto sync failed', e, 'sync');
     }
   };
 
@@ -546,12 +587,12 @@ export default function Editor() {
       }).catch((e) => {
         setExportProgress(null);
         setExportLogLine(null);
-        notify(`Export failed: ${e.message}`);
+        notifyError('Export failed', e, 'export');
       });
     } catch (e: any) {
       setExportProgress(null);
       setExportLogLine(null);
-      notify(`Export error: ${e.message}`);
+      notifyError('Export error', e, 'export');
     }
   };
 
@@ -1128,6 +1169,9 @@ export default function Editor() {
           : <DockLayout panelRenderers={panelRenderers} />
         }
       </div>
+
+      {/* ── Error Log ─────────────────────────────────────────────────── */}
+      <ErrorLog errorLog={errorLog} isMobile={isMobile} />
 
       {/* ── Notifications ───────────────────────────────────────────────── */}
       {jobNotifications.length > 0 && (

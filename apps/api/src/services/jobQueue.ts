@@ -102,8 +102,16 @@ export function runCommand(
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   activeProcesses.set(jobId, child);
 
-  const handleLine = (line: string) => {
+  // Keep a rolling buffer of the last stderr lines for better error messages
+  const lastStderrLines: string[] = [];
+  const MAX_STDERR_LINES = 20;
+
+  const handleLine = (line: string, isStderr = false) => {
     ws.appendJobLog(jobId, line);
+    if (isStderr) {
+      lastStderrLines.push(line);
+      if (lastStderrLines.length > MAX_STDERR_LINES) lastStderrLines.shift();
+    }
     if (onProgress) {
       const progress = onProgress(line);
       if (progress !== undefined) {
@@ -113,10 +121,10 @@ export function runCommand(
   };
 
   child.stdout.on('data', (d: Buffer) => {
-    d.toString().split('\n').filter(Boolean).forEach(handleLine);
+    d.toString().split('\n').filter(Boolean).forEach((l) => handleLine(l, false));
   });
   child.stderr.on('data', (d: Buffer) => {
-    d.toString().split('\n').filter(Boolean).forEach(handleLine);
+    d.toString().split('\n').filter(Boolean).forEach((l) => handleLine(l, true));
   });
 
   child.on('close', (code, signal) => {
@@ -140,7 +148,14 @@ export function runCommand(
       updateJob(jobId, { status: 'DONE', progress: 100, outputPath });
       onDone?.();
     } else {
-      const err = `Process exited with code ${code}`;
+      // Build a descriptive error from the last stderr lines
+      const meaningful = lastStderrLines
+        .filter((l) => l.trim().length > 0)
+        .slice(-5);
+      const detail = meaningful.length > 0
+        ? meaningful.join(' | ')
+        : `Process exited with code ${code}`;
+      const err = `Process failed (exit code ${code}): ${detail}`;
       ws.appendJobLog(jobId, err);
       updateJob(jobId, { status: 'ERROR', error: err });
       onError?.(err);

@@ -70,6 +70,8 @@ The API serves `/files/*` as static files from the workspace dir. Next.js rewrit
 - `hooks/useProject.ts` — Project state management
 - `hooks/usePlayback.ts` — WebAudio playback (source of truth for timeline sync)
 - `hooks/useHistory.ts` — Undo/redo stack
+- `hooks/useErrorLog.ts` — Global error log state (persistent errors with source, details, timestamps)
+- `components/ErrorLog.tsx` — Collapsible error log panel (bottom-left, shows all errors with log details)
 - `lib/api.ts` — API client wrapper
 
 **reactStrictMode is disabled** in next.config.mjs for WebAudio API compatibility.
