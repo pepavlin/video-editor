@@ -16,3 +16,6 @@ venv/
 
 .playwright-mcp
 *.tsbuildinfo
+.ai-skills/
+.mcp.json
+attachments/
