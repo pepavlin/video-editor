@@ -141,6 +141,25 @@ def _compute_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
+def _build_download_urls(base_url: str, filename: str) -> list:
+    """
+    Build a list of candidate download URLs to try in order.
+
+    HuggingFace now requires '?download=true' for direct file downloads.
+    We try multiple URL patterns to maximize compatibility:
+    1. base_url/filename?download=true (HuggingFace with download flag)
+    2. base_url/filename (plain URL, works for mirrors/custom servers)
+    """
+    base = base_url.rstrip('/')
+    urls = []
+    # HuggingFace requires ?download=true for authenticated/gated downloads
+    if 'huggingface.co' in base:
+        urls.append(f"{base}/{filename}?download=true")
+    # Plain URL (works for local servers, mirrors, and older HF repos)
+    urls.append(f"{base}/{filename}")
+    return urls
+
+
 def download_model(preset: str, models_dir: Optional[str] = None,
                    base_url: Optional[str] = None) -> str:
     """
@@ -148,6 +167,9 @@ def download_model(preset: str, models_dir: Optional[str] = None,
 
     Downloads from MODEL_BASE_URL (or the provided base_url) into models_dir.
     Uses atomic write (download to temp file, then rename) to avoid partial files.
+
+    Supports HuggingFace authentication via HF_TOKEN environment variable.
+    Automatically appends ?download=true for HuggingFace URLs.
 
     Returns the path to the downloaded model file.
     Raises RuntimeError if download fails.
@@ -164,77 +186,105 @@ def download_model(preset: str, models_dir: Optional[str] = None,
 
     filename = model_info['filename']
     model_path = os.path.join(models_dir, filename)
-    url = f"{base_url.rstrip('/')}/{filename}"
+    urls = _build_download_urls(base_url, filename)
 
-    print(f"[ai_style] Downloading model '{preset}' from {url} ...", flush=True)
+    # HuggingFace authentication token (optional, needed for gated/private repos)
+    hf_token = os.environ.get('HF_TOKEN', '').strip()
 
     os.makedirs(models_dir, exist_ok=True)
 
-    # Download to a temp file first (atomic write to avoid partial files)
-    tmp_path = model_path + '.download'
-    try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'video-editor/1.0 (AnimeGANv2 model download)',
-        })
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            total = resp.headers.get('Content-Length')
-            total = int(total) if total else None
-            downloaded = 0
-            last_pct = -1
+    # Try each candidate URL in order
+    last_error = None
+    for url in urls:
+        print(f"[ai_style] Downloading model '{preset}' from {url} ...", flush=True)
 
-            with open(tmp_path, 'wb') as out:
-                while True:
-                    chunk = resp.read(1 << 18)  # 256 KiB
-                    if not chunk:
-                        break
-                    out.write(chunk)
-                    downloaded += len(chunk)
+        # Download to a temp file first (atomic write to avoid partial files)
+        tmp_path = model_path + '.download'
+        try:
+            headers = {
+                'User-Agent': 'video-editor/1.0 (AnimeGANv2 model download)',
+            }
+            if hf_token and 'huggingface.co' in url:
+                headers['Authorization'] = f'Bearer {hf_token}'
 
-                    if total:
-                        pct = int(downloaded / total * 100)
-                        if pct != last_pct and pct % 10 == 0:
-                            print(f"[ai_style] Download: {pct}% "
-                                  f"({downloaded // 1024}/{total // 1024} KiB)",
-                                  flush=True)
-                            last_pct = pct
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                total = resp.headers.get('Content-Length')
+                total = int(total) if total else None
+                downloaded = 0
+                last_pct = -1
 
-        # Verify file size (should be at least 1 MiB for an ONNX model)
-        file_size = os.path.getsize(tmp_path)
-        if file_size < 1024 * 1024:
-            raise RuntimeError(
-                f"Downloaded file is too small ({file_size} bytes). "
-                f"Expected at least 1 MiB for an ONNX model."
-            )
+                with open(tmp_path, 'wb') as out:
+                    while True:
+                        chunk = resp.read(1 << 18)  # 256 KiB
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        downloaded += len(chunk)
 
-        # Verify SHA-256 if available
-        expected_hash = model_info.get('sha256')
-        if expected_hash:
-            actual_hash = _compute_sha256(tmp_path)
-            if actual_hash != expected_hash:
+                        if total:
+                            pct = int(downloaded / total * 100)
+                            if pct != last_pct and pct % 10 == 0:
+                                print(f"[ai_style] Download: {pct}% "
+                                      f"({downloaded // 1024}/{total // 1024} KiB)",
+                                      flush=True)
+                                last_pct = pct
+
+            # Verify file size (should be at least 1 MiB for an ONNX model)
+            file_size = os.path.getsize(tmp_path)
+            if file_size < 1024 * 1024:
                 raise RuntimeError(
-                    f"SHA-256 mismatch for '{filename}': "
-                    f"expected {expected_hash[:16]}..., got {actual_hash[:16]}..."
+                    f"Downloaded file is too small ({file_size} bytes). "
+                    f"Expected at least 1 MiB for an ONNX model."
                 )
-            print(f"[ai_style] SHA-256 verified: {actual_hash[:16]}...",
-                  flush=True)
 
-        # Atomic rename
-        shutil.move(tmp_path, model_path)
-        print(f"[ai_style] Model '{preset}' downloaded: {model_path} "
-              f"({file_size // 1024} KiB)", flush=True)
-        return model_path
+            # Verify SHA-256 if available
+            expected_hash = model_info.get('sha256')
+            if expected_hash:
+                actual_hash = _compute_sha256(tmp_path)
+                if actual_hash != expected_hash:
+                    raise RuntimeError(
+                        f"SHA-256 mismatch for '{filename}': "
+                        f"expected {expected_hash[:16]}..., got {actual_hash[:16]}..."
+                    )
+                print(f"[ai_style] SHA-256 verified: {actual_hash[:16]}...",
+                      flush=True)
 
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
-        # Clean up partial download
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise RuntimeError(
-            f"Failed to download model '{preset}' from {url}: {e}"
-        ) from e
-    except RuntimeError:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise
+            # Atomic rename
+            shutil.move(tmp_path, model_path)
+            print(f"[ai_style] Model '{preset}' downloaded: {model_path} "
+                  f"({file_size // 1024} KiB)", flush=True)
+            return model_path
+
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
+            # Clean up partial download
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            last_error = e
+            # If it's a 401/403 and we have more URLs to try, continue
+            is_auth_error = (isinstance(e, urllib.error.HTTPError)
+                             and e.code in (401, 403))
+            if is_auth_error:
+                print(f"[ai_style] Auth error ({e.code}) for {url}, "
+                      f"trying next URL...", flush=True)
+            else:
+                print(f"[ai_style] Download failed for {url}: {e}", flush=True)
+            continue
+        except RuntimeError as e:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            last_error = e
+            continue
+
+    # All URLs failed
+    hint = ""
+    if isinstance(last_error, urllib.error.HTTPError) and last_error.code in (401, 403):
+        hint = (" | Hint: Set the HF_TOKEN environment variable with a "
+                "HuggingFace access token for authenticated downloads. "
+                "Get one at https://huggingface.co/settings/tokens")
+    raise RuntimeError(
+        f"Failed to download model '{preset}' from all URLs: {last_error}{hint}"
+    )
 
 
 def get_model_status(models_dir: Optional[str] = None) -> dict:

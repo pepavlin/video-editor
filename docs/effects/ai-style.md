@@ -135,7 +135,12 @@ Models can also be manually placed in the models directory:
 
 #### Configuration
 
-The download base URL can be overridden with the `AI_STYLE_MODEL_BASE_URL` environment variable.
+| Environment Variable | Description |
+|---------------------|-------------|
+| `AI_STYLE_MODEL_BASE_URL` | Override the model download base URL |
+| `HF_TOKEN` | HuggingFace access token for authenticated downloads (get one at https://huggingface.co/settings/tokens) |
+
+For HuggingFace URLs, the downloader automatically appends `?download=true` (required by HuggingFace for direct file downloads) and tries multiple URL patterns with fallback. If you encounter 401/403 errors, set `HF_TOKEN` with a valid HuggingFace access token.
 
 Typical model size: ~8-15 MB each.
 
