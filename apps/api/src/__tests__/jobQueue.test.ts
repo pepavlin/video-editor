@@ -160,6 +160,36 @@ describe('jobQueue', () => {
     const finalJob = getJob(job.id);
     expect(finalJob?.status).toBe('ERROR');
   });
+
+  it('runCommand captures stderr lines in error detail', async () => {
+    const { createJob, getJob, runCommand } = await import('../services/jobQueue');
+    const job = createJob('export');
+
+    await new Promise<void>((resolve) => {
+      runCommand(job.id, 'bash', ['-c', 'echo "ERROR: Missing dep" >&2; exit 1'], {
+        onError: () => resolve(),
+      });
+    });
+
+    const finalJob = getJob(job.id);
+    expect(finalJob?.status).toBe('ERROR');
+    expect(finalJob?.error).toContain('Missing dep');
+  });
+
+  it('runCommand captures stdout ERROR: lines in error detail', async () => {
+    const { createJob, getJob, runCommand } = await import('../services/jobQueue');
+    const job = createJob('export');
+
+    await new Promise<void>((resolve) => {
+      runCommand(job.id, 'bash', ['-c', 'echo "ERROR: Model file not found"; exit 1'], {
+        onError: () => resolve(),
+      });
+    });
+
+    const finalJob = getJob(job.id);
+    expect(finalJob?.status).toBe('ERROR');
+    expect(finalJob?.error).toContain('Model file not found');
+  });
 });
 
 describe('runSequential', () => {

@@ -41,8 +41,23 @@ import subprocess
 import tempfile
 import math
 
-import numpy as np
-import cv2
+# ─── Dependency checks ──────────────────────────────────────────────────────
+_missing_deps = []
+try:
+    import numpy as np
+except ImportError:
+    _missing_deps.append('numpy')
+
+try:
+    import cv2
+except ImportError:
+    _missing_deps.append('opencv-python-headless')
+
+if _missing_deps:
+    print(f"ERROR: Missing Python dependencies: {', '.join(_missing_deps)}. "
+          f"Install with: pip install {' '.join(_missing_deps)}",
+          file=sys.stderr, flush=True)
+    sys.exit(1)
 
 # ─── Model configuration ────────────────────────────────────────────────────
 
@@ -117,12 +132,14 @@ def resolve_model(preset: str) -> str:
         print(f"[ai_style] Model '{preset}' found: {model_path}", flush=True)
         return model_path
 
-    print(f"ERROR: Model file not found: {model_path}", flush=True)
-    print(f"[ai_style] Please place the AnimeGANv2 ONNX model at: {model_path}",
-          flush=True)
-    print(f"[ai_style] Model: {model_info['description']}", flush=True)
-    print(f"[ai_style] See docs/effects/ai-style.md for model download instructions.",
-          flush=True)
+    print(f"ERROR: Model file not found: {model_path}",
+          file=sys.stderr, flush=True)
+    print(f"Please place the AnimeGANv2 ONNX model at: {model_path}",
+          file=sys.stderr, flush=True)
+    print(f"Model: {model_info['description']}",
+          file=sys.stderr, flush=True)
+    print(f"See docs/effects/ai-style.md for model download instructions.",
+          file=sys.stderr, flush=True)
     sys.exit(1)
 
 
@@ -134,13 +151,15 @@ def _run_ffmpeg(args: list, label: str) -> None:
         subprocess.run(args, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         stderr_text = e.stderr.decode(errors='replace').strip()
-        print(f"ERROR: {label} failed (exit {e.returncode}):", flush=True)
+        print(f"ERROR: {label} failed (exit {e.returncode}):",
+              file=sys.stderr, flush=True)
         if stderr_text:
             for line in stderr_text.splitlines():
-                print(f"  ffmpeg: {line}", flush=True)
+                print(f"  ffmpeg: {line}", file=sys.stderr, flush=True)
         sys.exit(1)
     except FileNotFoundError:
-        print("ERROR: ffmpeg not found. Please install ffmpeg.", flush=True)
+        print("ERROR: ffmpeg not found. Please install ffmpeg.",
+              file=sys.stderr, flush=True)
         sys.exit(1)
 
 
@@ -168,7 +187,13 @@ def _get_fps(input_path: str) -> float:
 
 def create_style_session(model_path: str):
     """Create an ONNX Runtime inference session for AnimeGANv2."""
-    import onnxruntime as ort
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        print("ERROR: Missing Python dependency: onnxruntime. "
+              "Install with: pip install onnxruntime",
+              file=sys.stderr, flush=True)
+        sys.exit(1)
 
     # Prefer CPU provider for deterministic and consistent results
     providers = ['CPUExecutionProvider']
@@ -328,7 +353,8 @@ def process_ai_style(input_path: str, output_path: str,
           f"preset={style_preset}", flush=True)
 
     if not os.path.exists(input_path):
-        print(f"ERROR: Input file not found: {input_path}", flush=True)
+        print(f"ERROR: Input file not found: {input_path}",
+              file=sys.stderr, flush=True)
         sys.exit(1)
 
     # Resolve model path (must be pre-placed)
@@ -363,7 +389,8 @@ def process_ai_style(input_path: str, output_path: str,
         frames = sorted(f for f in os.listdir(frames_dir) if f.endswith(".jpg"))
         total = len(frames)
         if total == 0:
-            print("ERROR: No frames extracted from input video.", flush=True)
+            print("ERROR: No frames extracted from input video.",
+                  file=sys.stderr, flush=True)
             sys.exit(1)
         print(f"[ai_style] Processing {total} frames...", flush=True)
 

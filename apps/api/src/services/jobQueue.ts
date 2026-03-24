@@ -102,15 +102,17 @@ export function runCommand(
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   activeProcesses.set(jobId, child);
 
-  // Keep a rolling buffer of the last stderr lines for better error messages
-  const lastStderrLines: string[] = [];
-  const MAX_STDERR_LINES = 20;
+  // Keep a rolling buffer of the last error lines for better error messages.
+  // Captures both stderr output and stdout lines starting with "ERROR:" so that
+  // scripts printing errors to either stream produce meaningful error details.
+  const lastErrorLines: string[] = [];
+  const MAX_ERROR_LINES = 20;
 
   const handleLine = (line: string, isStderr = false) => {
     ws.appendJobLog(jobId, line);
-    if (isStderr) {
-      lastStderrLines.push(line);
-      if (lastStderrLines.length > MAX_STDERR_LINES) lastStderrLines.shift();
+    if (isStderr || /^ERROR:/i.test(line.trim())) {
+      lastErrorLines.push(line);
+      if (lastErrorLines.length > MAX_ERROR_LINES) lastErrorLines.shift();
     }
     if (onProgress) {
       const progress = onProgress(line);
@@ -149,7 +151,7 @@ export function runCommand(
       onDone?.();
     } else {
       // Build a descriptive error from the last stderr lines
-      const meaningful = lastStderrLines
+      const meaningful = lastErrorLines
         .filter((l) => l.trim().length > 0)
         .slice(-5);
       const detail = meaningful.length > 0
