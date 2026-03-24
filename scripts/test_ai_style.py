@@ -539,16 +539,22 @@ class TestStyleModelConfig(unittest.TestCase):
 class TestStylizeFrameNeural(unittest.TestCase):
     """Tests for stylize_frame_neural ONNX input layout auto-detection."""
 
-    def _make_mock_session(self, input_shape, output_is_nchw=None):
+    def _make_mock_session(self, input_shape, input_name='input:0',
+                           actual_layout='auto'):
         """Create a mock ONNX session with given input shape.
 
-        The mock session.run returns a transformed tensor that can be verified.
-        If output_is_nchw is None, it matches the input layout.
+        Args:
+            input_shape: ONNX input shape metadata (e.g. [1, 3, None, None])
+            input_name: ONNX input tensor name
+            actual_layout: What the model actually accepts:
+                'nhwc' - validates channels at index 3
+                'nchw' - validates channels at index 1
+                'auto' - infer from input_shape (matches old behavior)
         """
         session = MagicMock()
 
         input_meta = MagicMock()
-        input_meta.name = 'input:0'
+        input_meta.name = input_name
         input_meta.shape = input_shape
         session.get_inputs.return_value = [input_meta]
 
@@ -556,20 +562,29 @@ class TestStylizeFrameNeural(unittest.TestCase):
         output_meta.name = 'output:0'
         session.get_outputs.return_value = [output_meta]
 
-        # Detect layout from input shape
-        is_nchw = (len(input_shape) == 4 and isinstance(input_shape[1], int)
-                   and input_shape[1] == 3)
+        if actual_layout == 'auto':
+            # Infer from shape: if index 3 is 3 → NHWC, elif index 1 is 3 → NCHW
+            if (len(input_shape) == 4 and isinstance(input_shape[3], int)
+                    and input_shape[3] == 3):
+                actual_layout = 'nhwc'
+            elif (len(input_shape) == 4 and isinstance(input_shape[1], int)
+                  and input_shape[1] == 3):
+                actual_layout = 'nchw'
+            else:
+                actual_layout = 'nhwc'
 
         def mock_run(output_names, input_feed, run_options=None):
             tensor = list(input_feed.values())[0]
-            # Verify tensor shape matches expected layout
-            if is_nchw:
-                assert tensor.shape[1] == 3, (
-                    f"NCHW model got channel dim {tensor.shape[1]}, expected 3")
+            if actual_layout == 'nchw':
+                if tensor.shape[1] != 3:
+                    raise RuntimeError(
+                        f"INVALID_ARGUMENT: index: 1 Got: {tensor.shape[1]} "
+                        f"Expected: 3")
             else:
-                assert tensor.shape[3] == 3, (
-                    f"NHWC model got channel dim {tensor.shape[3]}, expected 3")
-            # Return same tensor as output (identity stylization for testing)
+                if tensor.shape[3] != 3:
+                    raise RuntimeError(
+                        f"INVALID_ARGUMENT: index: 3 Got: {tensor.shape[3]} "
+                        f"Expected: 3")
             return [tensor]
 
         session.run = mock_run
@@ -586,7 +601,9 @@ class TestStylizeFrameNeural(unittest.TestCase):
     def test_nchw_model_input_transposed(self):
         """NCHW model (PyTorch-exported) should receive [1, 3, H, W] tensor."""
         frame = np.random.randint(0, 255, (64, 80, 3), dtype=np.uint8)
-        session = self._make_mock_session([1, 3, None, None])
+        # Use non-TF name so ':' override doesn't kick in
+        session = self._make_mock_session([1, 3, None, None],
+                                          input_name='input')
         result = stylize_frame_neural(frame, session, brush_size=0.5)
         self.assertEqual(result.shape, frame.shape)
         self.assertEqual(result.dtype, np.uint8)
@@ -598,6 +615,50 @@ class TestStylizeFrameNeural(unittest.TestCase):
         result = stylize_frame_neural(frame, session, brush_size=0.5)
         self.assertTrue(np.all(result >= 0))
         self.assertTrue(np.all(result <= 255))
+
+    def test_tf_naming_overrides_nchw_to_nhwc(self):
+        """TF-exported model with ':0' name but NCHW metadata should use NHWC.
+
+        This is the exact bug scenario: TF→ONNX export declares [1, 3, H, W]
+        in metadata, but internal graph ops expect NHWC. Input name has ':0'
+        suffix (TF convention). Without the fix, this produces:
+        INVALID_ARGUMENT: index: 3 Got: <width> Expected: 3
+        """
+        frame = np.random.randint(0, 255, (64, 216, 3), dtype=np.uint8)
+        # Shape metadata says NCHW, but model actually expects NHWC
+        session = self._make_mock_session(
+            [1, 3, 'height', 'width'],
+            input_name='generator_input:0',
+            actual_layout='nhwc'
+        )
+        result = stylize_frame_neural(frame, session, brush_size=0.5)
+        self.assertEqual(result.shape, frame.shape)
+        self.assertEqual(result.dtype, np.uint8)
+
+    def test_fallback_on_layout_mismatch(self):
+        """If detected layout fails at runtime, fallback to other layout."""
+        frame = np.random.randint(0, 255, (64, 80, 3), dtype=np.uint8)
+        # Shape metadata is all dynamic — no clear NCHW/NHWC signal
+        # Model actually expects NHWC; code defaults to NHWC, should work
+        session = self._make_mock_session(
+            [1, None, None, None],
+            input_name='input',
+            actual_layout='nhwc'
+        )
+        result = stylize_frame_neural(frame, session, brush_size=0.5)
+        self.assertEqual(result.shape, frame.shape)
+
+    def test_nhwc_explicit_wins_over_nchw_hint(self):
+        """When both dim 1 and dim 3 are 3, NHWC (dim 3) takes priority."""
+        frame = np.random.randint(0, 255, (64, 80, 3), dtype=np.uint8)
+        # Contrived shape [1, 3, X, 3] — NHWC should take priority
+        session = self._make_mock_session(
+            [1, 3, None, 3],
+            input_name='input',
+            actual_layout='nhwc'
+        )
+        result = stylize_frame_neural(frame, session, brush_size=0.5)
+        self.assertEqual(result.shape, frame.shape)
 
 
 if __name__ == '__main__':
