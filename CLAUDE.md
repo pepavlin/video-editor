@@ -34,7 +34,7 @@ Monorepo with npm workspaces:
 - `packages/shared` — TypeScript types only, compiled to `dist/`, consumed by both apps
 - `apps/api` — Fastify 4 backend, port 3001
 - `apps/web` — Next.js 14 frontend, port 3000
-- `scripts/` — Python processing scripts (beat_detect.py, align_lyrics.py, cutout.py)
+- `scripts/` — Python processing scripts (beat_detect.py, align_lyrics.py, cutout.py, ai_style.py, download_ai_models.py)
 
 ### Data Flow
 

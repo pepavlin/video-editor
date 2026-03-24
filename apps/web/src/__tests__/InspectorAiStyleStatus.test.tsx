@@ -1,7 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import Inspector from '../components/Inspector';
 import type { Project, Asset } from '@video-editor/shared';
+
+// Mock the API module
+vi.mock('../lib/api', () => ({
+  getAiStyleModelStatus: vi.fn().mockResolvedValue({
+    models: {
+      hayao: { available: false, path: '/models/animeganv2_hayao.onnx' },
+      shinkai: { available: false, path: '/models/animeganv2_shinkai.onnx' },
+      paprika: { available: false, path: '/models/animeganv2_paprika.onnx' },
+      celeb: { available: false, path: '/models/animeganv2_celeb.onnx' },
+    },
+  }),
+  downloadAiStyleModel: vi.fn().mockResolvedValue({ jobId: 'job_dl_1', preset: 'hayao' }),
+  pollJob: vi.fn().mockResolvedValue({ id: 'job_dl_1', status: 'DONE', progress: 100 }),
+}));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -231,5 +245,83 @@ describe('Inspector – AI style processing status', () => {
     });
     render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
     expect(screen.getByText('Generate Stylized Video')).toBeDefined();
+  });
+});
+
+describe('Inspector – AI style model download', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows "Model not downloaded" when model status reports unavailable', async () => {
+    const api = await import('../lib/api');
+    (api.getAiStyleModelStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      models: {
+        hayao: { available: false, path: '/models/animeganv2_hayao.onnx' },
+        shinkai: { available: false, path: '/models/animeganv2_shinkai.onnx' },
+        paprika: { available: false, path: '/models/animeganv2_paprika.onnx' },
+        celeb: { available: false, path: '/models/animeganv2_celeb.onnx' },
+      },
+    });
+
+    const { asset, project, effectClipId } = makeCartoonScenario({
+      cartoonMode: 'aiStyle',
+    });
+
+    await act(async () => {
+      render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Model not downloaded')).toBeDefined();
+    });
+  });
+
+  it('shows Download button for unavailable model', async () => {
+    const api = await import('../lib/api');
+    (api.getAiStyleModelStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      models: {
+        hayao: { available: false, path: '/models/animeganv2_hayao.onnx' },
+        shinkai: { available: false, path: '/models/animeganv2_shinkai.onnx' },
+        paprika: { available: false, path: '/models/animeganv2_paprika.onnx' },
+        celeb: { available: false, path: '/models/animeganv2_celeb.onnx' },
+      },
+    });
+
+    const { asset, project, effectClipId } = makeCartoonScenario({
+      cartoonMode: 'aiStyle',
+    });
+
+    await act(async () => {
+      render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Download')).toBeDefined();
+    });
+  });
+
+  it('does not show model download warning when model is available', async () => {
+    const api = await import('../lib/api');
+    (api.getAiStyleModelStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      models: {
+        hayao: { available: true, path: '/models/animeganv2_hayao.onnx', size: 8000000 },
+        shinkai: { available: true, path: '/models/animeganv2_shinkai.onnx', size: 8000000 },
+        paprika: { available: true, path: '/models/animeganv2_paprika.onnx', size: 8000000 },
+        celeb: { available: true, path: '/models/animeganv2_celeb.onnx', size: 8000000 },
+      },
+    });
+
+    const { asset, project, effectClipId } = makeCartoonScenario({
+      cartoonMode: 'aiStyle',
+    });
+
+    await act(async () => {
+      render(<Inspector {...baseProps} project={project} selectedClipId={effectClipId} assets={[asset]} />);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Model not downloaded')).toBeNull();
+    });
   });
 });

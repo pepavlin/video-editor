@@ -87,13 +87,56 @@ Each preset maps to an AnimeGANv2 ONNX model trained on a specific anime/cartoon
 
 ### Obtaining Models
 
-AnimeGANv2 ONNX models must be placed in the models directory:
+Models are **automatically downloaded** on first use. When a style preset is selected and
+no local model exists, the processing script downloads it from the configured model server
+(default: Hugging Face `bryandlee/animegan2-pytorch` repository).
+
+Models are stored in:
+- `$WORKSPACE_DIR/models/style_transfer/` (if `WORKSPACE_DIR` is set)
+- `~/.cache/video-editor/models/style_transfer/` (otherwise)
+
+#### Auto-download (default)
+
+Simply start an AI style job — the model will be downloaded automatically if missing.
+The UI will show a "Model not downloaded" indicator with a **Download** button in the
+Inspector's Preprocessing section.
+
+#### Pre-download (CLI)
+
+```bash
+# Download all models
+python3 scripts/download_ai_models.py
+
+# Download a specific model
+python3 scripts/download_ai_models.py hayao
+
+# Check which models are available
+python3 scripts/download_ai_models.py --status
+```
+
+#### API download
+
+```
+POST /api/ai-style/download-model
+Body: { "preset": "hayao" }
+Response: { "jobId": "...", "preset": "hayao" }
+
+GET /api/ai-style/model-status
+Response: { "models": { "hayao": { "available": true, "size": 8500000 }, ... } }
+```
+
+#### Manual placement
+
+Models can also be manually placed in the models directory:
 - `workspace/models/style_transfer/animeganv2_hayao.onnx`
 - `workspace/models/style_transfer/animeganv2_shinkai.onnx`
 - `workspace/models/style_transfer/animeganv2_paprika.onnx`
 - `workspace/models/style_transfer/animeganv2_celeb.onnx`
 
-Models can be obtained from AnimeGANv2 repositories and converted to ONNX format.
+#### Configuration
+
+The download base URL can be overridden with the `AI_STYLE_MODEL_BASE_URL` environment variable.
+
 Typical model size: ~8-15 MB each.
 
 ---
@@ -131,6 +174,27 @@ All dependencies are already in the Docker image (no new installs required):
 
 ## API
 
+### Check Model Status
+
+```
+GET /api/ai-style/model-status
+Response: {
+  models: {
+    hayao: { available: boolean, path: string, size?: number },
+    shinkai: { available: boolean, path: string, size?: number },
+    ...
+  }
+}
+```
+
+### Download Model
+
+```
+POST /api/ai-style/download-model
+Body: { preset: string }  // 'hayao' | 'shinkai' | 'paprika' | 'celeb'
+Response: { jobId: string, preset: string }
+```
+
 ### Start AI Style Processing
 
 ```
@@ -158,7 +222,8 @@ The cartoonized video is stored at `assets/{assetId}/ai_style.mp4` and the `asse
 |-----------|------|
 | Type definitions | `packages/shared/src/types.ts` — `AiStylePreset`, `CartoonMode`, `EffectClipConfig` |
 | Python processing | `scripts/ai_style.py` — AnimeGANv2 cartoonization pipeline |
-| Python tests | `scripts/test_ai_style.py` — Unit tests for pure functions |
+| Model downloader | `scripts/download_ai_models.py` — Standalone model download CLI |
+| Python tests | `scripts/test_ai_style.py` — Unit tests for pure functions + download |
 | Effect implementation | `packages/elements/src/effects/Cartoon.ts` — Preview + export for both modes |
 | API route | `apps/api/src/routes/assets.ts` — `POST /assets/:id/ai-style` |
 | Export pipeline | `apps/api/src/elements/ExportPipeline.ts` — AI style input collection |

@@ -462,6 +462,71 @@ export async function assetsRoutes(app: FastifyInstance) {
     }
   });
 
+  // GET /ai-style/model-status - check which AI style models are downloaded
+  app.get('/ai-style/model-status', async (_req, reply) => {
+    try {
+      const scriptPath = path.join(config.scriptsDir, 'download_ai_models.py');
+      if (!fs.existsSync(scriptPath)) {
+        return reply.code(500).send({ error: 'Download script not found' });
+      }
+
+      const { execFileSync } = await import('child_process');
+      const output = execFileSync(
+        config.pythonBin,
+        [scriptPath, '--status', '--json'],
+        {
+          env: { ...process.env, WORKSPACE_DIR: config.workspaceDir },
+          timeout: 10000,
+          encoding: 'utf-8',
+        }
+      );
+      const status = JSON.parse(output.trim());
+      return reply.send({ models: status });
+    } catch (e: any) {
+      return reply.code(500).send({ error: `Failed to check model status: ${e.message}` });
+    }
+  });
+
+  // POST /ai-style/download-model - download a specific AI style model
+  // Body: { preset: string }
+  app.post<{
+    Body: { preset?: string };
+  }>('/ai-style/download-model', async (req, reply) => {
+    try {
+      const preset = req.body?.preset ?? 'hayao';
+      const validPresets = ['hayao', 'shinkai', 'paprika', 'celeb'];
+      if (!validPresets.includes(preset)) {
+        return reply.code(400).send({
+          error: `Invalid preset: '${preset}'. Valid: ${validPresets.join(', ')}`,
+        });
+      }
+
+      const scriptPath = path.join(config.scriptsDir, 'download_ai_models.py');
+      if (!fs.existsSync(scriptPath)) {
+        return reply.code(500).send({ error: 'Download script not found' });
+      }
+
+      // Run download as a job so we can track progress
+      const job = jq.createJob('aiStyle', `model_download_${preset}`);
+
+      jq.runCommand(
+        job.id,
+        config.pythonBin,
+        ['-u', scriptPath, preset],
+        {
+          onProgress: (line: string) => {
+            const m = line.match(/Download:\s*(\d+)%/);
+            return m ? parseInt(m[1], 10) : undefined;
+          },
+        }
+      );
+
+      return reply.code(202).send({ jobId: job.id, preset });
+    } catch (e: any) {
+      return reply.code(500).send({ error: `Model download failed to start: ${e.message}` });
+    }
+  });
+
   // POST /assets/:id/cutout - start cutout mask generation
   // Body: { mode?: 'removeBg' | 'removePerson' }
   app.post<{ Params: { id: string }; Body: { mode?: string } }>('/assets/:id/cutout', async (req, reply) => {
