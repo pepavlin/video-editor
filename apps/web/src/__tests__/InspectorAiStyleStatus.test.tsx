@@ -145,7 +145,7 @@ describe('Inspector – cartoon mode toggle', () => {
     expect(screen.getByText('Strength')).toBeDefined();
     expect(screen.getByText('Brush')).toBeDefined();
     expect(screen.getByText('Vibrance')).toBeDefined();
-    expect(screen.getByText('Process')).toBeDefined();
+    expect(screen.getByText('Preprocessing')).toBeDefined();
   });
 
   it('shows style preset dropdown with all presets in AI Style mode', () => {
@@ -222,7 +222,7 @@ describe('Inspector – AI style processing status', () => {
         assetJobs={assetJobs}
       />,
     );
-    expect(screen.getByText('Processing...')).toBeDefined();
+    expect(screen.getByText(/Processing.*style/)).toBeDefined();
   });
 
   it('shows "Generate Stylized Video" button when no aiStylePath and no running job', () => {

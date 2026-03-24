@@ -65,6 +65,7 @@ The API serves `/files/*` as static files from the workspace dir. Next.js rewrit
 - `components/Timeline.tsx` — Clip drag/trim/snap UI
 - `components/Preview.tsx` — Canvas-based video preview
 - `components/Inspector.tsx` — Property panel for selected clip
+- `components/effects/CartoonEffectPreview.tsx` — Frame-capture cartoon effect preview (split view)
 - `components/MediaBin.tsx` — Asset list and import
 - `hooks/useProject.ts` — Project state management
 - `hooks/usePlayback.ts` — WebAudio playback (source of truth for timeline sync)
