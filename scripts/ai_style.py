@@ -463,8 +463,9 @@ def stylize_frame_neural(frame: np.ndarray, session,
     - brush_size=0 → process at higher resolution (finer cartoon details)
     - brush_size=1 → process at lower resolution (broader, more stylized)
 
-    AnimeGANv2 input:  [1, 3, H, W] float32, normalized to [-1, 1]
-    AnimeGANv2 output: [1, 3, H, W] float32, in [-1, 1] range
+    The model format (NHWC vs NCHW) is auto-detected from the ONNX input shape.
+    AnimeGANv2 input:  float32, normalized to [-1, 1]
+    AnimeGANv2 output: float32, in [-1, 1] range
     """
     h, w = frame.shape[:2]
 
@@ -486,17 +487,30 @@ def stylize_frame_neural(frame: np.ndarray, session,
     # Convert BGR→RGB, normalize to [-1, 1] (AnimeGANv2 input range)
     rgb = cv2.cvtColor(proc_frame, cv2.COLOR_BGR2RGB).astype(np.float32)
     input_tensor = rgb / 127.5 - 1.0  # [0, 255] → [-1, 1]
-    input_tensor = np.transpose(input_tensor, (2, 0, 1))  # HWC → CHW
+
+    # Auto-detect model layout from ONNX input shape
+    input_meta = session.get_inputs()[0]
+    input_name = input_meta.name
+    input_shape = input_meta.shape  # e.g. [1, 3, H, W] or [1, H, W, 3]
+    # Determine if model expects NCHW (channel dim at index 1) or NHWC (channel dim at index 3)
+    is_nchw = (len(input_shape) == 4 and isinstance(input_shape[1], int) and input_shape[1] == 3)
+
+    if is_nchw:
+        input_tensor = np.transpose(input_tensor, (2, 0, 1))  # HWC → CHW
+    # else: keep HWC layout for NHWC models (e.g. TensorFlow-exported AnimeGANv2)
+
     input_tensor = np.expand_dims(input_tensor, axis=0)  # add batch dim
 
     # Run inference
-    input_name = session.get_inputs()[0].name
     output_name = session.get_outputs()[0].name
     result = session.run([output_name], {input_name: input_tensor})[0]
 
-    # Convert output: [1, 3, H, W] → [H, W, 3] BGR uint8
+    # Convert output back to HWC BGR uint8
     output = result[0]  # remove batch dim
-    output = np.transpose(output, (1, 2, 0))  # CHW → HWC
+    if is_nchw:
+        output = np.transpose(output, (1, 2, 0))  # CHW → HWC
+    # else: output is already HWC for NHWC models
+
     # Denormalize from [-1, 1] → [0, 255]
     output = (output + 1.0) * 127.5
     output = np.clip(output, 0, 255).astype(np.uint8)
