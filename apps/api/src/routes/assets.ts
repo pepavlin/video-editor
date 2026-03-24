@@ -400,57 +400,66 @@ export async function assetsRoutes(app: FastifyInstance) {
     Params: { id: string };
     Body: { styleStrength?: number; brushSize?: number; colorVibrance?: number; stylePreset?: string };
   }>('/assets/:id/ai-style', async (req, reply) => {
-    const asset = ws.getAsset(req.params.id);
-    if (!asset || asset.type !== 'video') {
-      return reply.code(404).send({ error: 'Video asset not found' });
-    }
-
-    const proxyPath = asset.proxyPath
-      ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
-      : path.join(ws.getWorkspaceDir(), asset.originalPath);
-
-    if (!fs.existsSync(proxyPath)) {
-      return reply.code(400).send({ error: 'Proxy not ready - import may still be processing' });
-    }
-
-    const body = req.body ?? {};
-    const strength = String(Math.max(0, Math.min(1, body.styleStrength ?? 0.8)));
-    const brush = String(Math.max(0, Math.min(1, body.brushSize ?? 0.5)));
-    const vibrance = String(Math.max(0, Math.min(2, body.colorVibrance ?? 1.3)));
-    const validPresets = ['hayao', 'shinkai', 'paprika', 'celeb'];
-    const preset = validPresets.includes(body.stylePreset ?? '') ? body.stylePreset! : 'hayao';
-
-    const job = jq.createJob('aiStyle', asset.id);
-    const aiStyleOutputPath = path.join(ws.getAssetDir(asset.id), 'ai_style.mp4');
-    const scriptPath = path.join(config.scriptsDir, 'ai_style.py');
-
-    // Store the active job ID on the asset so the UI can poll it
-    ws.upsertAsset({ ...asset, aiStyleJobId: job.id });
-
-    jq.runCommand(
-      job.id,
-      config.pythonBin,
-      ['-u', scriptPath, proxyPath, aiStyleOutputPath, strength, brush, vibrance, preset],
-      {
-        onProgress: (line: string) => {
-          const m = line.match(/\[ai_style\]\s+(\d+)%/);
-          return m ? parseInt(m[1], 10) : undefined;
-        },
-        onDone: () => {
-          const latestAsset = ws.getAsset(asset.id);
-          if (latestAsset) {
-            ws.upsertAsset({
-              ...latestAsset,
-              aiStylePath: `assets/${asset.id}/ai_style.mp4`,
-              aiStyleJobId: job.id,
-            });
-          }
-        },
-        outputPath: aiStyleOutputPath,
+    try {
+      const asset = ws.getAsset(req.params.id);
+      if (!asset || asset.type !== 'video') {
+        return reply.code(404).send({ error: 'Video asset not found — ensure a valid video asset is selected' });
       }
-    );
 
-    return reply.code(202).send({ jobId: job.id });
+      const proxyPath = asset.proxyPath
+        ? path.join(ws.getWorkspaceDir(), asset.proxyPath)
+        : path.join(ws.getWorkspaceDir(), asset.originalPath);
+
+      if (!fs.existsSync(proxyPath)) {
+        return reply.code(400).send({ error: `Proxy video not ready at "${proxyPath}" — the import may still be processing. Wait for import to finish and try again.` });
+      }
+
+      const scriptPath = path.join(config.scriptsDir, 'ai_style.py');
+      if (!fs.existsSync(scriptPath)) {
+        return reply.code(500).send({ error: `AI style script not found at "${scriptPath}". Ensure the scripts directory is configured correctly.` });
+      }
+
+      const body = req.body ?? {};
+      const strength = String(Math.max(0, Math.min(1, body.styleStrength ?? 0.8)));
+      const brush = String(Math.max(0, Math.min(1, body.brushSize ?? 0.5)));
+      const vibrance = String(Math.max(0, Math.min(2, body.colorVibrance ?? 1.3)));
+      const validPresets = ['hayao', 'shinkai', 'paprika', 'celeb'];
+      const preset = validPresets.includes(body.stylePreset ?? '') ? body.stylePreset! : 'hayao';
+
+      const job = jq.createJob('aiStyle', asset.id);
+      const aiStyleOutputPath = path.join(ws.getAssetDir(asset.id), 'ai_style.mp4');
+
+      // Store the active job ID on the asset so the UI can poll it
+      ws.upsertAsset({ ...asset, aiStyleJobId: job.id });
+
+      jq.runCommand(
+        job.id,
+        config.pythonBin,
+        ['-u', scriptPath, proxyPath, aiStyleOutputPath, strength, brush, vibrance, preset],
+        {
+          onProgress: (line: string) => {
+            const m = line.match(/\[ai_style\]\s+(\d+)%/);
+            return m ? parseInt(m[1], 10) : undefined;
+          },
+          onDone: () => {
+            const latestAsset = ws.getAsset(asset.id);
+            if (latestAsset) {
+              ws.upsertAsset({
+                ...latestAsset,
+                aiStylePath: `assets/${asset.id}/ai_style.mp4`,
+                aiStyleJobId: job.id,
+              });
+            }
+          },
+          outputPath: aiStyleOutputPath,
+        }
+      );
+
+      return reply.code(202).send({ jobId: job.id });
+    } catch (e: any) {
+      req.log.error(e, 'AI style endpoint error');
+      return reply.code(500).send({ error: `AI style failed to start: ${e.message ?? 'unknown error'}` });
+    }
   });
 
   // POST /assets/:id/cutout - start cutout mask generation
