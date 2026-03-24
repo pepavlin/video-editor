@@ -4,96 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Development
 ```bash
-npm run dev           # Start both API (3001) and Web (3000) concurrently
-npm run dev:api       # API only (ts-node-dev with auto-respawn)
-npm run dev:web       # Web only (Next.js dev)
-docker compose up --build  # Full stack with Docker (recommended)
-```
-
-### Building
-```bash
-npm run build         # Build all: shared → api → web (in order)
-npm run build:shared  # Build shared types only
-npm run build -w apps/api
-npm run build -w apps/web
-```
-
-### Testing
-```bash
-npm run test -w apps/api    # Run API tests (Vitest)
-npm run test -w apps/web    # Run Web tests (Vitest + jsdom)
-npm run test:watch -w apps/api
-npm run test:watch -w apps/web
+npm run dev                  # Start API (3001) + Web (3000)
+npm run build                # Build all: shared → api → web
+npm run test -w apps/api     # Vitest (API)
+npm run test -w apps/web     # Vitest + jsdom (Web)
+docker compose up --build    # Full stack with Docker
 ```
 
 ## Architecture
 
-Monorepo with npm workspaces:
-- `packages/shared` — TypeScript types only, compiled to `dist/`, consumed by both apps
-- `apps/api` — Fastify 4 backend, port 3001
-- `apps/web` — Next.js 14 frontend, port 3000
-- `scripts/` — Python processing scripts (beat_detect.py, align_lyrics.py, cutout.py, ai_style.py, download_ai_models.py)
+Monorepo (npm workspaces):
+- `packages/shared` — TypeScript types, compiled to `dist/`
+- `apps/api` — Fastify 4, port 3001
+- `apps/web` — Next.js 14, port 3000
+- `scripts/` — Python: beat_detect.py, align_lyrics.py, cutout.py, ai_style.py
 
-### Data Flow
+All data in `./workspace/` (`WORKSPACE_DIR` env):
+- `workspace/assets/<id>/` — original, proxy (540p), audio, waveform, beats, mask
+- `workspace/projects/<id>/` — project.json (JSON EDL)
 
-All persistent data lives in `./workspace/` (configurable via `WORKSPACE_DIR` env):
-- `workspace/assets/<id>/` — original, proxy (540p), audio extract, waveform, beats, mask
-- `workspace/projects/<id>/` — project.json (JSON EDL, non-destructive)
+Next.js rewrites `/api/*` and `/files/*` to `http://localhost:3001`.
 
-The API serves `/files/*` as static files from the workspace dir. Next.js rewrites both `/api/*` and `/files/*` to `http://localhost:3001`.
+### API (`apps/api/src/`)
+- `routes/assets.ts` — import, waveform, beats, cutout
+- `routes/projects.ts` — CRUD, lyrics alignment, export
+- `routes/jobs.ts` — job status + output download
+- `services/jobQueue.ts` — background jobs, spawns Python child processes
+- `services/ffmpegService.ts` — import pipeline, export with filter_complex
 
-### API Structure (`apps/api/src/`)
+### Web (`apps/web/src/`)
+- `components/Editor.tsx` — main orchestrator (dynamically imported, `ssr: false`)
+- `components/Timeline.tsx` — drag/trim/snap
+- `components/Preview.tsx` — canvas video preview
+- `hooks/useProject.ts` — project state, `explodeLyricsClipToChunks`
+- `hooks/usePlayback.ts` — WebAudio (source of truth for sync)
 
-- `index.ts` — Fastify app setup, route registration
-- `config.ts` — Environment config
-- `routes/assets.ts` — Asset import, listing, waveform, beat detection, cutout
-- `routes/projects.ts` — Project CRUD, lyrics alignment, export
-- `routes/jobs.ts` — Job status polling, output file download
-- `services/workspace.ts` — File I/O, JSON persistence
-- `services/jobQueue.ts` — Background job tracking, spawns child processes
-- `services/ffmpegService.ts` — ffprobe metadata, import pipeline, export with filter_complex
-- `services/waveform.ts` — Waveform data generation
-
-**Background jobs** (tracked via `GET /api/jobs/:id/status`): import, beats, lyrics, cutout, export. Python scripts are spawned as child processes by jobQueue.
-
-### Web Structure (`apps/web/src/`)
-
-- `app/page.tsx` — Single page, dynamically imports Editor (ssr: false for WebAudio)
-- `components/Editor.tsx` — Main orchestrator
-- `components/Timeline.tsx` — Clip drag/trim/snap UI
-- `components/Preview.tsx` — Canvas-based video preview
-- `components/Inspector.tsx` — Property panel for selected clip
-- `components/effects/CartoonEffectPreview.tsx` — Frame-capture cartoon effect preview (split view)
-- `components/MediaBin.tsx` — Asset list and import
-- `hooks/useProject.ts` — Project state management
-- `hooks/usePlayback.ts` — WebAudio playback (source of truth for timeline sync)
-- `hooks/useHistory.ts` — Undo/redo stack
-- `hooks/useErrorLog.ts` — Global error log state (persistent errors with source, details, timestamps)
-- `components/ErrorLog.tsx` — Collapsible error log panel (bottom-left, shows all errors with log details)
-- `lib/api.ts` — API client wrapper
-
-**reactStrictMode is disabled** in next.config.mjs for WebAudio API compatibility.
+**reactStrictMode is disabled** in next.config.mjs for WebAudio compatibility.
 
 ### Shared Types (`packages/shared/src/types.ts`)
-
-Key types:
-- `Project` / `Track` / `Clip` — EDL structure (JSON-serializable)
-- `Asset` — Media file with paths to all derived files
-- `Effect` — `BeatZoomEffect | CutoutEffect` (union type — requires `as Effect` cast when spreading)
-- `Job` — Background job with status, progress, log lines
-- `LyricsData` / `WordTimestamp` — Word-level subtitle alignment
+- `Project / Track / Clip` — EDL structure
+- `Asset` — media file with derived file paths
+- `Effect` — `BeatZoomEffect | CutoutEffect` union (requires `as Effect` cast when spreading)
+- `Job` — background job with status, progress, log
 
 ### Lyrics Timing Model
-
-After alignment, lyrics are auto-split into **individual per-chunk clips** (`explodeLyricsClipToChunks`). Each clip's `lyricsWords` use **clip-relative timestamps** (0 = clip start). When the user drags a lyrics chunk clip, words render at the new position automatically. For export, clip-relative timestamps are converted to absolute by adding `clip.timelineStart`. The `explodeLyricsClipToChunks` pure function is in `hooks/useProject.ts`.
+Lyrics are split into per-chunk clips via `explodeLyricsClipToChunks`. Each clip's `lyricsWords` use **clip-relative timestamps**. On export, absolute time = `clip.timelineStart + word.start`.
 
 ## Key Constraints
 
-- **Build order matters**: shared must build before api or web
-- **Effect union type**: When constructing/spreading Effect objects, cast with `as Effect`
-- **String spreading**: Use `charCodeAt` loop instead of `[...str]` spread in TypeScript
-- **WebAudio**: Editor component must be dynamically imported with `ssr: false`
-- **Path traversal**: Job output download validates resolved paths are within workspace
-- **Python deps**: openai-whisper (~1.5GB) and rembg are optional — features degrade gracefully if absent
+- **Build order**: shared must build before api or web
+- **Effect union**: cast with `as Effect` when constructing/spreading
+- **String spreading**: use `charCodeAt` loop instead of `[...str]` in TypeScript
+- **WebAudio**: Editor must be dynamically imported with `ssr: false`
+- **Path traversal**: job output download validates paths are within workspace
+- **Python deps**: openai-whisper and rembg are optional — degrade gracefully if absent
