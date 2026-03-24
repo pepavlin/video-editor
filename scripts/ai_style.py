@@ -40,6 +40,11 @@ import os
 import subprocess
 import tempfile
 import math
+import hashlib
+import urllib.request
+import urllib.error
+import shutil
+from typing import Optional
 
 # ─── Dependency checks ──────────────────────────────────────────────────────
 _missing_deps = []
@@ -61,14 +66,23 @@ if _missing_deps:
 
 # ─── Model configuration ────────────────────────────────────────────────────
 
+# Base URL for downloading AnimeGANv2 ONNX models.
+# Can be overridden with the AI_STYLE_MODEL_BASE_URL environment variable.
+# The default points to the bryandlee/animegan2-pytorch Hugging Face space
+# which provides pre-converted ONNX models.
+_DEFAULT_MODEL_BASE_URL = (
+    'https://huggingface.co/bryandlee/animegan2-pytorch/resolve/main/onnx'
+)
+MODEL_BASE_URL = os.environ.get('AI_STYLE_MODEL_BASE_URL', _DEFAULT_MODEL_BASE_URL)
+
 # Map of preset names to AnimeGANv2 ONNX model files.
 # AnimeGANv2 is a GAN specifically trained to convert real photos/video into
 # cartoon/anime art — producing flat color regions, clean edges, and stylized
 # shading. Unlike neural style transfer, these models perform true cartoonization.
 #
-# Models must be placed in the models directory (workspace/models/style_transfer/
-# or ~/.cache/video-editor/models/style_transfer/). They can be obtained from
-# AnimeGANv2 repositories and converted to ONNX format.
+# Models are auto-downloaded on first use from MODEL_BASE_URL.
+# They can also be manually placed in the models directory
+# (workspace/models/style_transfer/ or ~/.cache/video-editor/models/style_transfer/).
 #
 # Input preprocessing:  BGR → RGB, resize (divisible by 8), normalize to [-1, 1]
 # Output postprocessing: denormalize from [-1, 1] → [0, 255], RGB → BGR
@@ -77,21 +91,25 @@ STYLE_MODELS = {
         'filename': 'animeganv2_hayao.onnx',
         'description': 'Studio Ghibli / Hayao Miyazaki style — soft colors, natural scenery',
         'input_size': 512,  # recommended input size (will be adjusted to preserve aspect ratio)
+        'sha256': None,  # will be verified if provided
     },
     'shinkai': {
         'filename': 'animeganv2_shinkai.onnx',
         'description': 'Makoto Shinkai style — vivid sky colors, crisp details',
         'input_size': 512,
+        'sha256': None,
     },
     'paprika': {
         'filename': 'animeganv2_paprika.onnx',
         'description': 'Satoshi Kon / Paprika style — dreamy, expressive colors',
         'input_size': 512,
+        'sha256': None,
     },
     'celeb': {
         'filename': 'animeganv2_celeb.onnx',
         'description': 'Portrait-focused cartoon style — optimized for faces',
         'input_size': 512,
+        'sha256': None,
     },
 }
 
@@ -111,13 +129,151 @@ def _get_models_dir() -> str:
     return models_dir
 
 
-def resolve_model(preset: str) -> str:
+def _compute_sha256(filepath: str) -> str:
+    """Compute SHA-256 hex digest for a file."""
+    h = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        while True:
+            chunk = f.read(1 << 20)  # 1 MiB
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def download_model(preset: str, models_dir: Optional[str] = None,
+                   base_url: Optional[str] = None) -> str:
+    """
+    Download an AnimeGANv2 ONNX model for the given preset.
+
+    Downloads from MODEL_BASE_URL (or the provided base_url) into models_dir.
+    Uses atomic write (download to temp file, then rename) to avoid partial files.
+
+    Returns the path to the downloaded model file.
+    Raises RuntimeError if download fails.
+    """
+    if preset not in STYLE_MODELS:
+        raise ValueError(f"Unknown preset: '{preset}'. "
+                         f"Available: {', '.join(STYLE_MODELS.keys())}")
+
+    model_info = STYLE_MODELS[preset]
+    if models_dir is None:
+        models_dir = _get_models_dir()
+    if base_url is None:
+        base_url = MODEL_BASE_URL
+
+    filename = model_info['filename']
+    model_path = os.path.join(models_dir, filename)
+    url = f"{base_url.rstrip('/')}/{filename}"
+
+    print(f"[ai_style] Downloading model '{preset}' from {url} ...", flush=True)
+
+    os.makedirs(models_dir, exist_ok=True)
+
+    # Download to a temp file first (atomic write to avoid partial files)
+    tmp_path = model_path + '.download'
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'video-editor/1.0 (AnimeGANv2 model download)',
+        })
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            total = resp.headers.get('Content-Length')
+            total = int(total) if total else None
+            downloaded = 0
+            last_pct = -1
+
+            with open(tmp_path, 'wb') as out:
+                while True:
+                    chunk = resp.read(1 << 18)  # 256 KiB
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    downloaded += len(chunk)
+
+                    if total:
+                        pct = int(downloaded / total * 100)
+                        if pct != last_pct and pct % 10 == 0:
+                            print(f"[ai_style] Download: {pct}% "
+                                  f"({downloaded // 1024}/{total // 1024} KiB)",
+                                  flush=True)
+                            last_pct = pct
+
+        # Verify file size (should be at least 1 MiB for an ONNX model)
+        file_size = os.path.getsize(tmp_path)
+        if file_size < 1024 * 1024:
+            raise RuntimeError(
+                f"Downloaded file is too small ({file_size} bytes). "
+                f"Expected at least 1 MiB for an ONNX model."
+            )
+
+        # Verify SHA-256 if available
+        expected_hash = model_info.get('sha256')
+        if expected_hash:
+            actual_hash = _compute_sha256(tmp_path)
+            if actual_hash != expected_hash:
+                raise RuntimeError(
+                    f"SHA-256 mismatch for '{filename}': "
+                    f"expected {expected_hash[:16]}..., got {actual_hash[:16]}..."
+                )
+            print(f"[ai_style] SHA-256 verified: {actual_hash[:16]}...",
+                  flush=True)
+
+        # Atomic rename
+        shutil.move(tmp_path, model_path)
+        print(f"[ai_style] Model '{preset}' downloaded: {model_path} "
+              f"({file_size // 1024} KiB)", flush=True)
+        return model_path
+
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
+        # Clean up partial download
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise RuntimeError(
+            f"Failed to download model '{preset}' from {url}: {e}"
+        ) from e
+    except RuntimeError:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
+def get_model_status(models_dir: Optional[str] = None) -> dict:
+    """
+    Check download status of all AI style models.
+
+    Returns a dict mapping preset names to their status:
+    {
+        'hayao': { 'available': True, 'path': '...', 'size': 12345 },
+        'shinkai': { 'available': False, 'path': '...' },
+        ...
+    }
+    """
+    if models_dir is None:
+        models_dir = _get_models_dir()
+
+    status = {}
+    for preset, info in STYLE_MODELS.items():
+        model_path = os.path.join(models_dir, info['filename'])
+        if os.path.exists(model_path):
+            status[preset] = {
+                'available': True,
+                'path': model_path,
+                'size': os.path.getsize(model_path),
+            }
+        else:
+            status[preset] = {
+                'available': False,
+                'path': model_path,
+            }
+    return status
+
+
+def resolve_model(preset: str, auto_download: bool = True) -> str:
     """
     Resolve the ONNX model path for the given preset.
 
-    Models must be pre-placed in the models directory. They can be obtained
-    from AnimeGANv2 repositories and converted to ONNX format. See
-    docs/effects/ai-style.md for instructions on obtaining models.
+    If the model is not found locally and auto_download is True,
+    attempts to download it automatically from MODEL_BASE_URL.
     """
     if preset not in STYLE_MODELS:
         print(f"WARNING: Unknown preset '{preset}', falling back to 'hayao'",
@@ -132,13 +288,27 @@ def resolve_model(preset: str) -> str:
         print(f"[ai_style] Model '{preset}' found: {model_path}", flush=True)
         return model_path
 
+    if auto_download:
+        print(f"[ai_style] Model '{preset}' not found locally. "
+              f"Attempting auto-download...", flush=True)
+        try:
+            return download_model(preset, models_dir)
+        except RuntimeError as e:
+            print(f"ERROR: Auto-download failed: {e}",
+                  file=sys.stderr, flush=True)
+            print(f"Please manually place the AnimeGANv2 ONNX model at: "
+                  f"{model_path}", file=sys.stderr, flush=True)
+            print(f"Or run: python3 download_ai_models.py {preset}",
+                  file=sys.stderr, flush=True)
+            sys.exit(1)
+
     print(f"ERROR: Model file not found: {model_path}",
           file=sys.stderr, flush=True)
     print(f"Please place the AnimeGANv2 ONNX model at: {model_path}",
           file=sys.stderr, flush=True)
     print(f"Model: {model_info['description']}",
           file=sys.stderr, flush=True)
-    print(f"See docs/effects/ai-style.md for model download instructions.",
+    print(f"Run: python3 download_ai_models.py {preset}",
           file=sys.stderr, flush=True)
     sys.exit(1)
 

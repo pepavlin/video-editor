@@ -2,15 +2,24 @@
 """Tests for ai_style.py – focuses on pure functions and configuration."""
 
 import unittest
+import tempfile
+import os
+import http.server
+import threading
 import numpy as np
 
 from ai_style import (
     STYLE_MODELS,
+    MODEL_BASE_URL,
     _align_to_8,
+    _compute_sha256,
     compute_flow_confidence,
     warp_frame,
     enhance_colors,
     detect_scene_changes,
+    download_model,
+    get_model_status,
+    resolve_model,
     _get_models_dir,
 )
 
@@ -142,6 +151,166 @@ class TestModelsDir(unittest.TestCase):
         result = _get_models_dir()
         self.assertIsInstance(result, str)
         self.assertTrue(len(result) > 0)
+
+
+class TestComputeSha256(unittest.TestCase):
+    """Tests for _compute_sha256."""
+
+    def test_known_content(self):
+        """SHA-256 of known content should match expected hash."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as f:
+            f.write(b'hello world')
+            f.flush()
+            path = f.name
+        try:
+            h = _compute_sha256(path)
+            # sha256("hello world") is known
+            self.assertEqual(
+                h,
+                'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'
+            )
+        finally:
+            os.unlink(path)
+
+    def test_empty_file(self):
+        """SHA-256 of empty file should match expected hash."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as f:
+            path = f.name
+        try:
+            h = _compute_sha256(path)
+            self.assertEqual(
+                h,
+                'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+            )
+        finally:
+            os.unlink(path)
+
+
+class TestGetModelStatus(unittest.TestCase):
+    """Tests for get_model_status."""
+
+    def test_returns_all_presets(self):
+        """Should return status for all defined presets."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            status = get_model_status(tmpdir)
+            for preset in STYLE_MODELS:
+                self.assertIn(preset, status)
+                self.assertIn('available', status[preset])
+                self.assertIn('path', status[preset])
+
+    def test_detects_existing_model(self):
+        """Should detect when a model file exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a fake model file
+            model_file = os.path.join(tmpdir, STYLE_MODELS['hayao']['filename'])
+            with open(model_file, 'wb') as f:
+                f.write(b'x' * 2 * 1024 * 1024)  # 2 MiB fake model
+
+            status = get_model_status(tmpdir)
+            self.assertTrue(status['hayao']['available'])
+            self.assertEqual(status['hayao']['size'], 2 * 1024 * 1024)
+
+    def test_detects_missing_model(self):
+        """Should report missing when model file does not exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            status = get_model_status(tmpdir)
+            self.assertFalse(status['hayao']['available'])
+
+
+class TestDownloadModel(unittest.TestCase):
+    """Tests for download_model with a local HTTP server."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Start a local HTTP server serving fake ONNX model files."""
+        cls._tmpdir = tempfile.mkdtemp()
+        cls._serve_dir = os.path.join(cls._tmpdir, 'serve')
+        os.makedirs(cls._serve_dir)
+
+        # Create fake ONNX files (>1 MiB to pass size check)
+        for preset, info in STYLE_MODELS.items():
+            fpath = os.path.join(cls._serve_dir, info['filename'])
+            with open(fpath, 'wb') as f:
+                f.write(b'\x00' * (2 * 1024 * 1024))  # 2 MiB
+
+        handler = lambda *a, **kw: http.server.SimpleHTTPRequestHandler(
+            *a, directory=cls._serve_dir, **kw
+        )
+        cls._server = http.server.HTTPServer(('127.0.0.1', 0), handler)
+        cls._port = cls._server.server_address[1]
+        cls._thread = threading.Thread(target=cls._server.serve_forever, daemon=True)
+        cls._thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._server.shutdown()
+        import shutil
+        shutil.rmtree(cls._tmpdir, ignore_errors=True)
+
+    def test_download_model_success(self):
+        """Should download a model to the specified directory."""
+        with tempfile.TemporaryDirectory() as dl_dir:
+            base_url = f'http://127.0.0.1:{self._port}'
+            path = download_model('hayao', dl_dir, base_url)
+            self.assertTrue(os.path.exists(path))
+            self.assertGreater(os.path.getsize(path), 1024 * 1024)
+
+    def test_download_model_invalid_preset(self):
+        """Should raise ValueError for unknown preset."""
+        with tempfile.TemporaryDirectory() as dl_dir:
+            with self.assertRaises(ValueError):
+                download_model('nonexistent', dl_dir)
+
+    def test_download_model_already_exists(self):
+        """If model already exists, download_model should overwrite it."""
+        with tempfile.TemporaryDirectory() as dl_dir:
+            base_url = f'http://127.0.0.1:{self._port}'
+            # First download
+            p1 = download_model('hayao', dl_dir, base_url)
+            self.assertTrue(os.path.exists(p1))
+            # Second download should succeed (overwrite)
+            p2 = download_model('hayao', dl_dir, base_url)
+            self.assertTrue(os.path.exists(p2))
+
+    def test_download_model_bad_url(self):
+        """Should raise RuntimeError when download fails."""
+        with tempfile.TemporaryDirectory() as dl_dir:
+            with self.assertRaises(RuntimeError):
+                download_model('hayao', dl_dir, 'http://127.0.0.1:1/nonexistent')
+
+    def test_download_all_presets(self):
+        """Should download all preset models."""
+        with tempfile.TemporaryDirectory() as dl_dir:
+            base_url = f'http://127.0.0.1:{self._port}'
+            for preset in STYLE_MODELS:
+                path = download_model(preset, dl_dir, base_url)
+                self.assertTrue(os.path.exists(path))
+
+    def test_no_partial_file_on_failure(self):
+        """Should not leave a .download temp file on failure."""
+        with tempfile.TemporaryDirectory() as dl_dir:
+            try:
+                download_model('hayao', dl_dir, 'http://127.0.0.1:1/bad')
+            except RuntimeError:
+                pass
+            # No .download files should remain
+            files = os.listdir(dl_dir)
+            download_files = [f for f in files if f.endswith('.download')]
+            self.assertEqual(len(download_files), 0)
+
+
+class TestStyleModelConfig(unittest.TestCase):
+    """Tests for STYLE_MODELS configuration including download fields."""
+
+    def test_model_base_url_is_string(self):
+        """MODEL_BASE_URL should be a non-empty string."""
+        self.assertIsInstance(MODEL_BASE_URL, str)
+        self.assertTrue(len(MODEL_BASE_URL) > 0)
+
+    def test_each_model_has_sha256_field(self):
+        """Each model should have a sha256 field (can be None)."""
+        for name, info in STYLE_MODELS.items():
+            self.assertIn('sha256', info, f"Model '{name}' missing 'sha256'")
 
 
 if __name__ == '__main__':

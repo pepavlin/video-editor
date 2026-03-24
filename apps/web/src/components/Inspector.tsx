@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type {
   Project,
   Clip,
@@ -12,6 +12,7 @@ import type {
   WordTimestamp,
 } from '@video-editor/shared';
 import { formatTime } from '@/lib/utils';
+import { getAiStyleModelStatus, downloadAiStyleModel, pollJob } from '@/lib/api';
 import { SnapSlider } from './effects/SnapSlider';
 import { CartoonEffectPreview } from './effects/CartoonEffectPreview';
 
@@ -220,6 +221,39 @@ export default function Inspector({
 
   const aiStyleJob = assetJobs?.[selectedAsset?.id ?? '']?.aiStyle;
   const aiStyleJobStatus = aiStyleJob?.status;
+
+  // AI Style model download state
+  const [modelStatus, setModelStatus] = useState<Record<string, { available: boolean }>>({});
+  const [modelDownloading, setModelDownloading] = useState<string | null>(null);
+
+  const checkModelStatus = useCallback(async () => {
+    try {
+      const { models } = await getAiStyleModelStatus();
+      setModelStatus(models);
+    } catch {
+      // Silently fail — models endpoint may not be available
+    }
+  }, []);
+
+  // Check model status when AI style mode is selected
+  useEffect(() => {
+    if (selectedTrackType === 'effect') {
+      checkModelStatus();
+    }
+  }, [selectedTrackType, checkModelStatus]);
+
+  const handleDownloadModel = useCallback(async (preset: string) => {
+    setModelDownloading(preset);
+    try {
+      const { jobId } = await downloadAiStyleModel(preset);
+      await pollJob(jobId);
+      await checkModelStatus();
+    } catch {
+      // Error will show in error log
+    } finally {
+      setModelDownloading(null);
+    }
+  }, [checkModelStatus]);
 
   const assetHasAudio = !!(selectedAsset?.audioPath);
 
@@ -826,6 +860,57 @@ export default function Inspector({
                               <span style={{ fontSize: 11, color: 'rgba(251,191,36,0.85)' }}>
                                 Processing {cfg.stylePreset ?? 'hayao'} style...
                               </span>
+                            </div>
+                          )}
+
+                          {/* Model download status */}
+                          {modelStatus[cfg.stylePreset ?? 'hayao'] && !modelStatus[cfg.stylePreset ?? 'hayao'].available && (
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              marginBottom: 8,
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              background: 'rgba(239,68,68,0.08)',
+                              border: '1px solid rgba(239,68,68,0.20)',
+                            }}>
+                              {modelDownloading === (cfg.stylePreset ?? 'hayao') ? (
+                                <>
+                                  <div style={{
+                                    width: 10, height: 10,
+                                    border: '2px solid rgba(59,130,246,0.30)',
+                                    borderTopColor: 'rgba(59,130,246,0.90)',
+                                    borderRadius: '50%',
+                                    animation: 'spin 0.8s linear infinite',
+                                    flexShrink: 0,
+                                  }} />
+                                  <span style={{ fontSize: 11, color: 'rgba(59,130,246,0.85)' }}>
+                                    Downloading model...
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontSize: 11, color: 'rgba(239,68,68,0.85)', flex: 1 }}>
+                                    Model not downloaded
+                                  </span>
+                                  <button
+                                    onClick={() => handleDownloadModel(cfg.stylePreset ?? 'hayao')}
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 600,
+                                      padding: '2px 8px',
+                                      border: '1px solid rgba(59,130,246,0.50)',
+                                      borderRadius: 3,
+                                      background: 'rgba(59,130,246,0.12)',
+                                      color: 'rgba(59,130,246,0.95)',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Download
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
 

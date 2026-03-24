@@ -76,6 +76,20 @@ export async function startAiStyle(
   });
 }
 
+export async function getAiStyleModelStatus(): Promise<{
+  models: Record<string, { available: boolean; path: string; size?: number }>;
+}> {
+  return apiFetch('/ai-style/model-status');
+}
+
+export async function downloadAiStyleModel(preset: string): Promise<{ jobId: string; preset: string }> {
+  return apiFetch('/ai-style/download-model', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ preset }),
+  });
+}
+
 export async function listMediaFiles(): Promise<{ files: Array<{ name: string; size: number }> }> {
   return apiFetch('/media');
 }
