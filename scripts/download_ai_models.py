@@ -12,7 +12,10 @@ Models are stored in:
     $WORKSPACE_DIR/models/style_transfer/  (if WORKSPACE_DIR is set)
     ~/.cache/video-editor/models/style_transfer/  (otherwise)
 
-The download URL can be overridden with AI_STYLE_MODEL_BASE_URL env var.
+Environment variables:
+    AI_STYLE_MODEL_BASE_URL  Override the model download base URL
+    HF_TOKEN                 HuggingFace access token for authenticated downloads
+                             (get one at https://huggingface.co/settings/tokens)
 """
 
 import sys
