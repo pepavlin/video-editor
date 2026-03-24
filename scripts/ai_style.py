@@ -75,6 +75,23 @@ _DEFAULT_MODEL_BASE_URL = (
 )
 MODEL_BASE_URL = os.environ.get('AI_STYLE_MODEL_BASE_URL', _DEFAULT_MODEL_BASE_URL)
 
+# Fallback mirror URLs for each preset (publicly accessible HuggingFace repos).
+# Used when the primary bryandlee repo is unavailable (e.g. gated/private).
+_FALLBACK_URLS: dict = {
+    'hayao': [
+        'https://huggingface.co/vumichien/AnimeGANv2_Hayao/resolve/main/AnimeGANv2_Hayao.onnx',
+    ],
+    'shinkai': [
+        'https://huggingface.co/vumichien/AnimeGANv2_Shinkai/resolve/main/AnimeGANv2_Shinkai.onnx',
+    ],
+    'paprika': [
+        'https://huggingface.co/vumichien/AnimeGANv2_Paprika/resolve/main/AnimeGANv2_Paprika.onnx',
+    ],
+    'celeb': [
+        'https://huggingface.co/akhaliq/AnimeGANv2-ONNX/resolve/main/face_paint_512_v2_0.onnx',
+    ],
+}
+
 # Map of preset names to AnimeGANv2 ONNX model files.
 # AnimeGANv2 is a GAN specifically trained to convert real photos/video into
 # cartoon/anime art — producing flat color regions, clean edges, and stylized
@@ -141,7 +158,8 @@ def _compute_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
-def _build_download_urls(base_url: str, filename: str) -> list:
+def _build_download_urls(base_url: str, filename: str,
+                         preset: Optional[str] = None) -> list:
     """
     Build a list of candidate download URLs to try in order.
 
@@ -149,6 +167,7 @@ def _build_download_urls(base_url: str, filename: str) -> list:
     We try multiple URL patterns to maximize compatibility:
     1. base_url/filename?download=true (HuggingFace with download flag)
     2. base_url/filename (plain URL, works for mirrors/custom servers)
+    3. Fallback mirror URLs for the preset (publicly accessible repos)
     """
     base = base_url.rstrip('/')
     urls = []
@@ -157,6 +176,11 @@ def _build_download_urls(base_url: str, filename: str) -> list:
         urls.append(f"{base}/{filename}?download=true")
     # Plain URL (works for local servers, mirrors, and older HF repos)
     urls.append(f"{base}/{filename}")
+    # Append fallback mirror URLs for the preset
+    if preset and preset in _FALLBACK_URLS:
+        for fallback_url in _FALLBACK_URLS[preset]:
+            if fallback_url not in urls:
+                urls.append(fallback_url)
     return urls
 
 
@@ -186,7 +210,7 @@ def download_model(preset: str, models_dir: Optional[str] = None,
 
     filename = model_info['filename']
     model_path = os.path.join(models_dir, filename)
-    urls = _build_download_urls(base_url, filename)
+    urls = _build_download_urls(base_url, filename, preset=preset)
 
     # HuggingFace authentication token (optional, needed for gated/private repos)
     hf_token = os.environ.get('HF_TOKEN', '').strip()
